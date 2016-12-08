@@ -1,0 +1,4 @@
+troposphere
+troposphere_sugar
+awacs
+awscli
