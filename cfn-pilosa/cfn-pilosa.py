@@ -1,37 +1,42 @@
 from troposphere import route53, iam, ec2, Ref, Template, GetAtt, Base64, Parameter, Tags
 from troposphere.iam import Role, InstanceProfile
+from troposphere_sugar.decorators import cfparam, cfresource
+from troposphere_sugar import Skel
+from troposphere import route53, Ref, Parameter, Join
 from awacs.aws import Allow, Statement, Principal, Policy
 from awacs.sts import AssumeRole
 from functools import partial
 from textwrap import dedent
 
-class memoize(object):
-    def __init__(self, func):
-        self.func = func
-    def __get__(self, obj, objtype=None):
-        if obj is None:
-            return self.func
-        return partial(self, obj)
-    def __call__(self, *args, **kw):
-        obj = args[0]
-        try:
-            cache = obj.__cache
-        except AttributeError:
-            cache = obj.__cache = {}
-        key = (self.func, args[1:], frozenset(kw.items()))
-        try:
-            res = cache[key]
-        except KeyError:
-            res = cache[key] = self.func(*args, **kw)
-        return res
+class PilosaTemplate(Skel):
+    @cfparam
+    def ami(self):
+        return Parameter(
+            'AMI',
+            Description='AMI to use for pilosa instance',
+            Type='String',
+            Default='ami-e3c3b8f4',
+        )
 
-class PilosaTemplate(object):
+    @cfparam
+    def keypair(self):
+        return Parameter(
+            'Keypair',
+            Description='Keypair to use for sudoer user',
+            Type='String',
+            Default='cody@soyland.org',
+        )
 
-    @memoize
-    def template(self):
-        return Template()
+    @cfparam
+    def instance_type(self):
+        return Parameter(
+            'InstanceType',
+            Description='Instance type of pilosa',
+            Type='String',
+            Default='m4.large',
+        )
 
-    @memoize
+    @cfresource
     def role(self):
         return Role(
             "PilosaRole",
@@ -59,14 +64,14 @@ class PilosaTemplate(object):
             )],
         )
 
-    @memoize
+    @cfresource
     def instance_profile(self):
         return InstanceProfile(
             "PilosaInstanceProfile",
-            Roles=[Ref(self.role())]
+            Roles=[Ref(self.role)]
         )
 
-    @memoize
+    @cfresource
     def vpc(self):
         return ec2.VPC(
             'PilosaVPC',
@@ -76,63 +81,55 @@ class PilosaTemplate(object):
             EnableDnsSupport='true',
         )
 
-    @memoize
+    @cfresource
     def hosted_zone(self):
         return route53.HostedZone(
             'PilosaZone',
-            Name='servers.pilosa.com',
-            VPCs=[route53.HostedZoneVPCs(VPCId=Ref(self.vpc()), VPCRegion=Ref('AWS::Region'))])
+            Name='cluster0.sandbox.pilosa.com',
+            VPCs=[route53.HostedZoneVPCs(VPCId=Ref(self.vpc), VPCRegion=Ref('AWS::Region'))])
 
-    @memoize
-    def record_set(self, index):
-        return route53.RecordSetType(
-            'PilosaRecordSet{}'.format(index),
-            HostedZoneId=Ref(self.hosted_zone()),
-            Name='pilosa{}.servers.pilosa.com.'.format(index),
-            Type="A",
-            TTL="900",
-            ResourceRecords=[GetAtt(self.instance(index), "PrivateIp")],
-        )
-
-    @memoize
+    @cfresource
     def subnet(self):
         return ec2.Subnet(
             'Subnet',
             CidrBlock='10.0.0.0/24',
-            VpcId=Ref(self.vpc()),
+            VpcId=Ref(self.vpc),
             Tags=Tags(Application=Ref('AWS::StackId')))
 
-    @memoize
+    @cfresource
     def gateway(self):
         return ec2.InternetGateway('InternetGateway')
 
-    @memoize
+    @cfresource
     def gateway_attachment(self):
         return ec2.VPCGatewayAttachment(
             'AttachGateway',
-            VpcId=Ref(self.vpc()),
-            InternetGatewayId=Ref(self.gateway()))
+            VpcId=Ref(self.vpc),
+            InternetGatewayId=Ref(self.gateway))
 
+    @cfresource
     def route_table(self):
         return ec2.RouteTable(
             'RouteTable',
-            VpcId=Ref(self.vpc()))
+            VpcId=Ref(self.vpc))
 
+    @cfresource
     def internet_route(self):
         return ec2.Route(
             'Route',
             DependsOn='AttachGateway',
-            GatewayId=Ref(self.gateway()),
+            GatewayId=Ref(self.gateway),
             DestinationCidrBlock='0.0.0.0/0',
-            RouteTableId=Ref(self.route_table()))
+            RouteTableId=Ref(self.route_table))
 
+    @cfresource
     def subnet_route_table_association(self):
         return ec2.SubnetRouteTableAssociation(
             'SubnetRouteTableAssociation',
-            SubnetId=Ref(self.subnet()),
-            RouteTableId=Ref(self.route_table()))
+            SubnetId=Ref(self.subnet),
+            RouteTableId=Ref(self.route_table))
 
-    @memoize
+    @cfresource
     def instance_security_group(self):
         return ec2.SecurityGroup(
             'PilosaInstanceSecurityGroup',
@@ -146,35 +143,34 @@ class PilosaTemplate(object):
                     #SourceSecurityGroupId=Ref(self.security_group().title)
                 ),
             ],
-            VpcId=Ref(self.vpc()),
+            VpcId=Ref(self.vpc),
         )
 
-    @memoize
+    @cfresource
     def instance_security_group_ingress(self):
         return ec2.SecurityGroupIngress(
             "PilosaIngress",
             IpProtocol='tcp',
             FromPort='15000',
             ToPort='15000',
-            GroupId=Ref(self.instance_security_group()),
-            SourceSecurityGroupId=Ref(self.instance_security_group()),
+            GroupId=Ref(self.instance_security_group),
+            SourceSecurityGroupId=Ref(self.instance_security_group),
         )
 
-    @memoize
     def instance(self, index):
         return ec2.Instance(
             'PilosaInstance{}'.format(index),
-            ImageId = Ref(self.ami()), #ubuntu
-            InstanceType = Ref(self.instance_type()),
-            KeyName = Ref(self.keypair()),
-            IamInstanceProfile=Ref(self.instance_profile()),
+            ImageId = Ref(self.ami), #ubuntu
+            InstanceType = Ref(self.instance_type),
+            KeyName = Ref(self.keypair),
+            IamInstanceProfile=Ref(self.instance_profile),
             NetworkInterfaces=[
                 ec2.NetworkInterfaceProperty(
-                    GroupSet=[Ref(self.instance_security_group().title)],
+                    GroupSet=[Ref(self.instance_security_group.title)],
                     AssociatePublicIpAddress='true',
                     DeviceIndex='0',
                     DeleteOnTermination='true',
-                    SubnetId=Ref(self.subnet()))],
+                    SubnetId=Ref(self.subnet))],
 
             UserData = Base64(dedent('''
                 #!/bin/bash
@@ -183,61 +179,36 @@ class PilosaTemplate(object):
             '''[1:])), # strip leading newline and dedent
         )
 
+    def public_record_set(self, index):
+        return route53.RecordSetType(
+            'PilosaPublicRecordSet{}'.format(index),
+            #HostedZoneId=Ref(self.hosted_zone),
+            HostedZoneName='sandbox.pilosa.com.',
+            Name='pilosa{}.cluster0.sandbox.pilosa.com.'.format(index),
+            Type="A",
+            TTL="300",
+            ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
+        )
 
-    @memoize
-    def ami(self):
-        return self.template().add_parameter(Parameter(
-            'AMI',
-            Description='AMI to use for pilosa instance',
-            Type='String',
-            Default='ami-e3c3b8f4',
-        ))
+    def private_record_set(self, index):
+        return route53.RecordSetType(
+            'PilosaPrivateRecordSet{}'.format(index),
+            HostedZoneId=Ref(self.hosted_zone),
+            Name='pilosa{}.cluster0.sandbox.pilosa.com.'.format(index),
+            Type="A",
+            TTL="300",
+            ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
+        )
 
-    @memoize
-    def keypair(self):
-        return self.template().add_parameter(Parameter(
-            'Keypair',
-            Description='Keypair to use for sudoer user',
-            Type='String',
-            Default='cody@soyland.org',
-        ))
-
-    @memoize
-    def instance_type(self):
-        return self.template().add_parameter(Parameter(
-            'InstanceType',
-            Description='Instance type of pilosa',
-            Type='String',
-            Default='m4.large',
-        ))
-
-    def generate(self):
-        template = self.template()
-        for resource in (self.role(),
-                         self.vpc(),
-                         self.hosted_zone(),
-                         self.subnet(),
-                         self.gateway(),
-                         self.gateway_attachment(),
-                         self.route_table(),
-                         self.internet_route(),
-                         self.subnet_route_table_association(),
-                         self.record_set(0),
-                         self.record_set(1),
-                         self.record_set(2),
-                         self.instance(0),
-                         self.instance(1),
-                         self.instance(2),
-                         self.instance_profile(),
-                         self.instance_security_group(),
-                         self.instance_security_group_ingress(),
-                         ):
-            template.add_resource(resource)
-
-        return template
+    def process(self):
+        super(PilosaTemplate, self).process()
+        for i in range(3):
+            self.template.add_resource(self.instance(i))
+            self.template.add_resource(self.public_record_set(i))
+            self.template.add_resource(self.private_record_set(i))
 
 def main():
-    print PilosaTemplate().generate().to_json()
+    print PilosaTemplate().output
 
 if __name__ == '__main__':
     main()
