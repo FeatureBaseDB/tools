@@ -9,6 +9,10 @@ from functools import partial
 from textwrap import dedent
 
 class PilosaTemplate(Skel):
+    def __init__(self, machine_count):
+        super(PilosaTemplate, self).__init__()
+        self.machine_count = machine_count
+
     @cfparam
     def ami(self):
         return Parameter(
@@ -202,13 +206,13 @@ class PilosaTemplate(Skel):
 
     def process(self):
         super(PilosaTemplate, self).process()
-        for i in range(3):
+        for i in range(self.machine_count):
             self.template.add_resource(self.instance(i))
             self.template.add_resource(self.public_record_set(i))
             self.template.add_resource(self.private_record_set(i))
 
 def main():
-    print PilosaTemplate().output
+    print PilosaTemplate(machine_count=3).output
 
 if __name__ == '__main__':
     main()
