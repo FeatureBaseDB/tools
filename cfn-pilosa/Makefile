@@ -1,5 +1,5 @@
 .PHONY: create-stack update-stack delete-stack describe-stack
-STACK=pilosa
+STACK=cluster0
 PY_FILE=cfn-pilosa.py
 JSON_FILE=cfn-pilosa.json
 
@@ -13,10 +13,10 @@ $(JSON_FILE): env/deps $(PY_FILE)
 	env/bin/python $(PY_FILE) > $(JSON_FILE)
 
 create-stack: $(JSON_FILE) env/deps
-	env/bin/aws cloudformation create-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM
+	env/bin/aws cloudformation create-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM --parameters ParameterKey=ClusterName,ParameterValue=$(STACK)
 
 update-stack: $(JSON_FILE) env/deps
-	env/bin/aws cloudformation update-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM
+	env/bin/aws cloudformation update-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM --parameters ParameterKey=ClusterName,ParameterValue=$(STACK)
 
 delete-stack: env/deps
 	env/bin/aws cloudformation delete-stack --stack-name $(STACK)

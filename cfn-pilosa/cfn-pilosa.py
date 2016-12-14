@@ -40,6 +40,15 @@ class PilosaTemplate(Skel):
             Default='m4.large',
         )
 
+    @cfparam
+    def cluster_name(self):
+        return Parameter(
+            'ClusterName',
+            Description='Unique name for this pilosa cluster. Used in DNS (pilosa0.{{name}}.sandbox.pilosa.com',
+            Type='String',
+            Default='cluster1',
+        )
+
     @cfresource
     def role(self):
         return Role(
@@ -89,7 +98,7 @@ class PilosaTemplate(Skel):
     def hosted_zone(self):
         return route53.HostedZone(
             'PilosaZone',
-            Name='cluster0.sandbox.pilosa.com',
+            Name=Join('', [Ref(self.cluster_name), '.sandbox.pilosa.com']),
             VPCs=[route53.HostedZoneVPCs(VPCId=Ref(self.vpc), VPCRegion=Ref('AWS::Region'))])
 
     @cfresource
@@ -186,9 +195,8 @@ class PilosaTemplate(Skel):
     def public_record_set(self, index):
         return route53.RecordSetType(
             'PilosaPublicRecordSet{}'.format(index),
-            #HostedZoneId=Ref(self.hosted_zone),
             HostedZoneName='sandbox.pilosa.com.',
-            Name='pilosa{}.cluster0.sandbox.pilosa.com.'.format(index),
+            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
@@ -198,7 +206,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPrivateRecordSet{}'.format(index),
             HostedZoneId=Ref(self.hosted_zone),
-            Name='pilosa{}.cluster0.sandbox.pilosa.com.'.format(index),
+            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
