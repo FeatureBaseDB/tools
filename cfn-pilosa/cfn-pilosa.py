@@ -1,4 +1,5 @@
-from troposphere import route53, iam, ec2, Ref, Template, GetAtt, Base64, Parameter, Tags
+from __future__ import print_function
+from troposphere import route53, iam, ec2, Ref, Template, GetAtt, Base64, Parameter, Tags, Sub
 from troposphere.iam import Role, InstanceProfile
 from troposphere_sugar.decorators import cfparam, cfresource
 from troposphere_sugar import Skel
@@ -7,11 +8,12 @@ from awacs.aws import Allow, Statement, Principal, Policy
 from awacs.sts import AssumeRole
 from functools import partial
 from textwrap import dedent
+import sys
 
 class PilosaTemplate(Skel):
-    def __init__(self, machine_count):
+    def __init__(self, cluster_size):
         super(PilosaTemplate, self).__init__()
-        self.machine_count = machine_count
+        self.cluster_size = cluster_size
 
     @cfparam
     def ami(self):
@@ -23,12 +25,11 @@ class PilosaTemplate(Skel):
         )
 
     @cfparam
-    def keypair(self):
+    def key_pair(self):
         return Parameter(
-            'Keypair',
-            Description='Keypair to use for sudoer user',
+            'KeyPair',
+            Description='Key pair to use for sudoer user',
             Type='String',
-            Default='cody@soyland.org',
         )
 
     @cfparam
@@ -37,7 +38,7 @@ class PilosaTemplate(Skel):
             'InstanceType',
             Description='Instance type of pilosa',
             Type='String',
-            Default='m4.large',
+            Default='m3.medium',
         )
 
     @cfparam
@@ -46,7 +47,7 @@ class PilosaTemplate(Skel):
             'ClusterName',
             Description='Unique name for this pilosa cluster. Used in DNS (pilosa0.{{name}}.sandbox.pilosa.com',
             Type='String',
-            Default='cluster1',
+            Default='cluster0',
         )
 
     @cfresource
@@ -171,11 +172,39 @@ class PilosaTemplate(Skel):
         )
 
     def instance(self, index):
+        config_file = dedent('''
+            data-dir = "/tmp/pil0"
+            host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+
+            [cluster]
+            replicas = {count}
+
+            ''')[1:].format(node=index, count=self.cluster_size, stack_name='${AWS::StackName}')
+
+        for node in range(self.cluster_size):
+            config_file += dedent('''
+                [[cluster.node]]
+                host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+
+                '''[1:]).format(node=node, stack_name='${AWS::StackName}')
+
+        user_data = dedent('''
+                #!/bin/bash
+                apt install -y awscli
+                aws s3 cp s3://dist.pilosa.com/2.0.0/pilosa /usr/local/bin/
+                chmod +x /usr/local/bin/pilosa
+
+                cat > /etc/pilosa.cfg << EOF
+                {config_file}
+                EOF
+
+                '''[1:]).format(config_file=config_file)
+
         return ec2.Instance(
             'PilosaInstance{}'.format(index),
             ImageId = Ref(self.ami), #ubuntu
             InstanceType = Ref(self.instance_type),
-            KeyName = Ref(self.keypair),
+            KeyName = Ref(self.key_pair),
             IamInstanceProfile=Ref(self.instance_profile),
             NetworkInterfaces=[
                 ec2.NetworkInterfaceProperty(
@@ -185,11 +214,7 @@ class PilosaTemplate(Skel):
                     DeleteOnTermination='true',
                     SubnetId=Ref(self.subnet))],
 
-            UserData = Base64(dedent('''
-                #!/bin/bash
-                echo "Now we download Pilosa!!!"
-                # TODO: download pilosa binary, run it
-            '''[1:])), # strip leading newline and dedent
+            UserData = Base64(Sub(user_data)),
         )
 
     def public_record_set(self, index):
@@ -214,13 +239,16 @@ class PilosaTemplate(Skel):
 
     def process(self):
         super(PilosaTemplate, self).process()
-        for i in range(self.machine_count):
+        for i in range(self.cluster_size):
             self.template.add_resource(self.instance(i))
             self.template.add_resource(self.public_record_set(i))
             self.template.add_resource(self.private_record_set(i))
 
 def main():
-    print PilosaTemplate(machine_count=3).output
+    cluster_size = 3
+    if len(sys.argv) > 1:
+        cluster_size = int(sys.argv[1])
+    print(PilosaTemplate(cluster_size=cluster_size).output)
 
 if __name__ == '__main__':
     main()
