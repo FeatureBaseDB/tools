@@ -5,7 +5,7 @@ INSTANCE_TYPE=m3.medium
 AMI=ami-e3c3b8f4
 PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI)
 PY_FILE=cfn-pilosa.py
-JSON_FILE=cfn-pilosa-$(CLUSTER_SIZE).json
+JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE).json
 
 env:
 	virtualenv env
