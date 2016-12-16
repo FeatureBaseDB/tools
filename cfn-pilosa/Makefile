@@ -7,6 +7,9 @@ PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,Par
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE).json
 
+help: ## Show this help
+	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
+
 env:
 	virtualenv env
 
