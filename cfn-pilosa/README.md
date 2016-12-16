@@ -1,24 +1,36 @@
-cfn-production
-==============
+cfn-pilosa
+==========
 
 This is a Cloudformation template generator for creating Pilosa clusters.
 
 Usage
 -----
 
-### Generate Cloudformation template
+### Show help
 
 ```
-$ make cfn-production.json
+$ make help
 ```
 
 ### Create a stack
 
+Required arguments:
+
+- STACK: Cloudformation stack name and name of cluster in DNS
+
+Optional arguments:
+
+- CLUSTER_SIZE: Number of instances (default: 3)
+- INSTANCE_TYPE: Instance type in AWS (default: m3.medium)
+- AMI: AWS machine image (default: ami-e3c3b8f4)
+
 ```
-$ make create-stack STACK=foo
+$ make create-stack STACK=clustername
 ```
 
 ### Update a stack
+
+Same arguments as "make create-stack"
 
 ```
 $ make update-stack STACK=foo
@@ -34,4 +46,10 @@ $ make delete-stack STACK=foo
 
 ```
 $ make describe-stack STACK=foo
+```
+
+### Upload SSH key to AWS Key-pair
+
+```
+$ make upload-ssh-key
 ```
