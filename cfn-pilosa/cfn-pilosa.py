@@ -11,9 +11,10 @@ from textwrap import dedent
 import sys
 
 class PilosaTemplate(Skel):
-    def __init__(self, cluster_size):
+    def __init__(self, cluster_size, num_agents):
         super(PilosaTemplate, self).__init__()
         self.cluster_size = cluster_size
+        self.num_agents = num_agents
 
     @cfparam
     def ami(self):
@@ -217,6 +218,30 @@ class PilosaTemplate(Skel):
             UserData = Base64(Sub(user_data)),
         )
 
+    def agent_instance(self, index):
+        user_data = dedent('''
+                #!/bin/bash
+                apt install -y awscli
+                aws s3 cp s3://dist.pilosa.com/2.0.0/pilosactl /usr/local/bin/
+                chmod +x /usr/local/bin/pilosactl
+                '''[1:])
+        return ec2.Instance(
+            'PilosaAgentInstance{}'.format(index),
+            ImageId=Ref(self.ami), # ubuntu
+            InstanceType=Ref(self.instance_type),
+            KeyName=Ref(self.key_pair),
+            IamInstanceProfile=Ref(self.instance_profile),
+            NetworkInterfaces=[
+                ec2.NetworkInterfaceProperty(
+                    GroupSet=[Ref(self.instance_security_group.title)],
+                    AssociatePublicIpAddress='true',
+                    DeviceIndex='0',
+                    DeleteOnTermination='true',
+                    SubnetId=Ref(self.subnet))],
+
+            UserData=Base64(Sub(user_data)),
+        )
+
     def public_record_set(self, index):
         return route53.RecordSetType(
             'PilosaPublicRecordSet{}'.format(index),
@@ -225,6 +250,16 @@ class PilosaTemplate(Skel):
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
+        )
+
+    def agent_public_record_set(self, index):
+        return route53.RecordSetType(
+            'AgentPublicRecordSet{}'.format(index),
+            HostedZoneName='sandbox.pilosa.com.',
+            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Type="A",
+            TTL="300",
+            ResourceRecords=[GetAtt("PilosaAgentInstance{}".format(index), "PublicIp")],
         )
 
     def private_record_set(self, index):
@@ -237,18 +272,35 @@ class PilosaTemplate(Skel):
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
         )
 
+    def agent_private_record_set(self, index):
+        return route53.RecordSetType(
+            'AgentPrivateRecordSet{}'.format(index),
+            HostedZoneId=Ref(self.hosted_zone),
+            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Type="A",
+            TTL="300",
+            ResourceRecords=[GetAtt("PilosaAgentInstance{}".format(index), "PrivateIp")],
+        )
+
     def process(self):
         super(PilosaTemplate, self).process()
         for i in range(self.cluster_size):
             self.template.add_resource(self.instance(i))
             self.template.add_resource(self.public_record_set(i))
             self.template.add_resource(self.private_record_set(i))
+        for i in range(self.num_agents):
+            self.template.add_resource(self.agent_instance(i))
+            self.template.add_resource(self.agent_public_record_set(i))
+            self.template.add_resource(self.agent_private_record_set(i))
 
 def main():
     cluster_size = 3
     if len(sys.argv) > 1:
         cluster_size = int(sys.argv[1])
-    print(PilosaTemplate(cluster_size=cluster_size).output)
+    num_agents = 1
+    if len(sys.argv) > 2:
+        num_agents = int(sys.argv[2])
+    print(PilosaTemplate(cluster_size=cluster_size, num_agents=num_agents).output)
 
 if __name__ == '__main__':
     main()
