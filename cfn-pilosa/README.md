@@ -20,6 +20,8 @@ Required arguments:
 
 Optional arguments:
 
+- VPC: VPC ID to use (default: vpc-a04897c6)
+- SUBNET: Subnet ID to use (default: subnet-5ce57307)
 - CLUSTER_SIZE: Number of instances (default: 3)
 - INSTANCE_TYPE: Instance type in AWS (default: m3.medium)
 - AMI: AWS machine image (default: ami-e3c3b8f4)

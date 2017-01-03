@@ -17,6 +17,22 @@ class PilosaTemplate(Skel):
         self.num_agents = num_agents
 
     @cfparam
+    def vpc(self):
+        return Parameter(
+            'VPC',
+            Description='VPC to use for pilosa instance',
+            Type='String',
+        )
+
+    @cfparam
+    def subnet(self):
+        return Parameter(
+            'Subnet',
+            Description='Subnet to use for pilosa instance',
+            Type='String',
+        )
+
+    @cfparam
     def ami(self):
         return Parameter(
             'AMI',
@@ -46,7 +62,7 @@ class PilosaTemplate(Skel):
     def cluster_name(self):
         return Parameter(
             'ClusterName',
-            Description='Unique name for this pilosa cluster. Used in DNS (pilosa0.{{name}}.sandbox.pilosa.com',
+            Description='Unique name for this pilosa cluster. Used in DNS (node0.{{name}}.sandbox.pilosa.com',
             Type='String',
             Default='cluster0',
         )
@@ -87,62 +103,11 @@ class PilosaTemplate(Skel):
         )
 
     @cfresource
-    def vpc(self):
-        return ec2.VPC(
-            'PilosaVPC',
-            InstanceTenancy='dedicated',
-            CidrBlock='10.0.0.0/16',
-            EnableDnsHostnames='true',
-            EnableDnsSupport='true',
-        )
-
-    @cfresource
     def hosted_zone(self):
         return route53.HostedZone(
             'PilosaZone',
             Name=Join('', [Ref(self.cluster_name), '.sandbox.pilosa.com']),
             VPCs=[route53.HostedZoneVPCs(VPCId=Ref(self.vpc), VPCRegion=Ref('AWS::Region'))])
-
-    @cfresource
-    def subnet(self):
-        return ec2.Subnet(
-            'Subnet',
-            CidrBlock='10.0.0.0/24',
-            VpcId=Ref(self.vpc),
-            Tags=Tags(Application=Ref('AWS::StackId')))
-
-    @cfresource
-    def gateway(self):
-        return ec2.InternetGateway('InternetGateway')
-
-    @cfresource
-    def gateway_attachment(self):
-        return ec2.VPCGatewayAttachment(
-            'AttachGateway',
-            VpcId=Ref(self.vpc),
-            InternetGatewayId=Ref(self.gateway))
-
-    @cfresource
-    def route_table(self):
-        return ec2.RouteTable(
-            'RouteTable',
-            VpcId=Ref(self.vpc))
-
-    @cfresource
-    def internet_route(self):
-        return ec2.Route(
-            'Route',
-            DependsOn='AttachGateway',
-            GatewayId=Ref(self.gateway),
-            DestinationCidrBlock='0.0.0.0/0',
-            RouteTableId=Ref(self.route_table))
-
-    @cfresource
-    def subnet_route_table_association(self):
-        return ec2.SubnetRouteTableAssociation(
-            'SubnetRouteTableAssociation',
-            SubnetId=Ref(self.subnet),
-            RouteTableId=Ref(self.route_table))
 
     @cfresource
     def instance_security_group(self):
@@ -155,7 +120,6 @@ class PilosaTemplate(Skel):
                     FromPort='22',
                     ToPort='22',
                     CidrIp='0.0.0.0/0',
-                    #SourceSecurityGroupId=Ref(self.security_group().title)
                 ),
             ],
             VpcId=Ref(self.vpc),
@@ -175,7 +139,7 @@ class PilosaTemplate(Skel):
     def instance(self, index):
         config_file = dedent('''
             data-dir = "/tmp/pil0"
-            host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+            host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
 
             [cluster]
             replicas = {count}
@@ -185,7 +149,7 @@ class PilosaTemplate(Skel):
         for node in range(self.cluster_size):
             config_file += dedent('''
                 [[cluster.node]]
-                host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+                host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
 
                 '''[1:]).format(node=node, stack_name='${AWS::StackName}')
 
@@ -246,7 +210,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPublicRecordSet{}'.format(index),
             HostedZoneName='sandbox.pilosa.com.',
-            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
@@ -266,7 +230,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPrivateRecordSet{}'.format(index),
             HostedZoneId=Ref(self.hosted_zone),
-            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
