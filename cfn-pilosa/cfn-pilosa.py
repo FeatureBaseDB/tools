@@ -62,7 +62,7 @@ class PilosaTemplate(Skel):
     def cluster_name(self):
         return Parameter(
             'ClusterName',
-            Description='Unique name for this pilosa cluster. Used in DNS (pilosa0.{{name}}.sandbox.pilosa.com',
+            Description='Unique name for this pilosa cluster. Used in DNS (node0.{{name}}.sandbox.pilosa.com',
             Type='String',
             Default='cluster0',
         )
@@ -139,7 +139,7 @@ class PilosaTemplate(Skel):
     def instance(self, index):
         config_file = dedent('''
             data-dir = "/tmp/pil0"
-            host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+            host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
 
             [cluster]
             replicas = {count}
@@ -149,7 +149,7 @@ class PilosaTemplate(Skel):
         for node in range(self.cluster_size):
             config_file += dedent('''
                 [[cluster.node]]
-                host = "pilosa{node}.{stack_name}.sandbox.pilosa.com:15000"
+                host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
 
                 '''[1:]).format(node=node, stack_name='${AWS::StackName}')
 
@@ -210,7 +210,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPublicRecordSet{}'.format(index),
             HostedZoneName='sandbox.pilosa.com.',
-            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
@@ -230,7 +230,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPrivateRecordSet{}'.format(index),
             HostedZoneId=Ref(self.hosted_zone),
-            Name=Join('', ['pilosa{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
