@@ -1,4 +1,4 @@
-.PHONY: create-stack update-stack delete-stack describe-stack upload-ssh-key
+.PHONY: create-stack create-stack-complete update-stack delete-stack describe-stack upload-ssh-key
 CLUSTER_SIZE=3
 NUM_AGENTS=1
 STACK=cluster0
@@ -25,6 +25,13 @@ $(JSON_FILE): env/deps $(PY_FILE) ## Create Cloudformation template
 create-stack: $(JSON_FILE) env/deps              ## Create Pilosa cluster
 	test -n "$(KEY_PAIR)" # Required variable KEY_PAIR
 	env/bin/aws cloudformation create-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM --parameters $(PARAMS)
+
+create-stack-complete: create-stack		 ## Create Pilosa cluster and wait for completion
+	env/bin/aws cloudformation wait stack-create-complete --stack-name $(STACK)
+
+run-benchmarks: create-stack-complete	         ## Create Pilosa cluster, run benchmarks, and shut down
+	pilosactl bspawn multidbspawn.json
+	make delete-stack STACK=$(STACK)
 
 update-stack: $(JSON_FILE) env/deps              ## Update Pilosa cluster
 	test -n "$(KEY_PAIR)" # Required variable KEY_PAIR
