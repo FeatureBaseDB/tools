@@ -17,12 +17,14 @@ $ make help
 Required arguments:
 
 - STACK: Cloudformation stack name and name of cluster in DNS
+- KEY_PAIR: The name of the AWS key-pair that is set up to administer the machine
 
 Optional arguments:
 
 - VPC: VPC ID to use (default: vpc-a04897c6)
 - SUBNET: Subnet ID to use (default: subnet-5ce57307)
 - CLUSTER_SIZE: Number of instances (default: 3)
+- NUM_AGENTS: Number of benchmark agents to set up (default: 1)
 - INSTANCE_TYPE: Instance type in AWS (default: m3.medium)
 - AMI: AWS machine image (default: ami-e3c3b8f4)
 
