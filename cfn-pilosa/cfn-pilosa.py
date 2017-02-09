@@ -186,8 +186,8 @@ class PilosaTemplate(Skel):
         user_data = dedent('''
                 #!/bin/bash
                 apt install -y awscli
-                aws s3 cp s3://dist.pilosa.com/2.0.0/pilosactl /usr/local/bin/
-                chmod +x /usr/local/bin/pilosactl
+                aws s3 cp s3://dist.pilosa.com/2.0.0/pitool /usr/local/bin/
+                chmod +x /usr/local/bin/pitool
                 '''[1:])
         return ec2.Instance(
             'PilosaAgentInstance{}'.format(index),
