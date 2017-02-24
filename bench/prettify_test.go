@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pilosa/pilosa/bench"
+	"github.com/pilosa/tools/bench"
 )
 
 func prettyEncode(data map[string]interface{}) string {
