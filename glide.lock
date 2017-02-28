@@ -1,0 +1,74 @@
+hash: 1224563938fb22b2cba5b1d31780ba0141adbe230fc90cd5e6320c128d24ee81
+updated: 2017-02-28T16:52:58.263661966-06:00
+imports:
+- name: github.com/aws/aws-sdk-go
+  version: 6669bce73b4e3bc922ff5ea3a3983ede26e02b39
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/awsutil
+  - aws/client
+  - aws/client/metadata
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/credentials/endpointcreds
+  - aws/credentials/stscreds
+  - aws/defaults
+  - aws/ec2metadata
+  - aws/endpoints
+  - aws/request
+  - aws/session
+  - aws/signer/v4
+  - private/protocol
+  - private/protocol/query
+  - private/protocol/query/queryutil
+  - private/protocol/rest
+  - private/protocol/restxml
+  - private/protocol/xml/xmlutil
+  - private/waiter
+  - service/s3
+  - service/sts
+- name: github.com/boltdb/bolt
+  version: 4b1ebc1869ad66568b313d0dc410e2be72670dda
+- name: github.com/BurntSushi/toml
+  version: bbd5bb678321a0d6e58f1099321dfa73391c1b6f
+- name: github.com/go-ini/ini
+  version: c437d20015c2ab6454b7a66a13109ff0fb99e17a
+- name: github.com/gogo/protobuf
+  version: a9cd0c35b97daf74d0ebf3514c5254814b2703b4
+  subpackages:
+  - proto
+- name: github.com/golang/groupcache
+  version: a6b377e3400b08991b80d6805d627f347f983866
+  subpackages:
+  - lru
+- name: github.com/golang/protobuf
+  version: 888eb0692c857ec880338addf316bd662d5e630e
+  subpackages:
+  - proto
+- name: github.com/jmespath/go-jmespath
+  version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
+- name: github.com/pilosa/pilosa
+  version: 500a5ba2d618cf4c5307d25a92ac595823d9429a
+  subpackages:
+  - internal
+  - pilosactl
+  - pql
+  - roaring
+- name: github.com/satori/go.uuid
+  version: 879c5887cd475cd7864858769793b2ceb0d44feb
+- name: golang.org/x/crypto
+  version: 453249f01cfeb54c3d549ddb75ff152ca243f9d8
+  subpackages:
+  - curve25519
+  - ed25519
+  - ed25519/internal/edwards25519
+  - ssh
+  - ssh/agent
+  - ssh/terminal
+- name: golang.org/x/sys
+  version: c200b10b5d5e122be351b67af224adc6128af5bf
+  subpackages:
+  - unix
+testImports: []
