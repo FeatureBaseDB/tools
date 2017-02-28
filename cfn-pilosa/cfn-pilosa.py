@@ -59,6 +59,15 @@ class PilosaTemplate(Skel):
         )
 
     @cfparam
+    def agent_instance_type(self):
+        return Parameter(
+            'AgentInstanceType',
+            Description='Instance type of agent nodes',
+            Type='String',
+            Default='c4.large',
+        )
+
+    @cfparam
     def cluster_name(self):
         return Parameter(
             'ClusterName',
@@ -170,6 +179,7 @@ class PilosaTemplate(Skel):
             ImageId = Ref(self.ami), #ubuntu
             InstanceType = Ref(self.instance_type),
             KeyName = Ref(self.key_pair),
+            EbsOptimized=True,
             IamInstanceProfile=Ref(self.instance_profile),
             NetworkInterfaces=[
                 ec2.NetworkInterfaceProperty(
@@ -192,7 +202,7 @@ class PilosaTemplate(Skel):
         return ec2.Instance(
             'PilosaAgentInstance{}'.format(index),
             ImageId=Ref(self.ami), # ubuntu
-            InstanceType=Ref(self.instance_type),
+            InstanceType=Ref(self.agent_instance_type),
             KeyName=Ref(self.key_pair),
             IamInstanceProfile=Ref(self.instance_profile),
             NetworkInterfaces=[

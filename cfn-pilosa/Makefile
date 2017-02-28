@@ -3,10 +3,11 @@ CLUSTER_SIZE=3
 NUM_AGENTS=1
 STACK=cluster0
 INSTANCE_TYPE=m3.medium
+AGENT_INSTANCE_TYPE=m3.medium
 AMI=ami-e3c3b8f4
 VPC=vpc-a04897c6
 SUBNET=subnet-5ce57307
-PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
+PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
 BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/pilosa/cmd/pilosactl/spawn.json
