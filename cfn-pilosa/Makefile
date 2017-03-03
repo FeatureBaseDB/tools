@@ -10,7 +10,7 @@ SUBNET=subnet-5ce57307
 PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
-BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/pilosa/cmd/pilosactl/spawn.json
+BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/tools/cmd/pitool/spawn.json
 CLUSTER_HOSTS=`python -c "print \",\".join([\"node{}.$(STACK).sandbox.pilosa.com:15000\".format(i) for i in range($(CLUSTER_SIZE))])"`
 AGENT_HOSTS=`python -c "print \",\".join([\"agent{}.$(STACK).sandbox.pilosa.com\".format(i) for i in range($(NUM_AGENTS))])"`
 
@@ -34,8 +34,8 @@ create-stack-complete: create-stack		 ## Create Pilosa cluster and wait for comp
 	env/bin/aws cloudformation wait stack-create-complete --stack-name $(STACK)
 
 run-benchmarks: create-stack-complete	         ## Create Pilosa cluster, run benchmarks, and shut down
-	go install github.com/pilosa/pilosa/cmd/pilosactl
-	pilosactl bspawn -creator.hosts=$(CLUSTER_HOSTS) -agent-hosts=$(AGENT_HOSTS) -ssh-user=ubuntu -human -copy-binary -creator.log-file-prefix=clusterlogs $(BENCHMARK_CONFIG)
+	go install github.com/pilosa/tools/cmd/pitool
+	pitool bspawn -creator.hosts=$(CLUSTER_HOSTS) -agent-hosts=$(AGENT_HOSTS) -ssh-user=ubuntu -human -copy-binary -creator.log-file-prefix=clusterlogs $(BENCHMARK_CONFIG)
 	make delete-stack STACK=$(STACK)
 
 update-stack: $(JSON_FILE) env/deps              ## Update Pilosa cluster
