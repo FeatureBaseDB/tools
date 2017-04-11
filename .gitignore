@@ -4,3 +4,5 @@ vendor/
 /influx/etc/.DS_Store
 
 /influx/.DS_Store
+
+/influx/data/.DS_Store
