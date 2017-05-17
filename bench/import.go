@@ -10,13 +10,13 @@ import (
 
 	"sort"
 
-	"github.com/pilosa/pilosa/pilosactl"
+	"github.com/pilosa/pilosa/ctl"
 )
 
-// NewImport returns an Import Benchmark which pilosactl importer configured.
+// NewImport returns an Import Benchmark which pilosa/ctl importer configured.
 func NewImport(stdin io.Reader, stdout, stderr io.Writer) *Import {
 	return &Import{
-		ImportCommand: pilosactl.NewImportCommand(stdin, stdout, stderr),
+		ImportCommand: ctl.NewImportCommand(stdin, stdout, stderr),
 	}
 }
 
@@ -34,7 +34,7 @@ type Import struct {
 	Seed              int64  `json:"seed"`
 	numbits           int
 
-	*pilosactl.ImportCommand
+	*ctl.ImportCommand
 }
 
 // Usage returns the usage message to be printed.
@@ -166,7 +166,7 @@ func (s Int64Slice) Len() int           { return len(s) }
 func (s Int64Slice) Less(i, j int) bool { return s[i] < s[j] }
 func (s Int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-// GenerateImportCSV writes a generated csv to 'w' which is in the form pilosactl expects for imports.
+// GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
 func GenerateImportCSV(w io.Writer, baseBitmapID, maxBitmapID, baseProfileID, maxProfileID, minBitsPerMap, maxBitsPerMap, seed int64, randomOrder bool) int {
 	src := rand.NewSource(seed)
 	rng := rand.New(src)
