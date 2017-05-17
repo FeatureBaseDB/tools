@@ -362,7 +362,7 @@ func (cmd *BagentCommand) ParseFlags(args []string) error {
 	fs.SetOutput(ioutil.Discard)
 
 	var pilosaHosts string
-	fs.StringVar(&pilosaHosts, "hosts", "localhost:15000", "")
+	fs.StringVar(&pilosaHosts, "hosts", "localhost:10101", "")
 	fs.IntVar(&cmd.AgentNum, "agent-num", 0, "")
 	fs.BoolVar(&cmd.HumanReadable, "human", true, "")
 
@@ -418,7 +418,7 @@ Runs benchmarks against a pilosa cluster.
 
 The following flags are allowed:
 
-	-hosts ("localhost:15000")
+	-hosts ("localhost:10101")
 		comma separated list of host:port describing all hosts in the cluster
 
 	-agent-num (0)
