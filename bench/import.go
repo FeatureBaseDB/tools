@@ -10,8 +10,6 @@ import (
 
 	"sort"
 
-	pcli "github.com/pilosa/go-pilosa"
-	"github.com/pilosa/pilosa"
 	"github.com/pilosa/pilosa/ctl"
 )
 
@@ -146,25 +144,7 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 	// set b.Paths
 	b.Paths = []string{f.Name()}
 
-	// create index and frame
-	pilosaURI, err := pcli.NewURIFromAddress(b.Host)
-	setupClient := pcli.NewClientWithURI(pilosaURI)
-	index, err := pcli.NewIndex(b.Index, &pcli.IndexOptions{})
-	if err != nil {
-		return fmt.Errorf("making index: %v", err)
-	}
-	err = setupClient.EnsureIndex(index)
-	if err != nil {
-		return fmt.Errorf("ensuring index existence: %v", err)
-	}
-	frame, err := index.Frame(b.Frame, &pcli.FrameOptions{CacheType: pilosa.CacheTypeRanked})
-	if err != nil {
-		return fmt.Errorf("making frame: %v", err)
-	}
-	err = setupClient.EnsureFrame(frame)
-	if err != nil {
-		return fmt.Errorf("creating frame '%v': %v", frame, err)
-	}
+	initIndex(b.Host, b.Index, b.Frame)
 
 	return f.Close()
 }
