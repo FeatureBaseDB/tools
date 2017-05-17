@@ -21,7 +21,7 @@ type RandomSetBits struct {
 	ProfileIDRange int64  `json:"profile-id-range"`
 	Iterations     int    `json:"iterations"`
 	Seed           int64  `json:"seed"`
-	DB             string `json:"db"`
+	Index             string `json:"index"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -60,8 +60,8 @@ The following arguments are available:
 	-seed int
 		Seed for RNG
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-client-type string
 		Can be 'single' (all agents hitting one host) or 'round_robin'
@@ -83,7 +83,7 @@ func (b *RandomSetBits) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.ProfileIDRange, "profile-id-range", 100000, "")
 	fs.Int64Var(&b.Seed, "seed", 1, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.DB, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.StringVar(&b.ClientType, "client-type", "single", "")
 	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
 
@@ -109,7 +109,7 @@ func (b *RandomSetBits) Run(ctx context.Context) map[string]interface{} {
 		profID := rng.Int63n(b.ProfileIDRange)
 		query := fmt.Sprintf("SetBit(%d, 'frame.n', %d)", b.BaseBitmapID+bitmapID, b.BaseProfileID+profID)
 		start = time.Now()
-		b.client.ExecuteQuery(ctx, b.DB, query, true)
+		b.client.ExecuteQuery(ctx, b.Index, query, true)
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)

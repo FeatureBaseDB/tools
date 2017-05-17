@@ -24,7 +24,7 @@ type Zipf struct {
 	ProfileIDRange  int64   `json:"profile-id-range"`
 	Iterations      int     `json:"iterations"`
 	Seed            int64   `json:"seed"`
-	DB              string  `json:"db"`
+	Index              string  `json:"index"`
 	BitmapExponent  float64 `json:"bitmap-exponent"`
 	BitmapRatio     float64 `json:"bitmap-ratio"`
 	ProfileExponent float64 `json:"profile-exponent"`
@@ -70,8 +70,8 @@ The following arguments are available:
 	-seed int
 		Seed for RNG
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-bitmap-exponent float64
 		zipf exponent parameter for bitmap IDs
@@ -108,7 +108,7 @@ func (b *Zipf) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.ProfileIDRange, "profile-id-range", 100000, "")
 	fs.Int64Var(&b.Seed, "seed", 1, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.DB, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.Float64Var(&b.BitmapExponent, "bitmap-exponent", 1.01, "")
 	fs.Float64Var(&b.BitmapRatio, "bitmap-ratio", 0.25, "")
 	fs.Float64Var(&b.ProfileExponent, "profile-exponent", 1.01, "")
@@ -179,7 +179,7 @@ func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
 
 		query := fmt.Sprintf("%s(%d, 'frame.n', %d)", operation, b.BaseBitmapID+int64(bitmapID), b.BaseProfileID+int64(profID))
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.DB, query, true)
+		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {
 			results["error"] = fmt.Sprintf("Error executing query in zipf: %v", err)
 			return results

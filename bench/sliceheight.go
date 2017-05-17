@@ -32,7 +32,7 @@ type SliceHeight struct {
 	MinBitsPerMap int64  `json:"min-bits-per-map"`
 	MaxBitsPerMap int64  `json:"max-bits-per-map"`
 	Seed          int64  `json:"seed"`
-	Database      string `json:"database"`
+	Index      string `json:"index"`
 	Frame         string `json:"frame"`
 
 	Stdin  io.Reader `json:"-"`
@@ -63,8 +63,8 @@ The following arguments are available:
 	-seed int
 		seed for RNG
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-frame string
 		frame to import into
@@ -82,7 +82,7 @@ func (b *SliceHeight) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.MinBitsPerMap, "min-bits-per-map", 0, "")
 	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Database, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.StringVar(&b.Frame, "frame", "testframe", "")
 
 	if err := fs.Parse(args); err != nil {
@@ -108,7 +108,7 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 	imp.MaxProfileID = pilosa.SliceWidth
 	imp.MinBitsPerMap = b.MinBitsPerMap
 	imp.MaxBitsPerMap = b.MaxBitsPerMap
-	imp.Database = b.Database
+	imp.Index = b.Index
 	imp.Frame = b.Frame
 
 	start := time.Now()
@@ -132,7 +132,7 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 				"n":     50,
 			},
 		}
-		_, err := imp.Client.ExecuteQuery(ctx, b.Database, q.String(), true)
+		_, err := imp.Client.ExecuteQuery(ctx, b.Index, q.String(), true)
 		if err != nil {
 			iresults["query_error"] = err.Error()
 		} else {

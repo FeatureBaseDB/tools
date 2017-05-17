@@ -77,8 +77,8 @@ The following arguments are available:
 	-seed int
 		seed for RNG
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-frame string
 		frame to import into
@@ -100,7 +100,7 @@ func (b *Import) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
 	fs.StringVar(&b.AgentControls, "agent-controls", "", "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Database, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.StringVar(&b.Frame, "frame", "testframe", "")
 	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
 
@@ -150,7 +150,7 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 func (b *Import) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 	results["numbits"] = b.numbits
-	results["db"] = b.Database
+	results["index"] = b.Index
 	err := b.ImportCommand.Run(ctx)
 
 	if err != nil {

@@ -17,7 +17,7 @@ type DiagonalSetBits struct {
 	BaseBitmapID  int    `json:"base-bitmap-id"`
 	BaseProfileID int    `json:"base-profile-id"`
 	Iterations    int    `json:"iterations"`
-	DB            string `json:"db"`
+	Index            string `json:"index"`
 }
 
 // Init sets up the pilosa client and modifies the configured values based on
@@ -51,8 +51,8 @@ The following arguments are available:
 	-iterations int
 		number of bits to set
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-client-type string
 		Can be 'single' (all agents hitting one host) or 'round_robin'
@@ -71,7 +71,7 @@ func (b *DiagonalSetBits) ConsumeFlags(args []string) ([]string, error) {
 	fs.IntVar(&b.BaseBitmapID, "base-bitmap-id", 0, "")
 	fs.IntVar(&b.BaseProfileID, "base-profile-id", 0, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.DB, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.StringVar(&b.ClientType, "client-type", "single", "")
 	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
 
@@ -93,7 +93,7 @@ func (b *DiagonalSetBits) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		query := fmt.Sprintf("SetBit(%d, 'frame.n', %d)", b.BaseBitmapID+n, b.BaseProfileID+n)
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.DB, query, true)
+		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {
 			results["error"] = err
 			return results
