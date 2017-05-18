@@ -16,7 +16,8 @@ type MultiIndexSetBits struct {
 	BaseBitmapID  int    `json:"base-bitmap-id"`
 	BaseProfileID int    `json:"base-profile-id"`
 	Iterations    int    `json:"iterations"`
-	Index      string `json:"index"`
+	Index         string `json:"index"`
+	Frame         string `json:"frame"`
 }
 
 // Init sets up the index name based on the agentNum and sets up the pilosa client.

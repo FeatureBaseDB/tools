@@ -21,7 +21,7 @@ type RandomSetBits struct {
 	ProfileIDRange int64  `json:"profile-id-range"`
 	Iterations     int    `json:"iterations"`
 	Seed           int64  `json:"seed"`
-	Index             string `json:"index"`
+	Index          string `json:"index"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.

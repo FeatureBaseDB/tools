@@ -17,7 +17,7 @@ type DiagonalSetBits struct {
 	BaseBitmapID  int    `json:"base-bitmap-id"`
 	BaseProfileID int    `json:"base-profile-id"`
 	Iterations    int    `json:"iterations"`
-	Index            string `json:"index"`
+	Index         string `json:"index"`
 }
 
 // Init sets up the pilosa client and modifies the configured values based on

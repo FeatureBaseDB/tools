@@ -20,7 +20,7 @@ type RandomQuery struct {
 	BitmapIDRange int64    `json:"bitmap-id-range"`
 	Iterations    int      `json:"iterations"`
 	Seed          int64    `json:"seed"`
-	Indexes           []string `json:"indexes"`
+	Indexes       []string `json:"indexes"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.

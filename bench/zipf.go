@@ -24,7 +24,7 @@ type Zipf struct {
 	ProfileIDRange  int64   `json:"profile-id-range"`
 	Iterations      int     `json:"iterations"`
 	Seed            int64   `json:"seed"`
-	Index              string  `json:"index"`
+	Index           string  `json:"index"`
 	BitmapExponent  float64 `json:"bitmap-exponent"`
 	BitmapRatio     float64 `json:"bitmap-ratio"`
 	ProfileExponent float64 `json:"profile-exponent"`

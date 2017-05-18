@@ -32,7 +32,7 @@ type SliceHeight struct {
 	MinBitsPerMap int64  `json:"min-bits-per-map"`
 	MaxBitsPerMap int64  `json:"max-bits-per-map"`
 	Seed          int64  `json:"seed"`
-	Index      string `json:"index"`
+	Index         string `json:"index"`
 	Frame         string `json:"frame"`
 
 	Stdin  io.Reader `json:"-"`
