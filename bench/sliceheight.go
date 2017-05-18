@@ -83,7 +83,7 @@ func (b *SliceHeight) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
 	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "testframe", "")
+	fs.StringVar(&b.Frame, "frame", "slice-height", "")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -96,6 +96,11 @@ func (b *SliceHeight) ConsumeFlags(args []string) ([]string, error) {
 func (b *SliceHeight) Init(hosts []string, agentNum int) error {
 	b.Name = "slice-height"
 	b.hosts = hosts
+
+	err := initIndex(b.hosts[0], b.Index, b.Frame)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

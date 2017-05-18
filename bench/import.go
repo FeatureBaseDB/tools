@@ -101,7 +101,7 @@ func (b *Import) ConsumeFlags(args []string) ([]string, error) {
 	fs.StringVar(&b.AgentControls, "agent-controls", "", "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
 	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "testframe", "")
+	fs.StringVar(&b.Frame, "frame", "import", "")
 	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
 
 	if err := fs.Parse(args); err != nil {
@@ -144,7 +144,10 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 	// set b.Paths
 	b.Paths = []string{f.Name()}
 
-	initIndex(b.Host, b.Index, b.Frame)
+	err = initIndex(b.Host, b.Index, b.Frame)
+	if err != nil {
+		return err
+	}
 
 	return f.Close()
 }

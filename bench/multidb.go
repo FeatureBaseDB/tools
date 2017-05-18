@@ -24,6 +24,10 @@ type MultiIndexSetBits struct {
 func (b *MultiIndexSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "multi-index-set-bits"
 	b.Index = b.Index + strconv.Itoa(agentNum)
+	err := initIndex(hosts[0], b.Index, b.Frame)
+	if err != nil {
+		return err
+	}
 	return b.HasClient.Init(hosts, agentNum)
 }
 
@@ -65,6 +69,8 @@ func (b *MultiIndexSetBits) ConsumeFlags(args []string) ([]string, error) {
 	fs.IntVar(&b.BaseBitmapID, "base-bitmap-id", 0, "")
 	fs.IntVar(&b.BaseProfileID, "base-profile-id", 0, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.Frame, "frame", "multi-index-set-bits", "")
 	fs.StringVar(&b.ClientType, "client-type", "single", "")
 	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
 
@@ -84,7 +90,7 @@ func (b *MultiIndexSetBits) Run(ctx context.Context) map[string]interface{} {
 	s := NewStats()
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		query := fmt.Sprintf("SetBit(%d, 'frame.n', %d)", b.BaseBitmapID+n, b.BaseProfileID+n)
+		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseBitmapID+n, b.BaseProfileID+n)
 		start = time.Now()
 		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {

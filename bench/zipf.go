@@ -25,6 +25,7 @@ type Zipf struct {
 	Iterations      int     `json:"iterations"`
 	Seed            int64   `json:"seed"`
 	Index           string  `json:"index"`
+	Frame           string  `json:"frame"`
 	BitmapExponent  float64 `json:"bitmap-exponent"`
 	BitmapRatio     float64 `json:"bitmap-ratio"`
 	ProfileExponent float64 `json:"profile-exponent"`
@@ -109,6 +110,7 @@ func (b *Zipf) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.Seed, "seed", 1, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
 	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.Frame, "frame", "zipf", "")
 	fs.Float64Var(&b.BitmapExponent, "bitmap-exponent", 1.01, "")
 	fs.Float64Var(&b.BitmapRatio, "bitmap-ratio", 0.25, "")
 	fs.Float64Var(&b.ProfileExponent, "profile-exponent", 1.01, "")
@@ -152,6 +154,10 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
 	}
+	err := initIndex(hosts[0], b.Index, b.Frame)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	return b.HasClient.Init(hosts, agentNum)
 }
@@ -177,7 +183,7 @@ func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
 		bitmapID := b.bitmapPerm.Next(int64(bitmapIDOriginal))
 		profID := b.profilePerm.Next(int64(profIDOriginal))
 
-		query := fmt.Sprintf("%s(%d, 'frame.n', %d)", operation, b.BaseBitmapID+int64(bitmapID), b.BaseProfileID+int64(profID))
+		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseBitmapID+int64(bitmapID), b.BaseProfileID+int64(profID))
 		start = time.Now()
 		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {
