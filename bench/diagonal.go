@@ -101,7 +101,7 @@ func (b *DiagonalSetBits) Run(ctx context.Context) map[string]interface{} {
 		start = time.Now()
 		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {
-			results["error"] = err
+			results["error"] = err.Error()
 			return results
 		}
 		s.Add(time.Now().Sub(start))

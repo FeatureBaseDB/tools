@@ -115,7 +115,11 @@ func (b *RandomSetBits) Run(ctx context.Context) map[string]interface{} {
 		profID := rng.Int63n(b.ProfileIDRange)
 		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseBitmapID+bitmapID, b.BaseProfileID+profID)
 		start = time.Now()
-		b.client.ExecuteQuery(ctx, b.Index, query, true)
+		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
+		if err != nil {
+			results["error"] = err.Error()
+			return results
+		}
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)
