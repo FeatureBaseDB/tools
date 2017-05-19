@@ -11,7 +11,7 @@ PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,Par
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
 BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/tools/cmd/pitool/spawn.json
-CLUSTER_HOSTS=`python -c "print \",\".join([\"node{}.$(STACK).sandbox.pilosa.com:15000\".format(i) for i in range($(CLUSTER_SIZE))])"`
+CLUSTER_HOSTS=`python -c "print \",\".join([\"node{}.$(STACK).sandbox.pilosa.com:10101\".format(i) for i in range($(CLUSTER_SIZE))])"`
 AGENT_HOSTS=`python -c "print \",\".join([\"agent{}.$(STACK).sandbox.pilosa.com\".format(i) for i in range($(NUM_AGENTS))])"`
 
 help:                                            ## Show this help

@@ -64,13 +64,13 @@ pitool create \
 Create a cluster on 3 remote hosts - all logs will come to local stderr, pilosa binary must be available on remote hosts. The ssh user on the remote hosts needs to be the same as your local user. Otherwise use the `ssh-user` option.
 ```
 pitool create \
-  -hosts="node1.example.com:15000,node2.example.com:15000,node3.example.com:15000"
+  -hosts="node1.example.com:10101,node2.example.com:10101,node3.example.com:10101"
 ```
 
 Create a cluster on 3 remote hosts running OSX, but build the binary locally and copy it up. Stream the stderr of each node to a separate local log file.
 ```
 pitool create \
-  -hosts="mac1.example.com:15000,mac2.example.com:15000,mac3.example.com:15000" \
+  -hosts="mac1.example.com:10101,mac2.example.com:10101,mac3.example.com:10101" \
   -copy-binary \
   -goos=darwin \
   -goarch=amd64 \
@@ -84,7 +84,7 @@ pitool create \
 E.G.
 ```
 pitool bagent \
-  -hosts="localhost:15000,localhost:15001" \
+  -hosts="localhost:10101,localhost:10102" \
   import -h
 ```
 
@@ -94,7 +94,7 @@ This will generate and import a bunch of data, and then execute random queries a
 
 ```
 pitool bagent \
-  -hosts="localhost:15000,localhost:15001" \
+  -hosts="localhost:10101,localhost:10102" \
   import -max-bits-per-map=10000 \
   random-query -iterations 100
 ```
