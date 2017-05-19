@@ -1,5 +1,5 @@
 {
-    "CreatorArgs": ["-hosts", "node0.cluster0.sandbox.pilosa.com:15000,node1.cluster0.sandbox.pilosa.com:15000,node2.cluster0.sandbox.pilosa.com:15000", "-log-file-prefix", "multidblog", "-ssh-user", "ubuntu"],
+    "CreatorArgs": ["-hosts", "node0.cluster0.sandbox.pilosa.com:10101,node1.cluster0.sandbox.pilosa.com:10101,node2.cluster0.sandbox.pilosa.com:10101", "-log-file-prefix", "multidblog", "-ssh-user", "ubuntu"],
     "AgentHosts": ["agent0.cluster0.sandbox.pilosa.com"],
     "SSHUser": "ubuntu",
     "CopyBinary": true,

@@ -139,8 +139,8 @@ class PilosaTemplate(Skel):
         return ec2.SecurityGroupIngress(
             "PilosaIngress",
             IpProtocol='tcp',
-            FromPort='15000',
-            ToPort='15000',
+            FromPort='10101',
+            ToPort='10101',
             GroupId=Ref(self.instance_security_group),
             SourceSecurityGroupId=Ref(self.instance_security_group),
         )
@@ -148,7 +148,7 @@ class PilosaTemplate(Skel):
     def instance(self, index):
         config_file = dedent('''
             data-dir = "/tmp/pil0"
-            host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
+            host = "node{node}.{stack_name}.sandbox.pilosa.com:10101"
 
             [cluster]
             replicas = {count}
@@ -158,7 +158,7 @@ class PilosaTemplate(Skel):
         for node in range(self.cluster_size):
             config_file += dedent('''
                 [[cluster.node]]
-                host = "node{node}.{stack_name}.sandbox.pilosa.com:15000"
+                host = "node{node}.{stack_name}.sandbox.pilosa.com:10101"
 
                 '''[1:]).format(node=node, stack_name='${AWS::StackName}')
 
