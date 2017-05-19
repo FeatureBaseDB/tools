@@ -66,7 +66,8 @@ func (c *RemoteCluster) Start() error {
 	}
 
 	// build config
-	conf := pilosa.NewConfigForHosts(c.ClusterHosts)
+	conf := pilosa.NewConfig()
+	conf.Cluster.Hosts = c.ClusterHosts
 	conf.Cluster.ReplicaN = c.ReplicaN
 
 	// copy config to remote hosts and start pilosa

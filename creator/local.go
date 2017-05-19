@@ -56,7 +56,7 @@ func (localCluster *LocalCluster) Start() error {
 		s := pilosa.NewServer()
 		s.Host = fmt.Sprintf("localhost:%d", BasePort+i)
 		s.Cluster = cluster
-		s.Index.Path = filepath.Join(path, strconv.Itoa(i), "data")
+		s.Holder.Path = filepath.Join(path, strconv.Itoa(i), "data")
 
 		// Create log stream
 		localCluster.logs[i], s.LogOutput = io.Pipe()

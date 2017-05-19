@@ -10,13 +10,13 @@ import (
 
 	"sort"
 
-	"github.com/pilosa/pilosa/pilosactl"
+	"github.com/pilosa/pilosa/ctl"
 )
 
-// NewImport returns an Import Benchmark which pilosactl importer configured.
+// NewImport returns an Import Benchmark which pilosa/ctl importer configured.
 func NewImport(stdin io.Reader, stdout, stderr io.Writer) *Import {
 	return &Import{
-		ImportCommand: pilosactl.NewImportCommand(stdin, stdout, stderr),
+		ImportCommand: ctl.NewImportCommand(stdin, stdout, stderr),
 	}
 }
 
@@ -34,7 +34,7 @@ type Import struct {
 	Seed              int64  `json:"seed"`
 	numbits           int
 
-	*pilosactl.ImportCommand
+	*ctl.ImportCommand
 }
 
 // Usage returns the usage message to be printed.
@@ -77,8 +77,8 @@ The following arguments are available:
 	-seed int
 		seed for RNG
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-frame string
 		frame to import into
@@ -100,8 +100,8 @@ func (b *Import) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
 	fs.StringVar(&b.AgentControls, "agent-controls", "", "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Database, "db", "benchdb", "")
-	fs.StringVar(&b.Frame, "frame", "testframe", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.Frame, "frame", "import", "")
 	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
 
 	if err := fs.Parse(args); err != nil {
@@ -143,6 +143,12 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 	b.numbits = num
 	// set b.Paths
 	b.Paths = []string{f.Name()}
+
+	err = initIndex(b.Host, b.Index, b.Frame)
+	if err != nil {
+		return err
+	}
+
 	return f.Close()
 }
 
@@ -150,7 +156,7 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 func (b *Import) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 	results["numbits"] = b.numbits
-	results["db"] = b.Database
+	results["index"] = b.Index
 	err := b.ImportCommand.Run(ctx)
 
 	if err != nil {
@@ -166,7 +172,7 @@ func (s Int64Slice) Len() int           { return len(s) }
 func (s Int64Slice) Less(i, j int) bool { return s[i] < s[j] }
 func (s Int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-// GenerateImportCSV writes a generated csv to 'w' which is in the form pilosactl expects for imports.
+// GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
 func GenerateImportCSV(w io.Writer, baseBitmapID, maxBitmapID, baseProfileID, maxProfileID, minBitsPerMap, maxBitsPerMap, seed int64, randomOrder bool) int {
 	src := rand.NewSource(seed)
 	rng := rand.New(src)

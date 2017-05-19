@@ -56,11 +56,11 @@ func (h *HasClient) Init(hosts []string, agentNum int) error {
 	}
 }
 
-func (h *HasClient) ExecuteQuery(contentType, db, query string, ctx context.Context) (interface{}, error) {
+func (h *HasClient) ExecuteQuery(contentType, index, query string, ctx context.Context) (interface{}, error) {
 	if contentType == "protobuf" {
-		return h.client.ExecuteQuery(ctx, db, query, true)
+		return h.client.ExecuteQuery(ctx, index, query, true)
 	} else if contentType == "pql" {
-		return h.client.ExecutePQL(ctx, db, query)
+		return h.client.ExecutePQL(ctx, index, query)
 	} else {
 		return nil, errors.New("unsupport content type")
 	}

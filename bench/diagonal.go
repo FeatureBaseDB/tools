@@ -17,7 +17,8 @@ type DiagonalSetBits struct {
 	BaseBitmapID  int    `json:"base-bitmap-id"`
 	BaseProfileID int    `json:"base-profile-id"`
 	Iterations    int    `json:"iterations"`
-	DB            string `json:"db"`
+	Index         string `json:"index"`
+	Frame         string `json:"frame"`
 }
 
 // Init sets up the pilosa client and modifies the configured values based on
@@ -26,6 +27,10 @@ func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "diagonal-set-bits"
 	b.BaseBitmapID = b.BaseBitmapID + (agentNum * b.Iterations)
 	b.BaseProfileID = b.BaseProfileID + (agentNum * b.Iterations)
+	err := initIndex(hosts[0], b.Index, b.Frame)
+	if err != nil {
+		return err
+	}
 	return b.HasClient.Init(hosts, agentNum)
 }
 
@@ -51,8 +56,8 @@ The following arguments are available:
 	-iterations int
 		number of bits to set
 
-	-db string
-		pilosa db to use
+	-index string
+		pilosa index to use
 
 	-client-type string
 		Can be 'single' (all agents hitting one host) or 'round_robin'
@@ -71,7 +76,8 @@ func (b *DiagonalSetBits) ConsumeFlags(args []string) ([]string, error) {
 	fs.IntVar(&b.BaseBitmapID, "base-bitmap-id", 0, "")
 	fs.IntVar(&b.BaseProfileID, "base-profile-id", 0, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.DB, "db", "benchdb", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.Frame, "frame", "random-set-bits", "")
 	fs.StringVar(&b.ClientType, "client-type", "single", "")
 	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
 
@@ -91,11 +97,11 @@ func (b *DiagonalSetBits) Run(ctx context.Context) map[string]interface{} {
 	s := NewStats()
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		query := fmt.Sprintf("SetBit(%d, 'frame.n', %d)", b.BaseBitmapID+n, b.BaseProfileID+n)
+		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseBitmapID+n, b.BaseProfileID+n)
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.DB, query, true)
+		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {
-			results["error"] = err
+			results["error"] = err.Error()
 			return results
 		}
 		s.Add(time.Now().Sub(start))

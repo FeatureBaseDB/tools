@@ -20,7 +20,7 @@ type RandomQuery struct {
 	BitmapIDRange int64    `json:"bitmap-id-range"`
 	Iterations    int      `json:"iterations"`
 	Seed          int64    `json:"seed"`
-	DBs           []string `json:"dbs"`
+	Indexes       []string `json:"indexes"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -62,8 +62,8 @@ The following arguments are available:
 	-seed int
 		Seed for RNG
 
-	-dbs string
-		Comma separated list of DBs to query against
+	-indexes string
+		Comma separated list of Indexes to query against
 
 	-client-type string
 		Can be 'single' (all agents hitting one host) or 'round_robin'
@@ -86,15 +86,15 @@ func (b *RandomQuery) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.BitmapIDRange, "bitmap-id-range", 100000, "")
 	fs.Int64Var(&b.Seed, "seed", 1, "")
 	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	var dbs string
-	fs.StringVar(&dbs, "dbs", "benchdb", "")
+	var indexes string
+	fs.StringVar(&indexes, "indexes", "benchindex", "")
 	fs.StringVar(&b.ClientType, "client-type", "single", "")
 	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	b.DBs = strings.Split(dbs, ",")
+	b.Indexes = strings.Split(indexes, ",")
 	return fs.Args(), nil
 }
 
@@ -111,7 +111,7 @@ func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseBitmapID), uint64(b.BitmapIDRange))
 		start = time.Now()
-		b.ExecuteQuery(b.ContentType, b.DBs[n%len(b.DBs)], call.String(), ctx)
+		b.ExecuteQuery(b.ContentType, b.Indexes[n%len(b.Indexes)], call.String(), ctx)
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)
