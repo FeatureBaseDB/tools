@@ -7,12 +7,15 @@ AGENT_INSTANCE_TYPE=m3.medium
 AMI=ami-e3c3b8f4
 VPC=vpc-2b885052
 SUBNET=subnet-839804cb
+DOMAIN=sandbox.pilosa.com
+USERNAME=ubuntu
+GOVERSION=go1.8.3.linux-amd64
 PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
 BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/tools/cmd/pitool/spawn.json
-CLUSTER_HOSTS=`python -c "print \",\".join([\"node{}.$(STACK).sandbox.pilosa.com:10101\".format(i) for i in range($(CLUSTER_SIZE))])"`
-AGENT_HOSTS=`python -c "print \",\".join([\"agent{}.$(STACK).sandbox.pilosa.com\".format(i) for i in range($(NUM_AGENTS))])"`
+CLUSTER_HOSTS=`python -c "print \",\".join([\"node{}.$(STACK).$(DOMAIN):10101\".format(i) for i in range($(CLUSTER_SIZE))])"`
+AGENT_HOSTS=`python -c "print \",\".join([\"agent{}.$(STACK).$(DOMAIN)\".format(i) for i in range($(NUM_AGENTS))])"`
 
 help:                                            ## Show this help
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
@@ -24,7 +27,7 @@ env/deps: requirements.txt env                   ## Install dependencies
 	env/bin/pip install -r requirements.txt && touch env/deps
 
 $(JSON_FILE): env/deps $(PY_FILE) ## Create Cloudformation template
-	env/bin/python $(PY_FILE) $(CLUSTER_SIZE) $(NUM_AGENTS) > $(JSON_FILE)
+	env/bin/python $(PY_FILE) $(CLUSTER_SIZE) $(NUM_AGENTS) $(GOVERSION) $(USERNAME) $(DOMAIN) > $(JSON_FILE)
 
 create-stack: $(JSON_FILE) env/deps              ## Create Pilosa cluster
 	test -n "$(KEY_PAIR)" # Required variable KEY_PAIR

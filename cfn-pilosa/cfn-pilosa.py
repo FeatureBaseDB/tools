@@ -11,10 +11,44 @@ from textwrap import dedent
 import sys
 
 class PilosaTemplate(Skel):
-    def __init__(self, cluster_size, num_agents):
+    def __init__(self, cluster_size, num_agents, goversion, username, domain):
         super(PilosaTemplate, self).__init__()
         self.cluster_size = cluster_size
         self.num_agents = num_agents
+        self.goversion = goversion
+        self.username = username
+        self.domain = domain
+        self.common_user_data = dedent("""
+                #!/bin/bash
+
+                # install prereqs
+                apt-get update
+                apt-get -y install git
+                apt-get -y install make
+
+                # install go
+                mkdir -p /usr/local/go
+                wget https://storage.googleapis.com/golang/{goversion}.tar.gz
+                tar -C /usr/local -xzf {goversion}.tar.gz
+                chown -R {username}:{username} /usr/local/go
+                mkdir -p /home/{username}/go/src/github.com/pilosa
+                mkdir -p /home/{username}/go/bin
+                GOPATH=/home/{username}/go
+                export GOPATH
+                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+                export PATH
+
+                # set up GOPATH in .bashrc
+                cat >> /home/{username}/.bashrc <<- EOF
+                GOPATH=/home/{username}/go
+                export GOPATH
+                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+                export PATH
+                EOF
+"""[1:]).format(goversion=goversion, username=username)
+        sys.stderr.write(self.common_user_data)
+
+
 
     @cfparam
     def vpc(self):
@@ -71,7 +105,7 @@ class PilosaTemplate(Skel):
     def cluster_name(self):
         return Parameter(
             'ClusterName',
-            Description='Unique name for this pilosa cluster. Used in DNS (node0.{{name}}.sandbox.pilosa.com',
+            Description='Unique name for this pilosa cluster. Used in DNS (node0.{{name}}.{domain}'.format(domain=self.domain),
             Type='String',
             Default='cluster0',
         )
@@ -115,7 +149,7 @@ class PilosaTemplate(Skel):
     def hosted_zone(self):
         return route53.HostedZone(
             'PilosaZone',
-            Name=Join('', [Ref(self.cluster_name), '.sandbox.pilosa.com']),
+            Name=Join('', [Ref(self.cluster_name), '.{domain}'.format(domain=self.domain)]),
             VPCs=[route53.HostedZoneVPCs(VPCId=Ref(self.vpc), VPCRegion=Ref('AWS::Region'))])
 
     @cfresource
@@ -148,22 +182,22 @@ class PilosaTemplate(Skel):
     def instance(self, index):
         config_file = dedent('''
             data-dir = "/tmp/pil0"
-            host = "node{node}.{stack_name}.sandbox.pilosa.com:10101"
+            host = "node{node}.{stack_name}.{domain}:10101"
 
             [cluster]
             replicas = {count}
 
-            ''')[1:].format(node=index, count=self.cluster_size, stack_name='${AWS::StackName}')
+            ''')[1:].format(node=index, count=self.cluster_size, stack_name='${AWS::StackName}', domain=self.domain)
 
         for node in range(self.cluster_size):
             config_file += dedent('''
                 [[cluster.node]]
-                host = "node{node}.{stack_name}.sandbox.pilosa.com:10101"
+                host = "node{node}.{stack_name}.{domain}:10101"
 
-                '''[1:]).format(node=node, stack_name='${AWS::StackName}')
+                '''[1:]).format(node=node, stack_name='${AWS::StackName}', domain=self.domain)
 
         user_data = dedent('''
-                #!/bin/bash
+                {common}
 
                 # update open file limits
                 cat >> /etc/security/limits.conf <<- EOF
@@ -172,23 +206,6 @@ class PilosaTemplate(Skel):
                 * hard memlock unlimited
                 * soft memlock unlimited
                 EOF
-
-                # install prereqs
-                apt-get update
-                apt-get -y install git
-                apt-get -y install make
-
-                # install go
-                mkdir -p /usr/local/go
-                wget https://storage.googleapis.com/golang/go1.8.3.linux-amd64.tar.gz
-                tar -C /usr/local -xzf go1.8.3.linux-amd64.tar.gz
-                chown -R ubuntu:ubuntu /usr/local/go
-                mkdir -p /home/ubuntu/go/src/github.com/pilosa
-                mkdir -p /home/ubuntu/go/bin
-                GOPATH=/home/ubuntu/go
-                export GOPATH
-                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
-                export PATH
 
                 # install pilosa
                 go get -u github.com/pilosa/pilosa
@@ -200,17 +217,9 @@ class PilosaTemplate(Skel):
                 {config_file}
                 EOF
 
-                # set up GOPATH in .bashrc
-                cat >> /home/ubuntu/.bashrc <<- EOF
-                GOPATH=/home/ubuntu/go
-                export GOPATH
-                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
-                export PATH
-                EOF
-
                 # clean up root's mess
-                chown -R ubuntu:ubuntu /home/ubuntu
-                '''[1:]).format(config_file=config_file)
+                chown -R {username}:{username} /home/{username}
+                '''[1:]).format(config_file=config_file, common=self.common_user_data, username=self.username)
 
         return ec2.Instance(
             'PilosaInstance{}'.format(index),
@@ -231,11 +240,19 @@ class PilosaTemplate(Skel):
 
     def agent_instance(self, index):
         user_data = dedent('''
-                #!/bin/bash
-                apt install -y awscli
-                aws s3 cp s3://dist.pilosa.com/2.0.0/pitool /usr/local/bin/
-                chmod +x /usr/local/bin/pitool
-                '''[1:])
+                {common}
+
+                apt-get -y install gcc
+                apt-get -y install libpcap-dev
+
+                # install pdk
+                go get -u github.com/pilosa/pdk
+                cd $GOPATH/src/github.com/pilosa/pdk
+                make install
+
+                # clean up root's mess
+                chown -R {username}:{username} /home/{username}
+                '''[1:]).format(common=self.common_user_data, username=self.username)
         return ec2.Instance(
             'PilosaAgentInstance{}'.format(index),
             ImageId=Ref(self.ami), # ubuntu
@@ -256,8 +273,8 @@ class PilosaTemplate(Skel):
     def public_record_set(self, index):
         return route53.RecordSetType(
             'PilosaPublicRecordSet{}'.format(index),
-            HostedZoneName='sandbox.pilosa.com.',
-            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            HostedZoneName='{domain}.'.format(domain=self.domain),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.{domain}.'.format(domain=self.domain)]),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PublicIp")],
@@ -266,8 +283,8 @@ class PilosaTemplate(Skel):
     def agent_public_record_set(self, index):
         return route53.RecordSetType(
             'AgentPublicRecordSet{}'.format(index),
-            HostedZoneName='sandbox.pilosa.com.',
-            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            HostedZoneName='{domain}.'.format(domain=self.domain),
+            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.{domain}.'.format(domain=self.domain)]),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaAgentInstance{}".format(index), "PublicIp")],
@@ -277,7 +294,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'PilosaPrivateRecordSet{}'.format(index),
             HostedZoneId=Ref(self.hosted_zone),
-            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['node{}.'.format(index), Ref(self.cluster_name), '.{domain}.'.format(domain=self.domain)]),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaInstance{}".format(index), "PrivateIp")],
@@ -287,7 +304,7 @@ class PilosaTemplate(Skel):
         return route53.RecordSetType(
             'AgentPrivateRecordSet{}'.format(index),
             HostedZoneId=Ref(self.hosted_zone),
-            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.sandbox.pilosa.com.']),
+            Name=Join('', ['agent{}.'.format(index), Ref(self.cluster_name), '.{domain}.'.format(domain=self.domain)]),
             Type="A",
             TTL="300",
             ResourceRecords=[GetAtt("PilosaAgentInstance{}".format(index), "PrivateIp")],
@@ -311,7 +328,20 @@ def main():
     num_agents = 1
     if len(sys.argv) > 2:
         num_agents = int(sys.argv[2])
-    print(PilosaTemplate(cluster_size=cluster_size, num_agents=num_agents).output)
+    goversion = "go1.8.3.linux-amd64"
+    if len(sys.argv) > 3:
+        goversion = sys.argv[3]
+    username = "ubuntu"
+    if len(sys.argv) > 4:
+        username = sys.argv[4]
+    domain = "sandbox.pilosa.com"
+    if len(sys.argv) > 5:
+        domain = sys.argv[5]
+    print(PilosaTemplate(cluster_size=cluster_size,
+                         num_agents=num_agents,
+                         goversion=goversion,
+                         username=username,
+                         domain=domain).output)
 
 if __name__ == '__main__':
     main()
