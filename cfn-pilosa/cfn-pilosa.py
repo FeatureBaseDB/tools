@@ -179,6 +179,17 @@ class PilosaTemplate(Skel):
             SourceSecurityGroupId=Ref(self.instance_security_group),
         )
 
+    @cfresource
+    def instance_security_group_ingress_internal(self):
+        return ec2.SecurityGroupIngress(
+            "PilosaInternalIngress",
+            IpProtocol='tcp',
+            FromPort='12000',
+            ToPort='12000',
+            GroupId=Ref(self.instance_security_group),
+            SourceSecurityGroupId=Ref(self.instance_security_group),
+        )
+
     def instance(self, index):
         config_file = dedent('''
             data-dir = "/tmp/pil0"
