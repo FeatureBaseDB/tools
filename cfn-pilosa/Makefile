@@ -5,8 +5,8 @@ STACK=cluster0
 INSTANCE_TYPE=m3.medium
 AGENT_INSTANCE_TYPE=m3.medium
 AMI=ami-e3c3b8f4
-VPC=vpc-a04897c6
-SUBNET=subnet-5ce57307
+VPC=vpc-2b885052
+SUBNET=subnet-839804cb
 PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
