@@ -8,14 +8,14 @@ class SandboxTemplate(Skel):
     def hosted_zone(self):
         return route53.HostedZone(
             'SandboxPublicHostedZone',
-            Name='sandbox.pilosa.com',
+            Name='sandbox-dedicated.pilosa.com',
         )
 
     @cfresource
     def vpc(self):
         return ec2.VPC(
             'DedicatedVPC',
-            InstanceTenancy='default',
+            InstanceTenancy='dedicated',
             CidrBlock='10.0.0.0/16',
             EnableDnsHostnames='true',
             EnableDnsSupport='true',

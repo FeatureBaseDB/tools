@@ -15,7 +15,7 @@ class SandboxTemplate(Skel):
     def vpc(self):
         return ec2.VPC(
             'DedicatedVPC',
-            InstanceTenancy='dedicated',
+            InstanceTenancy='default',
             CidrBlock='10.0.0.0/16',
             EnableDnsHostnames='true',
             EnableDnsSupport='true',
