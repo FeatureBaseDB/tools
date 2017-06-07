@@ -164,14 +164,52 @@ class PilosaTemplate(Skel):
 
         user_data = dedent('''
                 #!/bin/bash
-                apt install -y awscli
-                aws s3 cp s3://dist.pilosa.com/2.0.0/pilosa /usr/local/bin/
-                chmod +x /usr/local/bin/pilosa
 
-                cat > /etc/pilosa.cfg << EOF
+                # update open file limits
+                cat >> /etc/security/limits.conf <<- EOF
+                * soft nofile 262144
+                * hard nofile 262144
+                * hard memlock unlimited
+                * soft memlock unlimited
+                EOF
+
+                # install prereqs
+                apt-get update
+                apt-get -y install git
+                apt-get -y install make
+
+                # install go
+                mkdir -p /usr/local/go
+                wget https://storage.googleapis.com/golang/go1.8.3.linux-amd64.tar.gz
+                tar -C /usr/local -xzf go1.8.3.linux-amd64.tar.gz
+                chown -R ubuntu:ubuntu /usr/local/go
+                mkdir -p /home/ubuntu/go/src/github.com/pilosa
+                mkdir -p /home/ubuntu/go/bin
+                GOPATH=/home/ubuntu/go
+                export GOPATH
+                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+                export PATH
+
+                # install pilosa
+                go get -u github.com/pilosa/pilosa
+                cd $GOPATH/src/github.com/pilosa/pilosa
+                make install
+
+                # set up pilosa config file
+                cat > /etc/pilosa.cfg <<- EOF
                 {config_file}
                 EOF
 
+                # set up GOPATH in .bashrc
+                cat >> /home/ubuntu/.bashrc <<- EOF
+                GOPATH=/home/ubuntu/go
+                export GOPATH
+                PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+                export PATH
+                EOF
+
+                # clean up root's mess
+                chown -R ubuntu:ubuntu /home/ubuntu
                 '''[1:]).format(config_file=config_file)
 
         return ec2.Instance(
@@ -179,7 +217,6 @@ class PilosaTemplate(Skel):
             ImageId = Ref(self.ami), #ubuntu
             InstanceType = Ref(self.instance_type),
             KeyName = Ref(self.key_pair),
-            EbsOptimized=True,
             IamInstanceProfile=Ref(self.instance_profile),
             NetworkInterfaces=[
                 ec2.NetworkInterfaceProperty(
