@@ -122,19 +122,7 @@ class PilosaTemplate(Skel):
                     )
                 ]
             ),
-            Policies=[iam.Policy(
-                PolicyName='PilosaS3Policy',
-                PolicyDocument={
-                  "Version": "2012-10-17",
-                  "Statement": [
-                    {
-                      "Effect": "Allow",
-                      "Action": ["s3:*"],
-                      "Resource": ["arn:aws:s3:::dist.pilosa.com", "arn:aws:s3:::dist.pilosa.com/*"]
-                    }
-                  ]
-                }
-            )],
+            Policies=[],
         )
 
     @cfresource
