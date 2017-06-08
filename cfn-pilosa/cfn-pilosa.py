@@ -12,7 +12,7 @@ import sys
 
 
 class PilosaTemplate(Skel):
-    def __init__(self, cluster_size, num_agents, goversion, username, domain, replicas):
+    def __init__(self, cluster_size, num_agents, goversion, username, domain, replicas, volume_size, volume_type):
         super(PilosaTemplate, self).__init__()
         self.cluster_size = cluster_size
         self.num_agents = num_agents
@@ -20,6 +20,8 @@ class PilosaTemplate(Skel):
         self.username = username
         self.domain = domain
         self.replicas = replicas
+        self.volume_size = volume_size
+        self.volume_type = volume_type
         self.common_user_data = dedent("""
                 #!/bin/bash
 
@@ -220,7 +222,11 @@ class PilosaTemplate(Skel):
 
         return ec2.Instance(
             'PilosaInstance{}'.format(index),
-            ImageId = Ref(self.ami), #ubuntu
+            ImageId = Ref(self.ami),
+            BlockDeviceMappings=[ec2.BlockDeviceMapping(
+                DeviceName="/dev/sda1",
+                Ebs=ec2.EBSBlockDevice(VolumeSize=self.volume_size, VolumeType=self.volume_type)
+            )],
             InstanceType = Ref(self.instance_type),
             KeyName = Ref(self.key_pair),
             IamInstanceProfile=Ref(self.instance_profile),
@@ -252,7 +258,7 @@ class PilosaTemplate(Skel):
                 '''[1:]).format(common=self.common_user_data, username=self.username)
         return ec2.Instance(
             'PilosaAgentInstance{}'.format(index),
-            ImageId=Ref(self.ami), # ubuntu
+            ImageId=Ref(self.ami),
             InstanceType=Ref(self.agent_instance_type),
             KeyName=Ref(self.key_pair),
             IamInstanceProfile=Ref(self.instance_profile),
@@ -337,12 +343,20 @@ def main():
     replicas = 1
     if len(sys.argv) > 6:
         replicas = int(sys.argv[6])
+    volume_size = 10
+    if len(sys.argv) > 7:
+        volume_size = int(sys.argv[7])
+    volume_type = "gp2"
+    if len(sys.argv) > 8:
+        volume_type = sys.argv[8]
     print(PilosaTemplate(cluster_size=cluster_size,
                          num_agents=num_agents,
                          goversion=goversion,
                          username=username,
                          domain=domain,
-                         replicas=replicas).output)
+                         replicas=replicas,
+                         volume_size=volume_size,
+                         volume_type=volume_type).output)
 
 if __name__ == '__main__':
     main()
