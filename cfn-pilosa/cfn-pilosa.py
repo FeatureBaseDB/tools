@@ -10,14 +10,16 @@ from functools import partial
 from textwrap import dedent
 import sys
 
+
 class PilosaTemplate(Skel):
-    def __init__(self, cluster_size, num_agents, goversion, username, domain):
+    def __init__(self, cluster_size, num_agents, goversion, username, domain, replicas):
         super(PilosaTemplate, self).__init__()
         self.cluster_size = cluster_size
         self.num_agents = num_agents
         self.goversion = goversion
         self.username = username
         self.domain = domain
+        self.replicas = replicas
         self.common_user_data = dedent("""
                 #!/bin/bash
 
@@ -46,9 +48,6 @@ class PilosaTemplate(Skel):
                 export PATH
                 EOF
 """[1:]).format(goversion=goversion, username=username)
-        sys.stderr.write(self.common_user_data)
-
-
 
     @cfparam
     def vpc(self):
@@ -191,21 +190,20 @@ class PilosaTemplate(Skel):
         )
 
     def instance(self, index):
+
+        hosts = ", ".join(["\"node{node}.{stack_name}.{domain}:10101\"".format(node=node, stack_name='${AWS::StackName}', domain=self.domain) for node in range(self.cluster_size)])
+        internal_hosts = ", ".join(["\"node{node}.{stack_name}.{domain}:12000\"".format(node=node, stack_name='${AWS::StackName}', domain=self.domain) for node in range(self.cluster_size)])
         config_file = dedent('''
-            data-dir = "/tmp/pil0"
-            host = "node{node}.{stack_name}.{domain}:10101"
+            data-dir = "/home/{username}/pilosa/data1"
+            bind = "node{node}.{stack_name}.{domain}:10101"
 
             [cluster]
-            replicas = {count}
-
-            ''')[1:].format(node=index, count=self.cluster_size, stack_name='${AWS::StackName}', domain=self.domain)
-
-        for node in range(self.cluster_size):
-            config_file += dedent('''
-                [[cluster.node]]
-                host = "node{node}.{stack_name}.{domain}:10101"
-
-                '''[1:]).format(node=node, stack_name='${AWS::StackName}', domain=self.domain)
+            replicas = {replicas}
+            internal-port = 12000
+            type = "http"
+            hosts = [{hosts}]
+            internal-hosts = [{internal_hosts}]
+            ''')[1:].format(node=index, replicas=self.replicas, stack_name='${AWS::StackName}', domain=self.domain, username=self.username, hosts=hosts, internal_hosts=internal_hosts)
 
         user_data = dedent('''
                 {common}
@@ -348,11 +346,15 @@ def main():
     domain = "sandbox.pilosa.com"
     if len(sys.argv) > 5:
         domain = sys.argv[5]
+    replicas = 1
+    if len(sys.argv) > 6:
+        replicas = int(sys.argv[6])
     print(PilosaTemplate(cluster_size=cluster_size,
                          num_agents=num_agents,
                          goversion=goversion,
                          username=username,
-                         domain=domain).output)
+                         domain=domain,
+                         replicas=replicas).output)
 
 if __name__ == '__main__':
     main()
