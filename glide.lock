@@ -1,8 +1,8 @@
 hash: 1224563938fb22b2cba5b1d31780ba0141adbe230fc90cd5e6320c128d24ee81
-updated: 2017-02-28T16:52:58.263661966-06:00
+updated: 2017-06-09T11:59:49.768891212-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
-  version: 6669bce73b4e3bc922ff5ea3a3983ede26e02b39
+  version: c48c76c996d07c48cddab11a21971c299203d8c1
   subpackages:
   - aws
   - aws/awserr
@@ -20,21 +20,21 @@ imports:
   - aws/request
   - aws/session
   - aws/signer/v4
+  - internal/shareddefaults
   - private/protocol
   - private/protocol/query
   - private/protocol/query/queryutil
   - private/protocol/rest
   - private/protocol/restxml
   - private/protocol/xml/xmlutil
-  - private/waiter
   - service/s3
   - service/sts
 - name: github.com/boltdb/bolt
   version: 4b1ebc1869ad66568b313d0dc410e2be72670dda
 - name: github.com/BurntSushi/toml
-  version: bbd5bb678321a0d6e58f1099321dfa73391c1b6f
+  version: b26d9c308763d68093482582cea63d69be07a0f0
 - name: github.com/go-ini/ini
-  version: c437d20015c2ab6454b7a66a13109ff0fb99e17a
+  version: d3de07a94d22b4a0972deb4b96d790c2c0ce8333
 - name: github.com/gogo/protobuf
   version: a9cd0c35b97daf74d0ebf3514c5254814b2703b4
   subpackages:
@@ -44,22 +44,36 @@ imports:
   subpackages:
   - lru
 - name: github.com/golang/protobuf
-  version: 888eb0692c857ec880338addf316bd662d5e630e
+  version: 8ee79997227bf9b34611aee7946ae64735e6fd93
   subpackages:
   - proto
+- name: github.com/gorilla/context
+  version: 08b5f424b9271eedf6f9f0ce86cb9396ed337a42
+- name: github.com/gorilla/mux
+  version: bcd8bc72b08df0f70df986b97f95590779502d31
 - name: github.com/jmespath/go-jmespath
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
-- name: github.com/pilosa/pilosa
-  version: 500a5ba2d618cf4c5307d25a92ac595823d9429a
+- name: github.com/pilosa/go-pilosa
+  version: 04986e9f751f45f59d4f02fd29ad2a2ee7adadef
   subpackages:
+  - internal
+- name: github.com/pilosa/pilosa
+  version: 40ea7584a0deacafe2968b26c654466b9c45325b
+  subpackages:
+  - ctl
   - internal
   - pilosactl
   - pql
   - roaring
+  - statik
+- name: github.com/rakyll/statik
+  version: 89fe3459b5c829c32e89bdff9c43f18aad728f2f
+  subpackages:
+  - fs
 - name: github.com/satori/go.uuid
   version: 879c5887cd475cd7864858769793b2ceb0d44feb
 - name: golang.org/x/crypto
-  version: 453249f01cfeb54c3d549ddb75ff152ca243f9d8
+  version: e7ba82683099cae71475961448ab8f903ea77c26
   subpackages:
   - curve25519
   - ed25519
