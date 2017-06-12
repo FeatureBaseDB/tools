@@ -1,14 +1,19 @@
+import sys
+
 from troposphere import route53, iam, ec2, Ref, Template, GetAtt, Base64, Parameter, Tags, Sub
 from troposphere_sugar import Skel
 from troposphere_sugar.decorators import cfparam, cfresource
 from troposphere import route53
 
 class SandboxTemplate(Skel):
+    def __init__(self, domain):
+        self.domain = domain
+
     @cfresource
     def hosted_zone(self):
         return route53.HostedZone(
             'SandboxPublicHostedZone',
-            Name='sandbox-dedicated.pilosa.com',
+            Name=self.domain,
         )
 
     @cfresource
@@ -104,7 +109,11 @@ class SandboxTemplate(Skel):
             RouteTableId=Ref(self.route_table))
 
 def main():
-    print SandboxTemplate().output
+    domain = "sandbox-dedicated.pilosa.com"
+    if len(sys.argv) > 1:
+        domain = sys.argv[1]
+
+    print SandboxTemplate(domain=domain).output
 
 if __name__ == '__main__':
     main()
