@@ -12,7 +12,7 @@ import sys
 
 
 class PilosaTemplate(Skel):
-    def __init__(self, cluster_size, num_agents, goversion, username, domain, replicas, volume_size, volume_type):
+    def __init__(self, cluster_size, num_agents, goversion, username, domain, replicas):
         super(PilosaTemplate, self).__init__()
         self.cluster_size = cluster_size
         self.num_agents = num_agents
@@ -20,8 +20,6 @@ class PilosaTemplate(Skel):
         self.username = username
         self.domain = domain
         self.replicas = replicas
-        self.volume_size = volume_size
-        self.volume_type = volume_type
         self.common_user_data = dedent("""
                 #!/bin/bash
 
@@ -111,6 +109,24 @@ class PilosaTemplate(Skel):
             Default='cluster0',
         )
 
+    @cfparam
+    def volume_size(self):
+        return Parameter(
+            'VolumeSize',
+            Description="Space (in GB) of the root EBS volume for pilosa instances.",
+            Type='Number',
+            Default='10',
+        )
+
+    @cfparam
+    def volume_type(self):
+        return Parameter(
+            'VolumeType',
+            Description="AWS volume type of the root EBS volume for pilosa instances.",
+            Type='String',
+            Default='gp2',
+        )
+
     @cfresource
     def role(self):
         return Role(
@@ -186,6 +202,7 @@ class PilosaTemplate(Skel):
         config_file = dedent('''
             data-dir = "/home/{username}/pilosa/data1"
             bind = "node{node}.{stack_name}.{domain}:10101"
+            log-path = "/home/ubuntu/pilosa.log"
 
             [cluster]
             replicas = {replicas}
@@ -218,6 +235,9 @@ class PilosaTemplate(Skel):
 
                 # clean up root's mess
                 chown -R {username}:{username} /home/{username}
+
+                # all output should go to pilosa.log - pilosa.out should be empty
+                sudo -u {username} PATH=$PATH nohup pilosa server --config=/etc/pilosa.cfg &> /home/{username}/pilosa.out &
                 '''[1:]).format(config_file=config_file, common=self.common_user_data, username=self.username)
 
         return ec2.Instance(
@@ -225,7 +245,7 @@ class PilosaTemplate(Skel):
             ImageId = Ref(self.ami),
             BlockDeviceMappings=[ec2.BlockDeviceMapping(
                 DeviceName="/dev/sda1",
-                Ebs=ec2.EBSBlockDevice(VolumeSize=self.volume_size, VolumeType=self.volume_type)
+                Ebs=ec2.EBSBlockDevice(VolumeSize=Ref(self.volume_size), VolumeType=Ref(self.volume_type))
             )],
             InstanceType = Ref(self.instance_type),
             KeyName = Ref(self.key_pair),
@@ -324,6 +344,7 @@ class PilosaTemplate(Skel):
             self.template.add_resource(self.agent_public_record_set(i))
             self.template.add_resource(self.agent_private_record_set(i))
 
+
 def main():
     cluster_size = 3
     if len(sys.argv) > 1:
@@ -343,20 +364,13 @@ def main():
     replicas = 1
     if len(sys.argv) > 6:
         replicas = int(sys.argv[6])
-    volume_size = 10
-    if len(sys.argv) > 7:
-        volume_size = int(sys.argv[7])
-    volume_type = "gp2"
-    if len(sys.argv) > 8:
-        volume_type = sys.argv[8]
     print(PilosaTemplate(cluster_size=cluster_size,
                          num_agents=num_agents,
                          goversion=goversion,
                          username=username,
                          domain=domain,
-                         replicas=replicas,
-                         volume_size=volume_size,
-                         volume_type=volume_type).output)
+                         replicas=replicas).output)
+
 
 if __name__ == '__main__':
     main()

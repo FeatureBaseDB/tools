@@ -13,7 +13,7 @@ GOVERSION=go1.8.3.linux-amd64
 REPLICAS=1
 VOLUME_SIZE=10
 VOLUME_TYPE=gp2
-PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET)
+PARAMS=ParameterKey=ClusterName,ParameterValue=$(STACK) ParameterKey=KeyPair,ParameterValue=$(KEY_PAIR) ParameterKey=InstanceType,ParameterValue=$(INSTANCE_TYPE) ParameterKey=AgentInstanceType,ParameterValue=$(AGENT_INSTANCE_TYPE) ParameterKey=AMI,ParameterValue=$(AMI) ParameterKey=VPC,ParameterValue=$(VPC) ParameterKey=Subnet,ParameterValue=$(SUBNET) ParameterKey=VolumeSize,ParameterValue=$(VOLUME_SIZE) ParameterKey=VolumeType,ParameterValue=$(VOLUME_TYPE)
 PY_FILE=cfn-pilosa.py
 JSON_FILE=build/cfn-pilosa-$(CLUSTER_SIZE)-$(NUM_AGENTS).json
 BENCHMARK_CONFIG=$(GOPATH)/src/github.com/pilosa/tools/cmd/pitool/spawn.json
@@ -30,7 +30,7 @@ env/deps: requirements.txt env                   ## Install dependencies
 	env/bin/pip install -r requirements.txt && touch env/deps
 
 $(JSON_FILE): env/deps $(PY_FILE) ## Create Cloudformation template
-	env/bin/python $(PY_FILE) $(CLUSTER_SIZE) $(NUM_AGENTS) $(GOVERSION) $(USERNAME) $(DOMAIN) $(REPLICAS) $(VOLUME_SIZE) $(VOLUME_TYPE) > $(JSON_FILE)
+	env/bin/python $(PY_FILE) $(CLUSTER_SIZE) $(NUM_AGENTS) $(GOVERSION) $(USERNAME) $(DOMAIN) $(REPLICAS) > $(JSON_FILE)
 
 create-stack: $(JSON_FILE) env/deps              ## Create Pilosa cluster
 	test -n "$(KEY_PAIR)" # Required variable KEY_PAIR
