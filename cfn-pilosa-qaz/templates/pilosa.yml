@@ -1,0 +1,263 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  AMI:
+    Default: ami-e3c3b8f4
+    Description: AMI to use for pilosa instance
+    Type: String
+  AgentInstanceType:
+    Default: c4.large
+    Description: Instance type of agent nodes
+    Type: String
+  ClusterName:
+    Default: cluster0
+    Description: Unique name for this pilosa cluster. Used in DNS (node0.{name}.sandbox.pilosa.com
+    Type: String
+  InstanceType:
+    Default: m3.medium
+    Description: Instance type of pilosa
+    Type: String
+  KeyPair:
+    Description: Key pair to use for sudoer user
+    Type: String
+  Subnet:
+    Description: Subnet to use for pilosa instance
+    Type: String
+  VPC:
+    Description: VPC to use for pilosa instance
+    Type: String
+  VolumeSize:
+    Default: '10'
+    Description: Space (in GB) of the root EBS volume for pilosa instances.
+    Type: Number
+  VolumeType:
+    Default: gp2
+    Description: AWS volume type of the root EBS volume for pilosa instances.
+    Type: String
+  Replicas:
+    Default: 1
+    Description: Number of Pilosa replicas
+    Type: Number
+Resources:
+  {{- range $i, $_ := loop .pilosa.agents }}
+  PilosaAgentInstance{{ $i }}:
+    Properties:
+      IamInstanceProfile: !Ref 'PilosaInstanceProfile'
+      ImageId: !Ref 'AMI'
+      InstanceType: !Ref 'AgentInstanceType'
+      KeyName: !Ref 'KeyPair'
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeleteOnTermination: 'true'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref 'PilosaInstanceSecurityGroup'
+          SubnetId: !Ref 'Subnet'
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+          # install prereqs
+          apt-get update
+          apt-get -y install git
+          apt-get -y install make
+
+          # install go
+          mkdir -p /usr/local/go
+          wget https://storage.googleapis.com/golang/go1.8.3.linux-amd64.tar.gz
+          tar -C /usr/local -xzf go1.8.3.linux-amd64.tar.gz
+          chown -R ubuntu:ubuntu /usr/local/go
+          mkdir -p /home/ubuntu/go/src/github.com/pilosa
+          mkdir -p /home/ubuntu/go/bin
+          GOPATH=/home/ubuntu/go
+          export GOPATH
+          PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+          export PATH
+
+          # set up GOPATH in .bashrc
+          cat >> /home/ubuntu/.bashrc <<"<<">>- EOF
+              export GOPATH=/home/ubuntu/go
+              export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+          EOF
+
+          apt-get -y install gcc
+          apt-get -y install libpcap-dev
+
+          # install pdk
+          go get -u github.com/pilosa/pdk
+          cd $GOPATH/src/github.com/pilosa/pdk
+          make install
+
+
+          # clean up root''s mess
+          chown -R ubuntu:ubuntu /home/ubuntu
+    Type: AWS::EC2::Instance
+  AgentPrivateRecordSet{{ $i }}:
+    Properties:
+      HostedZoneId: !Ref 'PilosaZone'
+      Name: !Sub 'agent{{ $i }}.${ClusterName}.sandbox.pilosa.com.'
+      ResourceRecords:
+        - !GetAtt 'PilosaAgentInstance{{ $i }}.PrivateIp'
+      TTL: '300'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  AgentPublicRecordSet0:
+    Properties:
+      HostedZoneName: sandbox.pilosa.com.
+      Name: !Sub 'agent{{ $i }}.${ClusterName}.sandbox.pilosa.com.'
+      ResourceRecords:
+        - !GetAtt 'PilosaAgentInstance{{ $i }}.PublicIp'
+      TTL: '300'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  {{- end }}
+  {{- range $i, $_ := loop .pilosa.nodes }}
+  PilosaInstance{{ $i }}:
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref 'VolumeSize'
+            VolumeType: !Ref 'VolumeType'
+      IamInstanceProfile: !Ref 'PilosaInstanceProfile'
+      ImageId: !Ref 'AMI'
+      InstanceType: !Ref 'InstanceType'
+      KeyName: !Ref 'KeyPair'
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'true'
+          DeleteOnTermination: 'true'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref 'PilosaInstanceSecurityGroup'
+          SubnetId: !Ref 'Subnet'
+      UserData: !Base64
+        Fn::Sub: |
+          #!/bin/bash
+          # install prereqs
+          apt-get update
+          apt-get -y install git
+          apt-get -y install make
+
+          # install go
+          mkdir -p /usr/local/go
+          wget https://storage.googleapis.com/golang/go1.8.3.linux-amd64.tar.gz
+          tar -C /usr/local -xzf go1.8.3.linux-amd64.tar.gz
+          chown -R ubuntu:ubuntu /usr/local/go
+          mkdir -p /home/ubuntu/go/src/github.com/pilosa
+          mkdir -p /home/ubuntu/go/bin
+          GOPATH=/home/ubuntu/go
+          export GOPATH
+          PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+          export PATH
+
+          # set up GOPATH in .bashrc
+          cat >> /home/ubuntu/.bashrc <<"<<">>- EOF
+              export GOPATH=/home/ubuntu/go
+              export PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+          EOF
+
+
+          # update open file limits
+          cat >> /etc/security/limits.conf <<"<<">>- EOF
+              * soft nofile 262144
+              * hard nofile 262144
+              * hard memlock unlimited
+              * soft memlock unlimited
+          EOF
+
+          # install pilosa
+          go get -u github.com/pilosa/pilosa
+          cd $GOPATH/src/github.com/pilosa/pilosa
+          make install
+
+          # set up pilosa config file
+          cat > /etc/pilosa.cfg <<"<<">>- EOF
+              data-dir = "/home/ubuntu/pilosa/data1"
+              bind = "node0.${AWS::StackName}.sandbox.pilosa.com:10101"
+              log-path = "/home/ubuntu/pilosa.log"
+
+              [cluster]
+              replicas = ${Replicas}
+              internal-port = 12000
+              type = "http"
+              hosts = ["node0.${AWS::StackName}.sandbox.pilosa.com:10101", "node1.${AWS::StackName}.sandbox.pilosa.com:10101",
+              "node2.${AWS::StackName}.sandbox.pilosa.com:10101"]
+              internal-hosts = ["node0.${AWS::StackName}.sandbox.pilosa.com:12000", "node1.${AWS::StackName}.sandbox.pilosa.com:12000",
+              "node2.${AWS::StackName}.sandbox.pilosa.com:12000"]
+          EOF
+
+
+          # clean up root''s mess
+          chown -R ubuntu:ubuntu /home/ubuntu
+
+          # all output should go to pilosa.log - pilosa.out should be empty
+          sudo -u ubuntu PATH=$PATH nohup pilosa server --config=/etc/pilosa.cfg &>
+          /home/ubuntu/pilosa.out &
+    Type: AWS::EC2::Instance
+  PilosaPrivateRecordSet{{ $i }}:
+    Properties:
+      HostedZoneId: !Ref 'PilosaZone'
+      Name: !Sub 'node{{ $i }}.${ClusterName}.sandbox.pilosa.com.'
+      ResourceRecords:
+        - !GetAtt 'PilosaInstance{{ $i }}.PrivateIp'
+      TTL: '300'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  PilosaPublicRecordSet{{ $i }}:
+    Properties:
+      HostedZoneName: sandbox.pilosa.com.
+      Name: !Sub 'node{{ $i }}.${ClusterName}.sandbox.pilosa.com.'
+      ResourceRecords:
+        - !GetAtt 'PilosaInstance{{ $i }}.PublicIp'
+      TTL: '300'
+      Type: A
+    Type: AWS::Route53::RecordSet
+  {{- end }}
+  PilosaInstanceProfile:
+    Properties:
+      Roles:
+        - !Ref 'PilosaRole'
+    Type: AWS::IAM::InstanceProfile
+  PilosaInstanceSecurityGroup:
+    Properties:
+      GroupDescription: Enable SSH access via port 22
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: '22'
+          IpProtocol: tcp
+          ToPort: '22'
+      VpcId: !Ref 'VPC'
+    Type: AWS::EC2::SecurityGroup
+  PilosaIngress:
+    Properties:
+      FromPort: '10101'
+      GroupId: !Ref 'PilosaInstanceSecurityGroup'
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref 'PilosaInstanceSecurityGroup'
+      ToPort: '10101'
+    Type: AWS::EC2::SecurityGroupIngress
+  PilosaInternalIngress:
+    Properties:
+      FromPort: '12000'
+      GroupId: !Ref 'PilosaInstanceSecurityGroup'
+      IpProtocol: tcp
+      SourceSecurityGroupId: !Ref 'PilosaInstanceSecurityGroup'
+      ToPort: '12000'
+    Type: AWS::EC2::SecurityGroupIngress
+  PilosaRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+      Policies: []
+    Type: AWS::IAM::Role
+  PilosaZone:
+    Properties:
+      Name: !Sub '${ClusterName}.sandbox.pilosa.com'
+      VPCs:
+        - VPCId: !Ref 'VPC'
+          VPCRegion: !Ref 'AWS::Region'
+    Type: AWS::Route53::HostedZone
