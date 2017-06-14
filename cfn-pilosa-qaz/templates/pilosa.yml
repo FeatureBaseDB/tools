@@ -89,6 +89,7 @@ Resources:
 
           # clean up root''s mess
           chown -R ubuntu:ubuntu /home/ubuntu
+
     Type: AWS::EC2::Instance
   AgentPrivateRecordSet{{ $i }}:
     Properties:
@@ -171,26 +172,26 @@ Resources:
           # set up pilosa config file
           cat > /etc/pilosa.cfg <<"<<">>- EOF
               data-dir = "/home/ubuntu/pilosa/data1"
-              bind = "node0.${AWS::StackName}.sandbox.pilosa.com:10101"
+              bind = "node{{ $i }}.${ClusterName}.sandbox.pilosa.com:10101"
               log-path = "/home/ubuntu/pilosa.log"
 
               [cluster]
               replicas = ${Replicas}
               internal-port = 12000
               type = "http"
-              hosts = ["node0.${AWS::StackName}.sandbox.pilosa.com:10101", "node1.${AWS::StackName}.sandbox.pilosa.com:10101",
-              "node2.${AWS::StackName}.sandbox.pilosa.com:10101"]
-              internal-hosts = ["node0.${AWS::StackName}.sandbox.pilosa.com:12000", "node1.${AWS::StackName}.sandbox.pilosa.com:12000",
-              "node2.${AWS::StackName}.sandbox.pilosa.com:12000"]
+              hosts = ["node0.${ClusterName}.sandbox.pilosa.com:10101", "node1.${ClusterName}.sandbox.pilosa.com:10101", "node2.${ClusterName}.sandbox.pilosa.com:10101"]
+              internal-hosts = ["node0.${ClusterName}.sandbox.pilosa.com:12000", "node1.${ClusterName}.sandbox.pilosa.com:12000", "node2.${ClusterName}.sandbox.pilosa.com:12000"]
           EOF
 
 
-          # clean up root''s mess
+          # clean up root's mess
           chown -R ubuntu:ubuntu /home/ubuntu
 
           # all output should go to pilosa.log - pilosa.out should be empty
-          sudo -u ubuntu PATH=$PATH nohup pilosa server --config=/etc/pilosa.cfg &>
-          /home/ubuntu/pilosa.out &
+          ulimit -n 262144
+          ulimit -l unlimited
+          sudo -u ubuntu PATH=$PATH nohup pilosa server --config=/etc/pilosa.cfg &> /home/ubuntu/pilosa.out &
+
     Type: AWS::EC2::Instance
   PilosaPrivateRecordSet{{ $i }}:
     Properties:
