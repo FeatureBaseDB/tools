@@ -38,7 +38,7 @@ Parameters:
     Description: Number of Pilosa replicas
     Type: Number
 Resources:
-  {{- range $i, $_ := loop .pilosa.agents }}
+  {{- range $i, $_ := loop .stack.agents }}
   PilosaAgentInstance{{ $i }}:
     Properties:
       IamInstanceProfile: !Ref 'PilosaInstanceProfile'
@@ -110,7 +110,7 @@ Resources:
       Type: A
     Type: AWS::Route53::RecordSet
   {{- end }}
-  {{- range $i, $_ := loop .pilosa.nodes }}
+  {{- range $i, $_ := loop .stack.nodes }}
   PilosaInstance{{ $i }}:
     Properties:
       BlockDeviceMappings:
