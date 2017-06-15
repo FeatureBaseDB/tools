@@ -391,6 +391,8 @@ func (cmd *BagentCommand) ParseFlags(args []string) error {
 			bm = bench.NewImport(cmd.Stdin, cmd.Stdout, cmd.Stderr)
 		case "slice-height":
 			bm = bench.NewSliceHeight(cmd.Stdin, cmd.Stdout, cmd.Stderr)
+		case "basic-query":
+			bm = &bench.BasicQuery{}
 		default:
 			return fmt.Errorf("Unknown benchmark cmd: %v", remArgs[0])
 		}
@@ -434,6 +436,7 @@ The following flags are allowed:
 		multi-index-set-bits
 		import
 		slice-height
+		basic-query
 `)
 }
 
