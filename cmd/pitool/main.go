@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -437,16 +438,39 @@ The following flags are allowed:
 `)
 }
 
+func (cmd *BagentCommand) getClusterVersion(ctx context.Context) (string, error) {
+	if len(cmd.Hosts) == 0 {
+		return "", fmt.Errorf("bagent can't get cluster version with no pilosa hosts configured")
+	}
+	resp, err := http.Get("http://" + cmd.Hosts[0] + "/version")
+	if err != nil {
+		return "", fmt.Errorf("getClusterVersion http.Get: %v", err)
+	}
+	dec := json.NewDecoder(resp.Body)
+	v := struct{ Version string }{}
+	err = dec.Decode(&v)
+	if err != nil {
+		return "", fmt.Errorf("getClusterVersion decoding: %v", err)
+	}
+	return v.Version, nil
+
+}
+
 // Run executes the benchmark agent.
 func (cmd *BagentCommand) Run(ctx context.Context) error {
+	version, err := cmd.getClusterVersion(ctx)
+	if err != nil {
+		return err
+	}
 	sbm := serial(cmd.Benchmarks...)
-	err := sbm.Init(cmd.Hosts, cmd.AgentNum)
+	err = sbm.Init(cmd.Hosts, cmd.AgentNum)
 	if err != nil {
 		return fmt.Errorf("in cmd.Run initialization: %v", err)
 	}
 
 	res := sbm.Run(ctx)
 	res["agent-num"] = cmd.AgentNum
+	res["pilosa-version"] = version
 	enc := json.NewEncoder(cmd.Stdout)
 	if cmd.HumanReadable {
 		enc.SetIndent("", "  ")
@@ -783,7 +807,7 @@ func (sb *serialBenchmark) Run(ctx context.Context) map[string]interface{} {
 		ret := map[string]interface{}{"output": output, "metadata": b}
 		benchmarks[i] = ret
 	}
-	results["total_runtime"] = time.Now().Sub(total_start)
+	results["total-runtime"] = time.Now().Sub(total_start)
 	return results
 }
 
