@@ -389,6 +389,8 @@ func (cmd *BagentCommand) ParseFlags(args []string) error {
 			bm = &bench.MultiIndexSetBits{}
 		case "import":
 			bm = bench.NewImport(cmd.Stdin, cmd.Stdout, cmd.Stderr)
+		case "import-zipf":
+			bm = bench.NewImportZipf(cmd.Stdin, cmd.Stdout, cmd.Stderr)
 		case "slice-height":
 			bm = bench.NewSliceHeight(cmd.Stdin, cmd.Stdout, cmd.Stderr)
 		default:
@@ -433,6 +435,7 @@ The following flags are allowed:
 		zipf
 		multi-index-set-bits
 		import
+		import-zipf
 		slice-height
 `)
 }
