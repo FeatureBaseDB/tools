@@ -52,8 +52,9 @@ func NewClient(host, username, keyfile string, stderr io.Writer) (*Client, error
 	})
 
 	config := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{authkey, authpw},
+		User:            username,
+		Auth:            []ssh.AuthMethod{authkey, authpw},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
 	if strings.Index(host, ":") == -1 {

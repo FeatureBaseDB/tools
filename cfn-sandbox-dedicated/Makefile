@@ -1,4 +1,5 @@
 .PHONY: create-stack update-stack delete-stack describe-stack
+DOMAIN=sandbox-dedicated.pilosa.com
 STACK=sandbox
 PY_FILE=cfn-sandbox.py
 JSON_FILE=cfn-sandbox.json
@@ -10,7 +11,7 @@ env/deps: requirements.txt env
 	env/bin/pip install -r requirements.txt && touch env/deps
 
 $(JSON_FILE): env/deps $(PY_FILE)
-	env/bin/python $(PY_FILE) > $(JSON_FILE)
+	env/bin/python $(PY_FILE) $(DOMAIN) > $(JSON_FILE)
 
 create-stack: $(JSON_FILE) env/deps
 	env/bin/aws cloudformation create-stack --stack-name $(STACK) --template-body file://$(JSON_FILE) --capabilities CAPABILITY_IAM
