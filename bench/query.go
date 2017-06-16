@@ -1,10 +1,132 @@
 package bench
 
 import (
+	"flag"
+	"fmt"
+	"io/ioutil"
 	"math/rand"
+	"time"
+
+	"context"
 
 	"github.com/pilosa/pilosa/pql"
 )
+
+// BasicQuery runs a query against pilosa multiple times with increasing bitmap
+// ids.
+type BasicQuery struct {
+	HasClient
+	Name         string `json:"name"`
+	BaseBitmapID int64  `json:"base-bitmap-id"`
+	Iterations   int    `json:"iterations"`
+	NumArgs      int    `json:"num-args"`
+	Query        string `json:"query"`
+	Index        string `json:"index"`
+	Frame        string `json:"frame"`
+}
+
+// Init sets up the pilosa client and modifies the configured values based on
+// the agent num.
+func (b *BasicQuery) Init(hosts []string, agentNum int) error {
+	b.Name = "basic-query"
+	b.BaseBitmapID = b.BaseBitmapID + int64(agentNum*b.Iterations)
+	return b.HasClient.Init(hosts, agentNum)
+}
+
+// Usage returns the usage message to be printed.
+func (b *BasicQuery) Usage() string {
+	return `
+basic-query runs a query against pilosa multiple times with increasing bitmap ids.
+
+Agent num offsets base bitmap id so that each agent queries different bitmaps.
+
+Usage: basic-query [arguments]
+
+The following arguments are available:
+
+	-base-bitmap-id int
+		rows being queries will start at base-bitmap-id and increase
+
+	-iterations int
+		number of queries to make
+
+	-num-args int
+		number of rows to put in each query (i.e. number of rows to intersect)
+
+	-query string
+		query to perform (Intersect, Union, Difference, Xor)
+
+	-index string
+		pilosa index to use
+
+	-frame string
+		frame to query
+
+	-client-type string
+		Can be 'single' (all agents hitting one host) or 'round_robin'
+
+	-content-type string
+		protobuf or pql
+`[1:]
+}
+
+// ConsumeFlags parses all flags up to the next non flag argument (argument does
+// not start with "-" and isn't the value of a flag). It returns the remaining
+// args.
+func (b *BasicQuery) ConsumeFlags(args []string) ([]string, error) {
+	fs := flag.NewFlagSet("BasicQuery", flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
+	fs.IntVar(&b.Iterations, "iterations", 10, "")
+	fs.IntVar(&b.NumArgs, "num-args", 2, "")
+	fs.StringVar(&b.Query, "query", "Intersect", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.Frame, "frame", "frame", "")
+	fs.StringVar(&b.ClientType, "client-type", "single", "")
+	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	return fs.Args(), nil
+}
+
+// Run runs the DiagonalSetBits benchmark
+func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
+	results := make(map[string]interface{})
+	if b.client == nil {
+		results["error"] = fmt.Errorf("No client set for BasicQuery")
+		return results
+	}
+	s := NewStats()
+
+	bms := make([]*pql.Call, b.NumArgs)
+	for i, _ := range bms {
+		bms[i] = &pql.Call{
+			Name: "Bitmap",
+			Args: map[string]interface{}{"frame": b.Frame},
+		}
+	}
+	query := pql.Call{
+		Name: b.Query,
+	}
+	var start time.Time
+	for n := 0; n < b.Iterations; n++ {
+		for i, _ := range bms {
+			bms[i].Args["rowID"] = b.BaseBitmapID + int64(n)
+		}
+		query.Children = bms
+		start = time.Now()
+		_, err := b.client.ExecuteQuery(ctx, b.Index, query.String(), true)
+		if err != nil {
+			results["error"] = err.Error()
+			return results
+		}
+		s.Add(time.Now().Sub(start))
+	}
+	AddToResults(s, results)
+	return results
+}
 
 // NewQueryGenerator initializes a new QueryGenerator
 func NewQueryGenerator(seed int64) *QueryGenerator {
