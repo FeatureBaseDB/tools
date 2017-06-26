@@ -181,7 +181,7 @@ Resources:
               type = "http"
               hosts = [
               {{- range $j, $blah := loop $.stack.nodes -}}
-              "node{{ $j }}.${ClusterName}.sandbox.pilosa.com:10101",
+                "node{{ $j }}.${ClusterName}.sandbox.pilosa.com:10101",
               {{- end }}]
               internal-hosts = [
               {{- range $j, $_ := loop $.stack.nodes -}}
