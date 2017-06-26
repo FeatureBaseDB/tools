@@ -27,6 +27,8 @@ import (
 )
 
 var (
+	Version   = "v0.0.0"
+	BuildTime = "not recorded"
 	// ErrUnknownCommand is returned when specifying an unknown command.
 	ErrUnknownCommand = errors.New("unknown command")
 )
@@ -654,6 +656,8 @@ func (cmd *BspawnCommand) Run(ctx context.Context) error {
 	runUUID := uuid.NewV1()
 	output := make(map[string]interface{})
 	output["run-uuid"] = runUUID.String()
+	output["pitool-version"] = Version
+	output["pitool-build-time"] = BuildTime
 	if len(cmd.PilosaHosts) == 0 {
 		fmt.Fprintln(cmd.Stderr, "bspawn: pilosa-hosts not specified - using create command to build cluster")
 		r, w := io.Pipe()
