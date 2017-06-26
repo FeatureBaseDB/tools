@@ -727,12 +727,12 @@ func (cmd *BspawnCommand) spawnRemote(ctx context.Context) (map[string]interface
 		}
 	}
 
-	sessions := make([]*ssh.Session, 0)
 	results := make(map[string]interface{})
 	resLock := sync.Mutex{}
-	wg := sync.WaitGroup{}
 	fmt.Fprintln(cmd.Stderr, "bspawn: running benchmarks")
 	for _, sp := range cmd.Benchmarks {
+		sessions := make([]*ssh.Session, 0)
+		wg := sync.WaitGroup{}
 		results[sp.Name] = make(map[int]interface{})
 		for i := 0; i < sp.Num; i++ {
 			agentIdx %= len(cmd.AgentHosts)
@@ -765,15 +765,15 @@ func (cmd *BspawnCommand) spawnRemote(ctx context.Context) (map[string]interface
 				return nil, err
 			}
 		}
+		for _, sess := range sessions {
+			err = sess.Wait()
+			if err != nil {
+				return nil, fmt.Errorf("error waiting for remote bagent: %v", err)
+			}
+		}
+		wg.Wait()
 	}
 
-	for _, sess := range sessions {
-		err = sess.Wait()
-		if err != nil {
-			return nil, fmt.Errorf("error waiting for remote bagent: %v", err)
-		}
-	}
-	wg.Wait()
 	return results, nil
 }
 
