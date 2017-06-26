@@ -396,6 +396,8 @@ func (cmd *BagentCommand) ParseFlags(args []string) error {
 			bm = bench.NewSliceHeight(cmd.Stdin, cmd.Stdout, cmd.Stderr)
 		case "basic-query":
 			bm = &bench.BasicQuery{}
+		case "query":
+			bm = &bench.Query{}
 		default:
 			return fmt.Errorf("Unknown benchmark cmd: %v", remArgs[0])
 		}
@@ -441,6 +443,7 @@ The following flags are allowed:
 		import-zipf
 		slice-height
 		basic-query
+		query
 `)
 }
 

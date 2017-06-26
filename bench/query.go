@@ -12,6 +12,91 @@ import (
 	"github.com/pilosa/pilosa/pql"
 )
 
+type Query struct {
+	HasClient
+	Name       string `json:"name"`
+	Query      string `json:"query"`
+	Index      string `json:"index"`
+	Iterations int    `json:"iterations"`
+}
+
+// Init sets up the pilosa client and modifies the configured values based on
+// the agent num.
+func (b *Query) Init(hosts []string, agentNum int) error {
+	b.Name = "query"
+	return b.HasClient.Init(hosts, agentNum)
+}
+
+// Usage returns the usage message to be printed.
+func (b *Query) Usage() string {
+	return `
+query runs the given PQL query against pilosa and records the results along with the duration.
+
+Agent num does nothing.
+
+Usage: query [arguments]
+
+The following arguments are available:
+
+	-query string
+		pql query to perform
+
+	-iterations int
+		number of times to repeat the query
+
+	-index string
+		pilosa index to use
+
+	-client-type string
+		Can be 'single' (all agents hitting one host) or 'round_robin'
+
+	-content-type string
+		protobuf or pql
+`[1:]
+}
+
+// ConsumeFlags parses all flags up to the next non flag argument (argument does
+// not start with "-" and isn't the value of a flag). It returns the remaining
+// args.
+func (b *Query) ConsumeFlags(args []string) ([]string, error) {
+	fs := flag.NewFlagSet("Query", flag.ContinueOnError)
+	fs.SetOutput(ioutil.Discard)
+	fs.IntVar(&b.Iterations, "iterations", 1, "")
+	fs.StringVar(&b.Query, "query", "Count(Bitmap(rowID=1, frame=frame))", "")
+	fs.StringVar(&b.Index, "index", "benchindex", "")
+	fs.StringVar(&b.ClientType, "client-type", "single", "")
+	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
+	return fs.Args(), nil
+}
+
+// Run runs the BasicQuery benchmark
+func (b *Query) Run(ctx context.Context) map[string]interface{} {
+	results := make(map[string]interface{})
+	if b.client == nil {
+		results["error"] = fmt.Errorf("No client set for BasicQuery")
+		return results
+	}
+	resSlice := make([]map[string]interface{}, b.Iterations)
+	results[b.Query] = resSlice
+	var start time.Time
+	for n := 0; n < b.Iterations; n++ {
+		resSlice[n] = make(map[string]interface{})
+		start = time.Now()
+		res, err := b.client.ExecuteQuery(ctx, b.Index, b.Query, true)
+		if err != nil {
+			resSlice[n]["error"] = err.Error()
+		} else {
+			resSlice[n]["duration"] = time.Now().Sub(start)
+			resSlice[n]["result"] = res
+		}
+	}
+	return results
+}
+
 // BasicQuery runs a query against pilosa multiple times with increasing bitmap
 // ids.
 type BasicQuery struct {
@@ -91,7 +176,7 @@ func (b *BasicQuery) ConsumeFlags(args []string) ([]string, error) {
 	return fs.Args(), nil
 }
 
-// Run runs the DiagonalSetBits benchmark
+// Run runs the BasicQuery benchmark
 func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 	if b.client == nil {
