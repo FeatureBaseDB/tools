@@ -1,3 +1,0 @@
-troposphere
-troposphere_sugar
-awscli
