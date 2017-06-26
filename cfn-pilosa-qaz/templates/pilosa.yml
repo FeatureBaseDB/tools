@@ -87,7 +87,7 @@ Resources:
           make install
 
 
-          # clean up root''s mess
+          # clean up root's mess
           chown -R ubuntu:ubuntu /home/ubuntu
 
     Type: AWS::EC2::Instance
@@ -179,8 +179,14 @@ Resources:
               replicas = ${Replicas}
               internal-port = 12000
               type = "http"
-              hosts = ["node0.${ClusterName}.sandbox.pilosa.com:10101", "node1.${ClusterName}.sandbox.pilosa.com:10101", "node2.${ClusterName}.sandbox.pilosa.com:10101"]
-              internal-hosts = ["node0.${ClusterName}.sandbox.pilosa.com:12000", "node1.${ClusterName}.sandbox.pilosa.com:12000", "node2.${ClusterName}.sandbox.pilosa.com:12000"]
+              hosts = [
+              {{- range $j, $blah := loop $.stack.nodes -}}
+              "node{{ $j }}.${ClusterName}.sandbox.pilosa.com:10101",
+              {{- end }}]
+              internal-hosts = [
+              {{- range $j, $_ := loop $.stack.nodes -}}
+                "node{{ $j }}.${ClusterName}.sandbox.pilosa.com:12000",
+              {{- end }}]
           EOF
 
 
