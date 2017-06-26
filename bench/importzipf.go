@@ -29,15 +29,19 @@ type ImportZipf struct {
 	profileRng      *rand.Zipf
 	bitmapPerm      *PermutationGenerator
 	profilePerm     *PermutationGenerator
+	importStdin     io.Writer
 
 	*ctl.ImportCommand
 }
 
 // NewImport returns an Import Benchmark which pilosa/ctl importer configured.
 func NewImportZipf(stdin io.Reader, stdout, stderr io.Writer) *ImportZipf {
-	return &ImportZipf{
-		ImportCommand: ctl.NewImportCommand(stdin, stdout, stderr),
+	importStdinR, importStdinW := io.Pipe()
+	bm := &ImportZipf{
+		importStdin:   importStdinW,
+		ImportCommand: ctl.NewImportCommand(importStdinR, stdout, stderr),
 	}
+	return bm
 }
 
 // Usage returns the usage message to be printed.
@@ -143,40 +147,8 @@ func (b *ImportZipf) Init(hosts []string, agentNum int) error {
 	b.bitmapPerm = NewPermutationGenerator(bitmapRange, b.Seed)
 	b.profilePerm = NewPermutationGenerator(profileRange, b.Seed+1)
 
-	f, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("initial temp file: %v", err)
-	}
-
-	err = b.GenerateImportZipfCSV(f)
-	if err != nil {
-		return fmt.Errorf("generating import zipf csv: %v", err)
-	}
-
-	err = f.Close()
-	if err != nil {
-		return fmt.Errorf("closing temp import csv: %v", err)
-	}
-
-	sortedF, err := ioutil.TempFile("", "")
-	if err != nil {
-		return fmt.Errorf("sorted temp file: %v", err)
-	}
-
-	sorter := ctl.NewSortCommand(b.Stdin, sortedF, b.Stderr)
-	sorter.Path = f.Name()
-	err = sorter.Run(context.Background())
-	if err != nil {
-		return fmt.Errorf("importzipf sorting file: %v", err)
-	}
-
-	err = sortedF.Close()
-	if err != nil {
-		return fmt.Errorf("importzipf closing sorted file: %v", err)
-	}
-
-	b.Paths = []string{sortedF.Name()}
-	err = initIndex(b.Host, b.Index, b.Frame)
+	b.Paths = []string{"-"}
+	err := initIndex(b.Host, b.Index, b.Frame)
 	if err != nil {
 		return fmt.Errorf("initIndex: %v", err)
 	}
@@ -188,8 +160,16 @@ func (b *ImportZipf) Init(hosts []string, agentNum int) error {
 func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 	results["index"] = b.Index
-	err := b.ImportCommand.Run(ctx)
-
+	done := make(chan error)
+	go func() {
+		err := b.ImportCommand.Run(ctx)
+		if err != nil {
+			done <- err
+		}
+		close(done)
+	}()
+	err := b.GenerateImportZipfCSV(b.importStdin)
+	err = <-done
 	if err != nil {
 		results["error"] = err.Error()
 	}
