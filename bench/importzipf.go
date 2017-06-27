@@ -13,23 +13,15 @@ import (
 )
 
 type ImportZipf struct {
-	Name            string  `json:"name"`
-	BaseBitmapID    int64   `json:"base-bitmap-id"`
-	BaseProfileID   int64   `json:"base-profile-id"`
-	MaxBitmapID     int64   `json:"max-bitmap-id"`
-	MaxProfileID    int64   `json:"max-profile-id"`
-	Iterations      int     `json:"iterations"`
-	Random          bool    `json:"random"`
-	Seed            int64   `json:"seed"`
-	BitmapExponent  float64 `json:"bitmap-exponent"`
-	BitmapRatio     float64 `json:"bitmap-ratio"`
-	ProfileExponent float64 `json:"profile-exponent"`
-	ProfileRatio    float64 `json:"profile-ratio"`
-	bitmapRng       *rand.Zipf
-	profileRng      *rand.Zipf
-	bitmapPerm      *PermutationGenerator
-	profilePerm     *PermutationGenerator
-	importStdin     io.Writer
+	Name          string `json:"name"`
+	BaseBitmapID  int64  `json:"base-bitmap-id"`
+	BaseProfileID int64  `json:"base-profile-id"`
+	MaxBitmapID   int64  `json:"max-bitmap-id"`
+	MaxProfileID  int64  `json:"max-profile-id"`
+	Iterations    int    `json:"iterations"`
+	Seed          int64  `json:"seed"`
+	importStdin   io.WriteCloser
+	rng           *rand.Rand
 
 	*ctl.ImportCommand
 }
@@ -72,10 +64,6 @@ The following arguments are available:
 	-iterations int
 		number of bits to set
 
-	-random
-		if this option is set, profile and bitmap ids will be permuted, so the
-		zipf distribution will only be apparent when they are sorted by count.
-
 	-seed int
 		seed for RNG
 
@@ -85,17 +73,8 @@ The following arguments are available:
 	-frame string
 		frame to import into
 
-	-bitmap-exponent float64
-		zipf exponent parameter for bitmap IDs
-
-	-bitmap-ratio float64
-		zipf probability ratio parameter for bitmap IDs
-
-	-profile-exponent float64
-		zipf exponent parameter for profile IDs
-
-	-profile-ratio float64
-		zipf probability ratio parameter for profile IDs
+	-buffer-size int
+		buffer size for importer to use
 
 `[1:]
 }
@@ -111,14 +90,9 @@ func (b *ImportZipf) ConsumeFlags(args []string) ([]string, error) {
 	fs.Int64Var(&b.MaxBitmapID, "max-bitmap-id", 1000, "")
 	fs.Int64Var(&b.MaxProfileID, "max-profile-id", 1000, "")
 	fs.IntVar(&b.Iterations, "iterations", 100000, "")
-	fs.BoolVar(&b.Random, "random", true, "")
 	fs.Int64Var(&b.Seed, "seed", 0, "")
 	fs.StringVar(&b.Index, "index", "benchindex", "")
 	fs.StringVar(&b.Frame, "frame", "frame", "")
-	fs.Float64Var(&b.BitmapExponent, "bitmap-exponent", 1.01, "")
-	fs.Float64Var(&b.BitmapRatio, "bitmap-ratio", 0.25, "")
-	fs.Float64Var(&b.ProfileExponent, "profile-exponent", 1.01, "")
-	fs.Float64Var(&b.ProfileRatio, "profile-ratio", 0.25, "")
 	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
 
 	if err := fs.Parse(args); err != nil {
@@ -136,16 +110,7 @@ func (b *ImportZipf) Init(hosts []string, agentNum int) error {
 	b.Host = hosts[0]
 	// generate csv data
 	b.Seed = b.Seed + int64(agentNum)
-	rnd := rand.New(rand.NewSource(b.Seed))
-	bitmapRange := b.MaxBitmapID - b.BaseBitmapID + 1
-	profileRange := b.MaxProfileID - b.BaseProfileID
-	bitmapOffset := getZipfOffset(bitmapRange+1, b.BitmapExponent, b.BitmapRatio)
-	b.bitmapRng = rand.NewZipf(rnd, b.BitmapExponent, bitmapOffset, uint64(bitmapRange))
-	profileOffset := getZipfOffset(profileRange+1, b.ProfileExponent, b.ProfileRatio)
-	b.profileRng = rand.NewZipf(rnd, b.ProfileExponent, profileOffset, uint64(profileRange))
-
-	b.bitmapPerm = NewPermutationGenerator(bitmapRange, b.Seed)
-	b.profilePerm = NewPermutationGenerator(profileRange, b.Seed+1)
+	b.rng = rand.New(rand.NewSource(b.Seed))
 
 	b.Paths = []string{"-"}
 	err := initIndex(b.Host, b.Index, b.Frame)
@@ -164,11 +129,22 @@ func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 	go func() {
 		err := b.ImportCommand.Run(ctx)
 		if err != nil {
-			done <- err
+			done <- fmt.Errorf("ImportCommand.Run: %v", err)
 		}
 		close(done)
 	}()
-	err := b.GenerateImportZipfCSV(b.importStdin)
+	iters, err := b.GenerateImportZipfCSV(b.importStdin)
+	results["actual-iterations"] = iters
+	if err != nil {
+		results["error"] = fmt.Sprintf("generating import csv: %v", err)
+	}
+	err = b.importStdin.Close()
+	if err != nil {
+		if err != nil {
+			results["error"] = fmt.Sprintf("closing pipe to importer: %v", err)
+		}
+	}
+
 	err = <-done
 	if err != nil {
 		results["error"] = err.Error()
@@ -177,20 +153,25 @@ func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 }
 
 // GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
-func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) error {
-	for n := 0; n < b.Iterations; n++ {
-		// generate IDs from Zipf distribution
-		bitmapID := b.bitmapRng.Uint64()
-		profID := b.profileRng.Uint64()
-		// permute IDs randomly, but repeatably
-		if b.Random {
-			bitmapID = uint64(b.bitmapPerm.Next(int64(bitmapID)))
-			profID = uint64(b.profilePerm.Next(int64(profID)))
+func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) (int64, error) {
+	maxbitnum := (b.MaxBitmapID - b.BaseBitmapID + 1) * (b.MaxProfileID - b.BaseProfileID + 1)
+	avgdelta := float64(maxbitnum) / float64(b.Iterations)
+	lambda := 1.0 / avgdelta
+	var bitnum int64 = 0
+	var iterations int64 = 0
+	for {
+		delta := b.rng.ExpFloat64() / lambda
+		bitnum = int64(float64(bitnum) + delta)
+		if bitnum > maxbitnum {
+			break
 		}
-		_, err := w.Write([]byte(fmt.Sprintf("%d,%d\n", bitmapID, profID)))
+		iterations++
+		rowID := (bitnum / (b.MaxProfileID - b.BaseProfileID + 1)) + b.BaseBitmapID
+		colID := bitnum % (b.MaxBitmapID - b.BaseBitmapID + 1)
+		_, err := w.Write([]byte(fmt.Sprintf("%d,%d\n", rowID, colID)))
 		if err != nil {
-			return fmt.Errorf("GenerateImportZipfCSV, writing: %v", err)
+			return iterations, fmt.Errorf("GenerateImportZipfCSV, writing: %v", err)
 		}
 	}
-	return nil
+	return iterations, nil
 }
