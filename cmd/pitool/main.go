@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strconv"
@@ -34,6 +36,9 @@ var (
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	m := NewMain()
 
 	// Parse command line arguments.
@@ -75,7 +80,8 @@ func NewMain() *Main {
 func (m *Main) Usage() string {
 	return strings.TrimSpace(`
 Pitool is a tool for interacting with a pilosa server.
-
+Version: ` + Version + `
+Build Time: ` + BuildTime + `
 Usage:
 
 	pitool command [arguments]

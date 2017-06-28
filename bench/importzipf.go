@@ -167,7 +167,7 @@ func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) (int64, error) {
 		}
 		iterations++
 		rowID := (bitnum / (b.MaxProfileID - b.BaseProfileID + 1)) + b.BaseBitmapID
-		colID := bitnum % (b.MaxBitmapID - b.BaseBitmapID + 1)
+		colID := bitnum%(b.MaxBitmapID-b.BaseBitmapID+1) + b.BaseProfileID
 		_, err := w.Write([]byte(fmt.Sprintf("%d,%d\n", rowID, colID)))
 		if err != nil {
 			return iterations, fmt.Errorf("GenerateImportZipfCSV, writing: %v", err)
