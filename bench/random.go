@@ -3,9 +3,6 @@ package bench
 import (
 	"fmt"
 
-	"flag"
-	"io/ioutil"
-
 	"context"
 	"math/rand"
 	"time"
@@ -22,7 +19,7 @@ type RandomSetBits struct {
 	Iterations     int    `json:"iterations"`
 	Seed           int64  `json:"seed"`
 	Index          string `json:"index"`
-	Frame          string `json:"index"`
+	Frame          string `json:"frame"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -34,69 +31,6 @@ func (b *RandomSetBits) Init(hosts []string, agentNum int) error {
 		return err
 	}
 	return b.HasClient.Init(hosts, agentNum)
-}
-
-// Usage returns the usage message to be printed.
-func (b *RandomSetBits) Usage() string {
-	return `
-random-set-bits sets random bits
-
-Agent number modifies the random seed.
-
-Usage: random-set-bits [arguments]
-
-The following arguments are available:
-
-	-base-bitmap-id int
-		bits being set will all be greater than BaseBitmapID
-
-	-bitmap-id-range int
-		number of possible bitmap ids that can be set
-
-	-base-profile-id int
-		profile id num to start from
-
-	-profile-id-range int
-		number of possible profile ids that can be set
-
-	-iterations int
-		number of bits to set
-
-	-seed int
-		Seed for RNG
-
-	-index string
-		pilosa index to use
-
-	-client-type string
-		Can be 'single' (all agents hitting one host) or 'round_robin'
-
-	-content-type string
-		protobuf or pql
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *RandomSetBits) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("RandomSetBits", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
-	fs.Int64Var(&b.BitmapIDRange, "bitmap-id-range", 100000, "")
-	fs.Int64Var(&b.BaseProfileID, "base-profile-id", 0, "")
-	fs.Int64Var(&b.ProfileIDRange, "profile-id-range", 100000, "")
-	fs.Int64Var(&b.Seed, "seed", 1, "")
-	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "random-set-bits", "")
-	fs.StringVar(&b.ClientType, "client-type", "single", "")
-	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	return fs.Args(), nil
 }
 
 // Run runs the RandomSetBits benchmark
