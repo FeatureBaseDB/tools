@@ -1,0 +1,29 @@
+{
+    "benchmarks": [
+        {
+            "num": 1,
+            "name": "importer",
+            "args": ["import-zipf", "-iterations", "1000000000", "-max-profile-id", "10000000000", "-max-bitmap-id", "2", "-seed", "2345", "-frame", "rtzp1000m", "-index", "milxmil"]
+        },
+        {
+            "num": 1,
+            "name": "qtest0",
+            "args": ["query", "-iterations", "3", "-client-type", "round_robin", "-index", "milxmil", "-query", "\"Count(Bitmap(rowID=0, frame=rtzp1000m))\""]
+        },
+        {
+            "num": 1,
+            "name": "qtest1",
+            "args": ["query", "-iterations", "3", "-client-type", "round_robin", "-index", "milxmil", "-query", "\"Count(Bitmap(rowID=1, frame=rtzp1000m))\""]
+        },
+        {
+            "num": 1,
+            "name": "qtest2",
+            "args": ["query", "-iterations", "3", "-client-type", "round_robin", "-index", "milxmil", "-query", "\"Count(Bitmap(rowID=2, frame=rtzp1000m))\""]
+        },
+        {
+            "num": 1,
+            "name": "qtest3",
+            "args": ["query", "-iterations", "3", "-client-type", "round_robin", "-index", "milxmil", "-query", "\"Count(Bitmap(rowID=3, frame=rtzp1000m))\""]
+        }
+    ]
+}
