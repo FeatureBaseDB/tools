@@ -1,10 +1,8 @@
 package bench
 
 import (
-	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 
 	"context"
@@ -34,71 +32,6 @@ func NewImportZipf(stdin io.Reader, stdout, stderr io.Writer) *ImportZipf {
 		ImportCommand: ctl.NewImportCommand(importStdinR, stdout, stderr),
 	}
 	return bm
-}
-
-// Usage returns the usage message to be printed.
-func (b *ImportZipf) Usage() string {
-	return `
-import-zipf generates an import file which sets bits according to the Zipf
-distribution in both row and column id and imports using pilosa's bulk import
-interface.
-
-Agent num affects random seed.
-
-Usage: import-zipf [arguments]
-
-The following arguments are available:
-
-	-base-bitmap-id int
-		bits being set will all be greater than this
-
-	-max-bitmap-id int
-		bits being set will all be less than this
-
-	-base-profile-id int
-		profile id num to start from
-
-	-max-profile-id int
-		maximum profile id to generate
-
-	-iterations int
-		number of bits to set
-
-	-seed int
-		seed for RNG
-
-	-index string
-		pilosa index to use
-
-	-frame string
-		frame to import into
-
-	-buffer-size int
-		buffer size for importer to use
-
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *ImportZipf) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("Import", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
-	fs.Int64Var(&b.BaseProfileID, "base-profile-id", 0, "")
-	fs.Int64Var(&b.MaxBitmapID, "max-bitmap-id", 1000, "")
-	fs.Int64Var(&b.MaxProfileID, "max-profile-id", 1000, "")
-	fs.IntVar(&b.Iterations, "iterations", 100000, "")
-	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "frame", "")
-	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	return fs.Args(), nil
 }
 
 // Init generates import data based on

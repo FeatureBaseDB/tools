@@ -1,12 +1,8 @@
 package bench
 
 import (
-	"fmt"
-
-	"flag"
-	"io/ioutil"
-
 	"context"
+	"fmt"
 	"math"
 	"math/rand"
 	"time"
@@ -35,94 +31,6 @@ type Zipf struct {
 	profileRng      *rand.Zipf
 	bitmapPerm      *PermutationGenerator
 	profilePerm     *PermutationGenerator
-}
-
-// Usage returns the usage message to be printed.
-func (b *Zipf) Usage() string {
-	return `
-zipf sets random bits according to the Zipf distribution.
-This is a power-law distribution controlled by two parameters.
-Exponent, in the range (1, inf), with a default value of 1.001, controls
-the "sharpness" of the distribution, with higher exponent being sharper.
-Ratio, in the range (0, 1), with a default value of 0.25, controls the
-maximum variation of the distribution, with higher ratio being more uniform.
-
-Agent number modifies random seed.
-
-Usage: zipf [arguments]
-
-The following arguments are available:
-
-	-base-bitmap-id int
-		bits being set will all be greater than BaseBitmapID
-
-	-bitmap-id-range int
-		number of possible bitmap ids that can be set
-
-	-base-profile-id int
-		profile id num to start from
-
-	-profile-id-range int
-		number of possible profile ids that can be set
-
-	-iterations int
-		number of bits to set
-
-	-seed int
-		Seed for RNG
-
-	-index string
-		pilosa index to use
-
-	-bitmap-exponent float64
-		zipf exponent parameter for bitmap IDs
-
-	-bitmap-ratio float64
-		zipf probability ratio parameter for bitmap IDs
-
-	-profile-exponent float64
-		zipf exponent parameter for profile IDs
-
-	-profile-ratio float64
-		zipf probability ratio parameter for profile IDs
-
-	-client-type string
-		Can be 'single' (all agents hitting one host) or 'round_robin'
-
-	-operation string
-		Can be 'set' or 'clear'
-
-	-content-type string
-		protobuf or pql
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *Zipf) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("Zipf", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
-	fs.Int64Var(&b.BitmapIDRange, "bitmap-id-range", 100000, "")
-	fs.Int64Var(&b.BaseProfileID, "base-profile-id", 0, "")
-	fs.Int64Var(&b.ProfileIDRange, "profile-id-range", 100000, "")
-	fs.Int64Var(&b.Seed, "seed", 1, "")
-	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "zipf", "")
-	fs.Float64Var(&b.BitmapExponent, "bitmap-exponent", 1.01, "")
-	fs.Float64Var(&b.BitmapRatio, "bitmap-ratio", 0.25, "")
-	fs.Float64Var(&b.ProfileExponent, "profile-exponent", 1.01, "")
-	fs.Float64Var(&b.ProfileRatio, "profile-ratio", 0.25, "")
-	fs.StringVar(&b.ClientType, "client-type", "single", "")
-	fs.StringVar(&b.Operation, "operation", "set", "")
-	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	return fs.Args(), nil
 }
 
 // Offset is the true parameter used by the Zipf distribution, but the ratio,

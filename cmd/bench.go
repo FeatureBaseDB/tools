@@ -20,9 +20,9 @@ func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	}
 
 	flags := benchCmd.PersistentFlags()
-	flags.StringSlice("hosts", []string{"localhost:10101"}, "comma separated list of \"host:port\" pairs of the Pilosa cluster")
+	flags.StringSlice("hosts", []string{"localhost:10101"}, "Comma separated list of \"host:port\" pairs of the Pilosa cluster.")
 	flags.Int("agent-num", 0, "A unique integer to associate with this invocation of 'bench' to distinguish it from others running concurrently.")
-	flags.Bool("human", true, "Make output human friendly")
+	flags.Bool("human", true, "Make output human friendly.")
 
 	for _, benchCommandFn := range benchCommandFns {
 		benchCmd.AddCommand(benchCommandFn(stdin, stdout, stderr))

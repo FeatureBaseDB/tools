@@ -2,9 +2,7 @@ package bench
 
 import (
 	"context"
-	"flag"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"time"
 
@@ -38,58 +36,6 @@ type SliceHeight struct {
 	Stdin  io.Reader `json:"-"`
 	Stdout io.Writer `json:"-"`
 	Stderr io.Writer `json:"-"`
-}
-
-// Usage returns the usage message to be printed.
-func (b *SliceHeight) Usage() string {
-	return `
-slice-height repeatedly imports more bitmaps into a single slice and tests query times in between.
-
-Agent number has no effect on this benchmark.
-
-Usage: slice-height [arguments]
-
-The following arguments are available:
-
-	-max-time int
-		stop benchmark after this many seconds
-
-	-min-bits-per-map int
-		minimum number of bits set per bitmap
-
-	-max-bits-per-map int
-		maximum number of bits set per bitmap
-
-	-seed int
-		seed for RNG
-
-	-index string
-		pilosa index to use
-
-	-frame string
-		frame to import into
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *SliceHeight) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("SliceHeight", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-
-	maxTime := fs.Int("max-time", 30, "")
-	fs.Int64Var(&b.MinBitsPerMap, "min-bits-per-map", 0, "")
-	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
-	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "slice-height", "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	b.MaxTime = time.Duration(*maxTime) * time.Second
-	return fs.Args(), nil
 }
 
 // Init sets up the slice height benchmark.
