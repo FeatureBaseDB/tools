@@ -16,7 +16,8 @@ func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	benchCmd := &cobra.Command{
 		Use:   "bench",
 		Short: "Runs benchmarks against a pilosa cluster.",
-		Long:  ``,
+		Long: `Runs benchmarks against a pilosa cluster.
+See the various subcommands for specific benchmarks and their arguments.`,
 	}
 
 	flags := benchCmd.PersistentFlags()

@@ -13,8 +13,10 @@ func NewBasicQueryCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	basicQuery := &bench.BasicQuery{}
 	basicQueryCmd := &cobra.Command{
 		Use:   "basic-query",
-		Short: "runs the given PQL BasicQuery against pilosa and records the results along with the duration.",
-		Long:  `Agent num has no effect`,
+		Short: "Runs the given PQL query against pilosa multiple times with different arguments.",
+		Long: `Runs the given PQL query against pilosa multiple times with different arguments.
+
+Agent num has no effect.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")
@@ -35,13 +37,13 @@ func NewBasicQueryCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	}
 
 	flags := basicQueryCmd.Flags()
-	flags.IntVar(&basicQuery.Iterations, "iterations", 1, "number of queries to make")
-	flags.IntVar(&basicQuery.NumArgs, "num-args", 2, "number of rows to put in each query (i.e. number of rows to intersect)")
+	flags.IntVar(&basicQuery.Iterations, "iterations", 1, "Number of queries to make.")
+	flags.IntVar(&basicQuery.NumArgs, "num-args", 2, "Number of rows to put in each query (i.e. number of rows to intersect)")
 	flags.StringVar(&basicQuery.Query, "query", "Intersect", "query to perform (Intersect, Union, Difference, Xor)")
-	flags.StringVar(&basicQuery.Frame, "frame", "frame", "frame to query")
-	flags.StringVar(&basicQuery.Index, "index", "benchindex", "pilosa index to use")
+	flags.StringVar(&basicQuery.Frame, "frame", "frame", "Frame to query.")
+	flags.StringVar(&basicQuery.Index, "index", "benchindex", "Pilosa index to use.")
 	flags.StringVar(&basicQuery.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'")
-	flags.StringVar(&basicQuery.ContentType, "content-type", "protobuf", "protobuf or pql")
+	flags.StringVar(&basicQuery.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
 
 	return basicQueryCmd
 }

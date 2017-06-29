@@ -13,7 +13,7 @@ func NewImportZipfCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	importZipf := bench.NewImportZipf(stdin, stdout, stderr)
 	importZipfCmd := &cobra.Command{
 		Use:   "import-zipf",
-		Short: "import random data into Pilosa quickly.",
+		Short: "Import random data into Pilosa quickly.",
 		Long: `import-zipf generates an import file which sets bits according to the Zipf
 distribution in both row and column id and imports using pilosa's bulk import
 interface. Agent num has no effect`,

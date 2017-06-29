@@ -13,8 +13,9 @@ func NewImportCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 	importer := bench.NewImport(stdin, stdout, stderr)
 	importCmd := &cobra.Command{
 		Use:   "import",
-		Short: "import runs the given PQL import against pilosa and records the results along with the duration.",
-		Long:  `Agent num has no effect`,
+		Short: "Runs the given PQL import against pilosa and records the results along with the duration.",
+		Long: `Runs the given PQL import against pilosa and records the results along with the duration.
+Agent num has no effect`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")

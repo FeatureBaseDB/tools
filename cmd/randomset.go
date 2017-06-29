@@ -13,8 +13,9 @@ func NewRandomSetBitsCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	randomSetBits := &bench.RandomSetBits{}
 	randomSetBitsCmd := &cobra.Command{
 		Use:   "random-set-bits",
-		Short: "sets random bits",
-		Long:  `Agent num modifies random seed`,
+		Short: "Sets random bits.",
+		Long: `Sets random bits according to the parameters.
+Agent num modifies random seed`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")
@@ -35,16 +36,16 @@ func NewRandomSetBitsCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	}
 
 	flags := randomSetBitsCmd.Flags()
-	flags.Int64Var(&randomSetBits.BaseBitmapID, "base-bitmap-id", 0, "")
-	flags.Int64Var(&randomSetBits.BitmapIDRange, "bitmap-id-range", 100000, "")
-	flags.Int64Var(&randomSetBits.BaseProfileID, "base-profile-id", 0, "")
-	flags.Int64Var(&randomSetBits.ProfileIDRange, "profile-id-range", 100000, "")
-	flags.Int64Var(&randomSetBits.Seed, "seed", 1, "")
-	flags.IntVar(&randomSetBits.Iterations, "iterations", 100, "number of bits to set")
-	flags.StringVar(&randomSetBits.Frame, "frame", "frame", "frame to query")
-	flags.StringVar(&randomSetBits.Index, "index", "benchindex", "pilosa index to use")
+	flags.Int64Var(&randomSetBits.BaseBitmapID, "base-bitmap-id", 0, "Minimum row id for bits to be set.")
+	flags.Int64Var(&randomSetBits.BitmapIDRange, "bitmap-id-range", 100000, "Number of rows in which to set bits.")
+	flags.Int64Var(&randomSetBits.BaseProfileID, "base-profile-id", 0, "Minimum column id for bits to be set.")
+	flags.Int64Var(&randomSetBits.ProfileIDRange, "profile-id-range", 100000, "Number of columsn in which to set bits.")
+	flags.Int64Var(&randomSetBits.Seed, "seed", 1, "Random seed.")
+	flags.IntVar(&randomSetBits.Iterations, "iterations", 100, "Number of bits to set.")
+	flags.StringVar(&randomSetBits.Frame, "frame", "frame", "Frame to set bits in.")
+	flags.StringVar(&randomSetBits.Index, "index", "benchindex", "Pilosa index to use.")
 	flags.StringVar(&randomSetBits.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'")
-	flags.StringVar(&randomSetBits.ContentType, "content-type", "protobuf", "protobuf or pql")
+	flags.StringVar(&randomSetBits.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
 
 	return randomSetBitsCmd
 }

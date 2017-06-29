@@ -14,8 +14,9 @@ func NewSliceHeightCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Com
 	sliceHeight := bench.NewSliceHeight(stdin, stdout, stderr)
 	sliceHeightCmd := &cobra.Command{
 		Use:   "slice-height",
-		Short: "slice-height repeatedly imports more bitmaps into a single slice and tests query times in between.",
-		Long:  `Agent number has no effect.`,
+		Short: "Repeatedly imports more bitmaps into a single slice and tests query times in between.",
+		Long: `Repeatedly imports more bitmaps into a single slice and tests query times in between.
+Agent number has no effect.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")

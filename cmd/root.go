@@ -38,7 +38,7 @@ creation and management tools for Pilosa.
 			return nil
 		},
 	}
-	rc.PersistentFlags().Bool("dry-run", false, "stop before executing")
+	rc.PersistentFlags().Bool("dry-run", false, "Stop before executing. Useful for testing.")
 	_ = rc.PersistentFlags().MarkHidden("dry-run")
 	rc.PersistentFlags().StringP("config", "c", "", "Configuration file to read from.")
 	for _, subcomFn := range subcommandFns {

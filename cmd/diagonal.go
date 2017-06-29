@@ -14,7 +14,9 @@ func NewDiagonalSetBitsCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra
 	diagonalSetBitsCmd := &cobra.Command{
 		Use:   "diagonal-set-bits",
 		Short: "Sets bits with increasing profile id and bitmap id.",
-		Long: `Agent num offsets both the base profile id and base bitmap id by the number of
+		Long: `Sets bits with increasing profile id and bitmap id.
+
+Agent num offsets both the base profile id and base bitmap id by the number of
 iterations, so that only bits on the main diagonal are set, and agents don't
 overlap at all.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
