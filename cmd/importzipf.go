@@ -37,10 +37,10 @@ interface. Agent num has no effect`,
 	}
 
 	flags := importZipfCmd.Flags()
-	flags.Int64Var(&importZipf.BaseBitmapID, "base-bitmap-id", 0, "Minimum row id of set bits.")
-	flags.Int64Var(&importZipf.BaseProfileID, "base-profile-id", 0, "Minimum column id of set bits.")
-	flags.Int64Var(&importZipf.MaxBitmapID, "max-bitmap-id", 1000, "Maximum row id of set bits.")
-	flags.Int64Var(&importZipf.MaxProfileID, "max-profile-id", 1000, "Maximum column id of set bits.")
+	flags.Int64Var(&importZipf.BaseRowID, "base-row-id", 0, "Minimum row id of set bits.")
+	flags.Int64Var(&importZipf.BaseColumnID, "base-column-id", 0, "Minimum column id of set bits.")
+	flags.Int64Var(&importZipf.MaxRowID, "max-row-id", 1000, "Maximum row id of set bits.")
+	flags.Int64Var(&importZipf.MaxColumnID, "max-column-id", 1000, "Maximum column id of set bits.")
 	flags.IntVar(&importZipf.Iterations, "iterations", 100000, "Number of bits to set")
 	flags.Int64Var(&importZipf.Seed, "seed", 0, "Random seed.")
 	flags.StringVar(&importZipf.Index, "index", "benchindex", "Pilosa index in which to set bits.")

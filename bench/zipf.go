@@ -9,28 +9,28 @@ import (
 )
 
 // Zipf sets random bits according to the Zipf-Mandelbrot distribution.
-// This distribution accepts two parameters, Exponent and Ratio, for both bitmaps and profiles.
+// This distribution accepts two parameters, Exponent and Ratio, for both rows and columns.
 // It also uses PermutationGenerator to permute IDs randomly.
 type Zipf struct {
 	HasClient
-	Name            string  `json:"name"`
-	BaseBitmapID    int64   `json:"base-bitmap-id"`
-	BaseProfileID   int64   `json:"base-profile-id"`
-	BitmapIDRange   int64   `json:"bitmap-id-range"`
-	ProfileIDRange  int64   `json:"profile-id-range"`
-	Iterations      int     `json:"iterations"`
-	Seed            int64   `json:"seed"`
-	Index           string  `json:"index"`
-	Frame           string  `json:"frame"`
-	BitmapExponent  float64 `json:"bitmap-exponent"`
-	BitmapRatio     float64 `json:"bitmap-ratio"`
-	ProfileExponent float64 `json:"profile-exponent"`
-	ProfileRatio    float64 `json:"profile-ratio"`
-	Operation       string  `json:"operation"`
-	bitmapRng       *rand.Zipf
-	profileRng      *rand.Zipf
-	bitmapPerm      *PermutationGenerator
-	profilePerm     *PermutationGenerator
+	Name           string  `json:"name"`
+	BaseRowID      int64   `json:"base-row-id"`
+	BaseColumnID   int64   `json:"base-column-id"`
+	RowIDRange     int64   `json:"row-id-range"`
+	ColumnIDRange  int64   `json:"column-id-range"`
+	Iterations     int     `json:"iterations"`
+	Seed           int64   `json:"seed"`
+	Index          string  `json:"index"`
+	Frame          string  `json:"frame"`
+	RowExponent    float64 `json:"row-exponent"`
+	RowRatio       float64 `json:"row-ratio"`
+	ColumnExponent float64 `json:"column-exponent"`
+	ColumnRatio    float64 `json:"column-ratio"`
+	Operation      string  `json:"operation"`
+	rowRng         *rand.Zipf
+	columnRng      *rand.Zipf
+	rowPerm        *PermutationGenerator
+	columnPerm     *PermutationGenerator
 }
 
 // Offset is the true parameter used by the Zipf distribution, but the ratio,
@@ -51,13 +51,13 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 	b.Name = "zipf"
 	b.Seed = b.Seed + int64(agentNum)
 	rnd := rand.New(rand.NewSource(b.Seed))
-	bitmapOffset := getZipfOffset(b.BitmapIDRange, b.BitmapExponent, b.BitmapRatio)
-	b.bitmapRng = rand.NewZipf(rnd, b.BitmapExponent, bitmapOffset, uint64(b.BitmapIDRange-1))
-	profileOffset := getZipfOffset(b.ProfileIDRange, b.ProfileExponent, b.ProfileRatio)
-	b.profileRng = rand.NewZipf(rnd, b.ProfileExponent, profileOffset, uint64(b.ProfileIDRange-1))
+	rowOffset := getZipfOffset(b.RowIDRange, b.RowExponent, b.RowRatio)
+	b.rowRng = rand.NewZipf(rnd, b.RowExponent, rowOffset, uint64(b.RowIDRange-1))
+	columnOffset := getZipfOffset(b.ColumnIDRange, b.ColumnExponent, b.ColumnRatio)
+	b.columnRng = rand.NewZipf(rnd, b.ColumnExponent, columnOffset, uint64(b.ColumnIDRange-1))
 
-	b.bitmapPerm = NewPermutationGenerator(b.BitmapIDRange, b.Seed)
-	b.profilePerm = NewPermutationGenerator(b.ProfileIDRange, b.Seed+1)
+	b.rowPerm = NewPermutationGenerator(b.RowIDRange, b.Seed)
+	b.columnPerm = NewPermutationGenerator(b.ColumnIDRange, b.Seed+1)
 
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
@@ -85,13 +85,13 @@ func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		// generate IDs from Zipf distribution
-		bitmapIDOriginal := b.bitmapRng.Uint64()
-		profIDOriginal := b.profileRng.Uint64()
+		rowIDOriginal := b.rowRng.Uint64()
+		profIDOriginal := b.columnRng.Uint64()
 		// permute IDs randomly, but repeatably
-		bitmapID := b.bitmapPerm.Next(int64(bitmapIDOriginal))
-		profID := b.profilePerm.Next(int64(profIDOriginal))
+		rowID := b.rowPerm.Next(int64(rowIDOriginal))
+		profID := b.columnPerm.Next(int64(profIDOriginal))
 
-		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseBitmapID+int64(bitmapID), b.BaseProfileID+int64(profID))
+		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseRowID+int64(rowID), b.BaseColumnID+int64(profID))
 		start = time.Now()
 		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
 		if err != nil {

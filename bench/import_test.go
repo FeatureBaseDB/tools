@@ -13,11 +13,11 @@ import (
 
 func TestImportInit(t *testing.T) {
 	imp := bench.NewImport(os.Stdin, os.Stdout, os.Stderr)
-	imp.BaseBitmapID = 0
-	imp.MaxBitmapID = 10
-	imp.BaseProfileID = 0
-	imp.MaxProfileID = 10
-	imp.RandomBitmapOrder = false
+	imp.BaseRowID = 0
+	imp.MaxRowID = 10
+	imp.BaseColumnID = 0
+	imp.MaxColumnID = 10
+	imp.RandomRowOrder = false
 	imp.MinBitsPerMap = 2
 	imp.MaxBitsPerMap = 3
 	imp.AgentControls = "width"

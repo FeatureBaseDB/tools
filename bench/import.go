@@ -19,19 +19,19 @@ func NewImport(stdin io.Reader, stdout, stderr io.Writer) *Import {
 	}
 }
 
-// Import sets bits with increasing profile id and bitmap id.
+// Import sets bits with increasing column id and row id.
 type Import struct {
-	Name              string `json:"name"`
-	BaseBitmapID      int64  `json:"base-bitmap-id"`
-	MaxBitmapID       int64  `json:"max-bitmap-id"`
-	BaseProfileID     int64  `json:"base-profile-id"`
-	MaxProfileID      int64  `json:"max-profile-id"`
-	RandomBitmapOrder bool   `json:"random-bitmap-order"`
-	MinBitsPerMap     int64  `json:"min-bits-per-map"`
-	MaxBitsPerMap     int64  `json:"max-bits-per-map"`
-	AgentControls     string `json:"agent-controls"`
-	Seed              int64  `json:"seed"`
-	numbits           int
+	Name           string `json:"name"`
+	BaseRowID      int64  `json:"base-row-id"`
+	MaxRowID       int64  `json:"max-row-id"`
+	BaseColumnID   int64  `json:"base-column-id"`
+	MaxColumnID    int64  `json:"max-column-id"`
+	RandomRowOrder bool   `json:"random-row-order"`
+	MinBitsPerMap  int64  `json:"min-bits-per-map"`
+	MaxBitsPerMap  int64  `json:"max-bits-per-map"`
+	AgentControls  string `json:"agent-controls"`
+	Seed           int64  `json:"seed"`
+	numbits        int
 
 	*ctl.ImportCommand
 }
@@ -47,13 +47,13 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 	b.Seed = b.Seed + int64(agentNum)
 	switch b.AgentControls {
 	case "height":
-		numBitmapIDs := (b.MaxBitmapID - b.BaseBitmapID)
-		b.BaseBitmapID = b.BaseBitmapID + (numBitmapIDs * int64(agentNum))
-		b.MaxBitmapID = b.BaseBitmapID + numBitmapIDs
+		numRowIDs := (b.MaxRowID - b.BaseRowID)
+		b.BaseRowID = b.BaseRowID + (numRowIDs * int64(agentNum))
+		b.MaxRowID = b.BaseRowID + numRowIDs
 	case "width":
-		numProfileIDs := (b.MaxProfileID - b.BaseProfileID)
-		b.BaseProfileID = b.BaseProfileID + (numProfileIDs * int64(agentNum))
-		b.MaxProfileID = b.BaseProfileID + numProfileIDs
+		numColumnIDs := (b.MaxColumnID - b.BaseColumnID)
+		b.BaseColumnID = b.BaseColumnID + (numColumnIDs * int64(agentNum))
+		b.MaxColumnID = b.BaseColumnID + numColumnIDs
 	case "":
 		break
 	default:
@@ -64,8 +64,8 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 		return err
 	}
 	// set b.Paths)
-	num := GenerateImportCSV(f, b.BaseBitmapID, b.MaxBitmapID, b.BaseProfileID, b.MaxProfileID,
-		b.MinBitsPerMap, b.MaxBitsPerMap, b.Seed, b.RandomBitmapOrder)
+	num := GenerateImportCSV(f, b.BaseRowID, b.MaxRowID, b.BaseColumnID, b.MaxColumnID,
+		b.MinBitsPerMap, b.MaxBitsPerMap, b.Seed, b.RandomRowOrder)
 	b.numbits = num
 	// set b.Paths
 	b.Paths = []string{f.Name()}
@@ -99,35 +99,35 @@ func (s Int64Slice) Less(i, j int) bool { return s[i] < s[j] }
 func (s Int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
-func GenerateImportCSV(w io.Writer, baseBitmapID, maxBitmapID, baseProfileID, maxProfileID, minBitsPerMap, maxBitsPerMap, seed int64, randomOrder bool) int {
+func GenerateImportCSV(w io.Writer, baseRowID, maxRowID, baseColumnID, maxColumnID, minBitsPerMap, maxBitsPerMap, seed int64, randomOrder bool) int {
 	src := rand.NewSource(seed)
 	rng := rand.New(src)
 
-	var bitmapIDs []int
+	var rowIDs []int
 	if randomOrder {
-		bitmapIDs = rng.Perm(int(maxBitmapID - baseBitmapID))
+		rowIDs = rng.Perm(int(maxRowID - baseRowID))
 	}
 	numrows := 0
-	profileIDs := make(Int64Slice, maxBitsPerMap)
-	for i := baseBitmapID; i < maxBitmapID; i++ {
-		var bitmapID int64
+	columnIDs := make(Int64Slice, maxBitsPerMap)
+	for i := baseRowID; i < maxRowID; i++ {
+		var rowID int64
 		if randomOrder {
-			bitmapID = int64(bitmapIDs[i-baseBitmapID])
+			rowID = int64(rowIDs[i-baseRowID])
 		} else {
-			bitmapID = int64(i)
+			rowID = int64(i)
 		}
 
 		numBitsToSet := rng.Int63n(maxBitsPerMap-minBitsPerMap) + minBitsPerMap
 		numrows += int(numBitsToSet)
 		for j := int64(0); j < numBitsToSet; j++ {
-			profileIDs[j] = rng.Int63n(maxProfileID-baseProfileID) + baseProfileID
+			columnIDs[j] = rng.Int63n(maxColumnID-baseColumnID) + baseColumnID
 		}
-		profIDs := profileIDs[:numBitsToSet]
+		profIDs := columnIDs[:numBitsToSet]
 		if !randomOrder {
 			sort.Sort(profIDs)
 		}
 		for j := int64(0); j < numBitsToSet; j++ {
-			fmt.Fprintf(w, "%d,%d\n", bitmapID, profIDs[j])
+			fmt.Fprintf(w, "%d,%d\n", rowID, profIDs[j])
 		}
 
 	}
