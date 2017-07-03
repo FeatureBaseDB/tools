@@ -38,11 +38,10 @@ func (b *Query) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		resSlice[n] = make(map[string]interface{})
 		start = time.Now()
-		res, err := b.client.ExecuteQuery(ctx, b.Index, b.Query, true)
+		res, err := b.ExecuteQuery(ctx, b.Index, b.Query)
 		resSlice[n]["duration"] = time.Now().Sub(start)
 		if err != nil {
 			resSlice[n]["error"] = err.Error()
-			continue
 		}
 		resSlice[n]["result"] = res
 	}
@@ -96,7 +95,7 @@ func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
 		}
 		query.Children = bms
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.Index, query.String(), true)
+		_, err := b.ExecuteQuery(ctx, b.Index, query.String())
 		if err != nil {
 			results["error"] = err.Error()
 			return results

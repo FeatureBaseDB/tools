@@ -24,7 +24,7 @@ func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "diagonal-set-bits"
 	b.BaseRowID = b.BaseRowID + (agentNum * b.Iterations)
 	b.BaseColumnID = b.BaseColumnID + (agentNum * b.Iterations)
-	err := initIndex(hosts[0], b.Index, b.Frame)
+	err := b.InitIndex(b.Index, b.Frame)
 	if err != nil {
 		return err
 	}
@@ -43,7 +43,7 @@ func (b *DiagonalSetBits) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseRowID+n, b.BaseColumnID+n)
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
+		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		if err != nil {
 			results["error"] = err.Error()
 			return results

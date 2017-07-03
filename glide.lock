@@ -1,10 +1,10 @@
-hash: 1224563938fb22b2cba5b1d31780ba0141adbe230fc90cd5e6320c128d24ee81
-updated: 2017-06-28T20:39:34.417382829-05:00
+hash: 52363865b75e6b7f86fc325b015c3311b043fc3bd9fe31614d65f40e522290a8
+updated: 2017-07-03T14:03:34.847286369-05:00
 imports:
 - name: github.com/armon/go-metrics
   version: f036747b9d0e8590f175a5d654a2194a7d9df4b5
 - name: github.com/aws/aws-sdk-go
-  version: 50762c1efc55dd2a05eac85fc170b0f65aeec28f
+  version: a5a7f553e106c0b1dcbfbdaeb8774592fcc1a68a
   subpackages:
   - aws
   - aws/awserr
@@ -83,7 +83,7 @@ imports:
   - json/scanner
   - json/token
 - name: github.com/hashicorp/memberlist
-  version: 0a136466d82a7e6f1b7866dde3578ac28ed675ad
+  version: ef1747ec2d3ff86cdace44755946335d9d9468fc
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
 - name: github.com/jmespath/go-jmespath
@@ -91,17 +91,17 @@ imports:
 - name: github.com/magiconair/properties
   version: 51463bfca2576e06c62a8504b5c0f06d61312647
 - name: github.com/miekg/dns
-  version: e78414ef75607394ad7d917824f07f381df2eafa
+  version: e46719b2fef404d2e531c0dd9055b1c95ff01e2e
 - name: github.com/mitchellh/mapstructure
   version: d0303fe809921458f417bcf828397a65db30a7e4
 - name: github.com/pelletier/go-toml
   version: 69d355db5304c0f7f809a2edc054553e7142f016
 - name: github.com/pilosa/go-pilosa
-  version: 72b5826ffc97a3c9a53fc15c73fec7fd5364d051
+  version: 1fdeffa234a311d735ce214463e20dd482a7f5a6
   subpackages:
   - internal
 - name: github.com/pilosa/pilosa
-  version: 25051df1fcb4110819918225386fe6cfd1a970b0
+  version: 3e349594b18615fd3052c0711207ec28ffcdcecd
   subpackages:
   - ctl
   - gossip
@@ -128,7 +128,7 @@ imports:
 - name: github.com/spf13/cast
   version: acbeb36b902d72a7a4c18e8f3241075e7ab763e4
 - name: github.com/spf13/cobra
-  version: 4d647c8944eb42504a714e57e97f244ed6344722
+  version: 8c6fa02d2225de0f9bdcb7ca912556f68d172d8c
 - name: github.com/spf13/jwalterweatherman
   version: 0efa5202c04663c757d84f90f5219c1250baf94f
 - name: github.com/spf13/pflag
@@ -136,7 +136,7 @@ imports:
 - name: github.com/spf13/viper
   version: c1de95864d73a5465492829d7cb2dd422b19ac96
 - name: golang.org/x/crypto
-  version: 84f24dfdf3c414ed893ca1b318d0045ef5a1f607
+  version: 69be088f860613049aa58c65154d1b1d32bbdf90
   subpackages:
   - curve25519
   - ed25519
@@ -145,7 +145,7 @@ imports:
   - ssh/agent
   - ssh/terminal
 - name: golang.org/x/net
-  version: d4223d6710aad90f892de3ed4f1e7539ccc444a0
+  version: 1f9224279e98554b6a6432d4dd998a739f8b2b7c
   subpackages:
   - context
 - name: golang.org/x/sync
@@ -157,7 +157,7 @@ imports:
   subpackages:
   - unix
 - name: golang.org/x/text
-  version: 6353ef0f924300eea566d3438817aa4d3374817e
+  version: 2bf8f2a19ec09c670e931282edfe6567f6be21c9
   subpackages:
   - transform
   - unicode/norm

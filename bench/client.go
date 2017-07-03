@@ -2,28 +2,16 @@ package bench
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"github.com/pilosa/pilosa"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
-
-func firstHostClient(hosts []string) (*pilosa.Client, error) {
-	client, err := pilosa.NewClient(hosts[0])
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
-func roundRobinClient(hosts []string, agentNum int) (*pilosa.Client, error) {
-	clientNum := agentNum % len(hosts)
-	return firstHostClient(hosts[clientNum:])
-}
 
 // HasClient provides a reusable component for Benchmark implementations which
 // provides the Init method, a ClientType argument and a cli internal variable.
 type HasClient struct {
-	client      *pilosa.Client
+	client      *pcli.Client
+	schema      *pcli.Schema
 	ClientType  string `json:"client-type"`
 	ContentType string `json:"content-type"`
 }
@@ -33,35 +21,58 @@ type HasClient struct {
 // number mod len(hosts)
 func (h *HasClient) Init(hosts []string, agentNum int) error {
 	var err error
-	switch h.ClientType {
-	case "single":
-		h.client, err = firstHostClient(hosts)
-	case "round_robin":
-		h.client, err = roundRobinClient(hosts, agentNum)
-	default:
-		err = fmt.Errorf("Unsupported ClientType: %v", h.ClientType)
+	h.client, err = pcli.NewClientFromAddresses(hosts, &pcli.ClientOptions{})
+	if err != nil {
+		return fmt.Errorf("getting client from addresses: %v", err)
 	}
+	h.schema, err = h.client.Schema()
+	if err != nil {
+		return fmt.Errorf("getting schema from pilosa: %v", err)
+	}
+	return nil
+}
+
+func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (interface{}, error) {
+	idx, err := h.schema.Index(index, nil)
+	if err != nil {
+		return nil, err
+	}
+	pqlQuery := idx.RawQuery(query)
+	resp, err := h.client.Query(pqlQuery, &pcli.QueryOptions{})
+	return resp, err
+}
+
+func (h *HasClient) InitIndex(index string, frame string) error {
+	idx, err := h.schema.Index(index, &pcli.IndexOptions{})
 	if err != nil {
 		return err
 	}
-
-	switch h.ContentType {
-	case "protobuf":
-		return nil
-	case "pql":
-		return nil
-	default:
-		return fmt.Errorf("Unsupported ContentType: %v", h.ContentType)
-
+	_, err = idx.Frame(frame, &pcli.FrameOptions{})
+	if err != nil {
+		return err
 	}
+	return h.client.SyncSchema(h.schema)
 }
 
-func (h *HasClient) ExecuteQuery(contentType, index, query string, ctx context.Context) (interface{}, error) {
-	if contentType == "protobuf" {
-		return h.client.ExecuteQuery(ctx, index, query, true)
-	} else if contentType == "pql" {
-		return h.client.ExecutePQL(ctx, index, query)
-	} else {
-		return nil, errors.New("unsupport content type")
+func initIndex(host string, indexName string, frameName string) error {
+	pilosaURI, err := pcli.NewURIFromAddress(host)
+	setupClient := pcli.NewClientWithURI(pilosaURI)
+	index, err := pcli.NewIndex(indexName, &pcli.IndexOptions{})
+	if err != nil {
+		return fmt.Errorf("making index: %v", err)
 	}
+	err = setupClient.EnsureIndex(index)
+	if err != nil {
+		return fmt.Errorf("ensuring index existence: %v", err)
+	}
+	frame, err := index.Frame(frameName, &pcli.FrameOptions{})
+	if err != nil {
+		return fmt.Errorf("making frame: %v", err)
+	}
+	err = setupClient.EnsureFrame(frame)
+	if err != nil {
+		return fmt.Errorf("creating frame '%v': %v", frame, err)
+	}
+
+	return nil
 }

@@ -42,7 +42,7 @@ func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseRowID), uint64(b.RowIDRange))
 		start = time.Now()
-		b.ExecuteQuery(b.ContentType, b.Indexes[n%len(b.Indexes)], call.String(), ctx)
+		b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)

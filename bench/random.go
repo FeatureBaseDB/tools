@@ -26,7 +26,7 @@ type RandomSetBits struct {
 func (b *RandomSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "random-set-bits"
 	b.Seed = b.Seed + int64(agentNum)
-	err := initIndex(hosts[0], b.Index, b.Frame)
+	err := b.InitIndex(b.Index, b.Frame)
 	if err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func (b *RandomSetBits) Run(ctx context.Context) map[string]interface{} {
 		profID := rng.Int63n(b.ColumnIDRange)
 		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseRowID+rowID, b.BaseColumnID+profID)
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
+		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		if err != nil {
 			results["error"] = err.Error()
 			return results

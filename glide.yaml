@@ -19,3 +19,4 @@ import:
   - ssh
   - ssh/agent
   - ssh/terminal
+- package: github.com/pilosa/go-pilosa

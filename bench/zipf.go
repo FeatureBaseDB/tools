@@ -62,7 +62,7 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
 	}
-	err := initIndex(hosts[0], b.Index, b.Frame)
+	err := b.InitIndex(b.Index, b.Frame)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -93,7 +93,7 @@ func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
 
 		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseRowID+int64(rowID), b.BaseColumnID+int64(profID))
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.Index, query, true)
+		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		if err != nil {
 			results["error"] = err.Error()
 			return results
