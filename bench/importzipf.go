@@ -49,21 +49,21 @@ func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 	if err != nil {
 		results["error"] = fmt.Errorf("running go client import: %v", err)
 	}
-	results["actual-iterations"] = bitIterator.iterations
+	results["actual-iterations"] = bitIterator.actualIterations
 	return results
 }
 
 type ZipfBitIterator struct {
-	iterations int64
-	bitnum     int64
-	maxbitnum  int64
-	baserow    int64
-	maxrow     int64
-	basecol    int64
-	maxcol     int64
-	avgdelta   float64
-	lambda     float64
-	rng        *rand.Rand
+	actualIterations int64
+	bitnum           int64
+	maxbitnum        int64
+	baserow          int64
+	maxrow           int64
+	basecol          int64
+	maxcol           int64
+	avgdelta         float64
+	lambda           float64
+	rng              *rand.Rand
 }
 
 func (b *ImportZipf) NewZipfBitIterator() *ZipfBitIterator {
@@ -72,7 +72,7 @@ func (b *ImportZipf) NewZipfBitIterator() *ZipfBitIterator {
 	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
 	z.lambda = 1.0 / z.avgdelta
 	z.rng = b.rng
-	z.iterations, z.baserow, z.basecol, z.maxrow, z.maxcol = b.Iterations, b.BaseRowID, b.BaseColumnID, b.MaxRowID, b.MaxColumnID
+	z.baserow, z.basecol, z.maxrow, z.maxcol = b.BaseRowID, b.BaseColumnID, b.MaxRowID, b.MaxColumnID
 	return z
 }
 
@@ -83,7 +83,7 @@ func (z *ZipfBitIterator) NextBit() (pilosa.Bit, error) {
 		return pilosa.Bit{}, io.EOF
 	}
 	bit := pilosa.Bit{}
-	z.iterations++
+	z.actualIterations++
 	bit.RowID = uint64((z.bitnum / (z.maxcol - z.basecol + 1)) + z.baserow)
 	bit.ColumnID = uint64(z.bitnum%(z.maxrow-z.baserow+1) + z.basecol)
 	return bit, nil
