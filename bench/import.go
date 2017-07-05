@@ -2,7 +2,6 @@ package bench
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -35,79 +34,6 @@ type Import struct {
 	numbits           int
 
 	*ctl.ImportCommand
-}
-
-// Usage returns the usage message to be printed.
-func (b *Import) Usage() string {
-	return `
-import generates an import file and imports using pilosa's bulk import interface
-
-Agent num can have various effects - see -agent-controls flag.
-
-Usage: import [arguments]
-
-The following arguments are available:
-
-	-base-bitmap-id int
-		bits being set will all be greater than this
-
-	-max-bitmap-id int
-		bits being set will all be less than this
-
-	-base-profile-id int
-		profile id num to start from
-
-	-max-profile-id int
-		maximum profile id to generate
-
-	-random-bitmap-order
-		if this option is set, the import file will not be sorted by bitmap id
-
-	-min-bits-per-map int
-		minimum number of bits set per bitmap
-
-	-max-bits-per-map int
-		maximum number of bits set per bitmap
-
-	-agent-controls string
-		can be 'height', 'width', or empty (TODO or square?)- increasing
-		number of agents modulates bitmap id range, profile id range,
-		or just sets more bits in the same range.
-
-	-seed int
-		seed for RNG
-
-	-index string
-		pilosa index to use
-
-	-frame string
-		frame to import into
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *Import) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("Import", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
-	fs.Int64Var(&b.MaxBitmapID, "max-bitmap-id", 1000, "")
-	fs.Int64Var(&b.BaseProfileID, "base-profile-id", 0, "")
-	fs.Int64Var(&b.MaxProfileID, "max-profile-id", 1000, "")
-	fs.BoolVar(&b.RandomBitmapOrder, "random-bitmap-order", false, "")
-	fs.Int64Var(&b.MinBitsPerMap, "min-bits-per-map", 0, "")
-	fs.Int64Var(&b.MaxBitsPerMap, "max-bits-per-map", 10, "")
-	fs.StringVar(&b.AgentControls, "agent-controls", "", "")
-	fs.Int64Var(&b.Seed, "seed", 0, "")
-	fs.StringVar(&b.Index, "index", "benchindex", "")
-	fs.StringVar(&b.Frame, "frame", "import", "")
-	fs.IntVar(&b.BufferSize, "buffer-size", 10000000, "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	return fs.Args(), nil
 }
 
 // Init generates import data based on the agent num and fields of 'b'.

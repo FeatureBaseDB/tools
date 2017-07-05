@@ -2,10 +2,7 @@ package bench
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"io/ioutil"
-	"strings"
 	"time"
 )
 
@@ -20,6 +17,7 @@ type RandomQuery struct {
 	BitmapIDRange int64    `json:"bitmap-id-range"`
 	Iterations    int      `json:"iterations"`
 	Seed          int64    `json:"seed"`
+	Frame         string   `json:"frame"`
 	Indexes       []string `json:"indexes"`
 }
 
@@ -30,74 +28,6 @@ func (b *RandomQuery) Init(hosts []string, agentNum int) error {
 	return b.HasClient.Init(hosts, agentNum)
 }
 
-// Usage returns the usage message to be printed.
-func (b *RandomQuery) Usage() string {
-	return `
-random-query constructs random queries
-
-Agent number modifies the random seed.
-
-Usage: random-query [arguments]
-
-The following arguments are available:
-
-	-max-depth int
-		Maximum nesting depth of queries
-
-	-max-args int
-		Maximum number of args for Union/Intersect/Difference Queries
-
-	-max-n int
-		Maximum N value for TopN queries.
-
-	-base-bitmap-id int
-		bitmap id to start from
-
-	-bitmap-id-range int
-		number of possible bitmap ids that can be set
-
-	-iterations int
-		number of bits to set
-
-	-seed int
-		Seed for RNG
-
-	-indexes string
-		Comma separated list of Indexes to query against
-
-	-client-type string
-		Can be 'single' (all agents hitting one host) or 'round_robin'
-
-	-content-type string
-		protobuf or pql
-`[1:]
-}
-
-// ConsumeFlags parses all flags up to the next non flag argument (argument does
-// not start with "-" and isn't the value of a flag). It returns the remaining
-// args.
-func (b *RandomQuery) ConsumeFlags(args []string) ([]string, error) {
-	fs := flag.NewFlagSet("RandomQuery", flag.ContinueOnError)
-	fs.SetOutput(ioutil.Discard)
-	fs.IntVar(&b.MaxDepth, "max-depth", 4, "")
-	fs.IntVar(&b.MaxArgs, "max-args", 4, "")
-	fs.IntVar(&b.MaxN, "max-n", 4, "")
-	fs.Int64Var(&b.BaseBitmapID, "base-bitmap-id", 0, "")
-	fs.Int64Var(&b.BitmapIDRange, "bitmap-id-range", 100000, "")
-	fs.Int64Var(&b.Seed, "seed", 1, "")
-	fs.IntVar(&b.Iterations, "iterations", 100, "")
-	var indexes string
-	fs.StringVar(&indexes, "indexes", "benchindex", "")
-	fs.StringVar(&b.ClientType, "client-type", "single", "")
-	fs.StringVar(&b.ContentType, "content-type", "protobuf", "")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-	b.Indexes = strings.Split(indexes, ",")
-	return fs.Args(), nil
-}
-
 // Run runs the RandomQuery benchmark
 func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
@@ -106,6 +36,7 @@ func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 		return results
 	}
 	qm := NewQueryGenerator(b.Seed)
+	qm.IDToFrameFn = func(id uint64) string { return b.Frame }
 	s := NewStats()
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {

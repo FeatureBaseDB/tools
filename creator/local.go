@@ -37,12 +37,15 @@ func (localCluster *LocalCluster) Start() error {
 	// Build cluster configuration.
 	cluster := pilosa.NewCluster()
 	cluster.ReplicaN = localCluster.ReplicaN
+	nodeset := pilosa.NewStaticNodeSet()
+	cluster.NodeSet = nodeset
 
 	for i := 0; i < localCluster.ServerN; i++ {
 		cluster.Nodes = append(cluster.Nodes, &pilosa.Node{
 			Host: fmt.Sprintf("localhost:%d", BasePort+i),
 		})
 	}
+	nodeset.Join(cluster.Nodes)
 	localCluster.cluster = cluster
 
 	// Build servers.

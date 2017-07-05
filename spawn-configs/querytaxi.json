@@ -1,0 +1,8 @@
+{
+    "benchmarks": [
+        {
+            "num": 1,
+            "args": ["basic-query", "-iterations", "10000", "-num-args", "5", "-client-type", "round_robin", "-index", "taxi", "-frame", "pickup_grid_id"]
+        }
+    ]
+}

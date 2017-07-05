@@ -1,10 +1,9 @@
 // bench contains benchmarks and common utilities useful to benchmarks
 //
-// In order to write new benchmarks, one must satisfy the Benchmark and Command
-// interfaces in bench.go. In order to use the benchmark from pitool, it
-// needs to be wired in in two places. The first is BagentCommand.ParseFlags,
-// where a case statement needs to be added, and the second is just adding the
-// benchmark to the BagentCommand.Usage usage string.
+// In order to write new benchmarks, one must satisfy the Benchmark interface in
+// bench.go. In order to use the benchmark from pi, it needs a new file under
+// tools/cmd which defines a cobra.Cmd - look at an existing benchmark's file to
+// see what needs to be done.
 //
 // When writing a new benchmark, there are a few things to keep in mind other
 // than just implementing the interface:
@@ -22,10 +21,6 @@
 //
 // 3. The Run method does not need to report the total runtime - that is collected
 // by calling code.
-//
-// 4. Usage should follow the format in other benchmarks, and explain how the
-// benchmark uses agentNum to modify its behavior
-//
 //
 // Files:
 //
