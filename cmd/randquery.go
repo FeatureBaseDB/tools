@@ -40,8 +40,8 @@ Agent num modifies random seed.`,
 	flags.IntVar(&randomQuery.MaxArgs, "max-args", 4, "Maximum number of arguments per query.")
 	flags.IntVar(&randomQuery.MaxN, "max-n", 4, "Maximum value of N for TopN queries.")
 
-	flags.Int64Var(&randomQuery.BaseBitmapID, "base-bitmap-id", 0, "Lowest row id to include in queries.")
-	flags.Int64Var(&randomQuery.BitmapIDRange, "bitmap-id-range", 100000, "Number of possible row ids to include in queries.")
+	flags.Int64Var(&randomQuery.BaseRowID, "base-row-id", 0, "Lowest row id to include in queries.")
+	flags.Int64Var(&randomQuery.RowIDRange, "row-id-range", 100000, "Number of possible row ids to include in queries.")
 	flags.Int64Var(&randomQuery.Seed, "seed", 1, "random seed")
 	flags.IntVar(&randomQuery.Iterations, "iterations", 100, "Number queries to perform.")
 	flags.StringVar(&randomQuery.Frame, "frame", "frame", "Frame to query.")

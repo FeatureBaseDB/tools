@@ -20,7 +20,7 @@ func NewSliceHeight(stdin io.Reader, stdout, stderr io.Writer) *SliceHeight {
 	}
 }
 
-// SliceHeight benchmark tests the effect of an increasing number of bitmaps in
+// SliceHeight benchmark tests the effect of an increasing number of rows in
 // a single slice on query time.
 type SliceHeight struct {
 	MaxTime time.Duration `json:"max-time"`
@@ -55,8 +55,8 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 
 	imp := NewImport(b.Stdin, b.Stdout, b.Stderr)
-	imp.MaxBitmapID = 100
-	imp.MaxProfileID = pilosa.SliceWidth
+	imp.MaxRowID = 100
+	imp.MaxColumnID = pilosa.SliceWidth
 	imp.MinBitsPerMap = b.MinBitsPerMap
 	imp.MaxBitsPerMap = b.MaxBitsPerMap
 	imp.Index = b.Index
@@ -90,8 +90,8 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 			qdur := time.Now().Sub(qstart)
 			iresults["query"] = qdur
 		}
-		imp.BaseBitmapID = imp.MaxBitmapID
-		imp.MaxBitmapID = imp.MaxBitmapID * 10
+		imp.BaseRowID = imp.MaxRowID
+		imp.MaxRowID = imp.MaxRowID * 10
 
 		if time.Now().Sub(start) > b.MaxTime {
 			break

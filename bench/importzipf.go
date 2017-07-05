@@ -11,15 +11,15 @@ import (
 )
 
 type ImportZipf struct {
-	Name          string `json:"name"`
-	BaseBitmapID  int64  `json:"base-bitmap-id"`
-	BaseProfileID int64  `json:"base-profile-id"`
-	MaxBitmapID   int64  `json:"max-bitmap-id"`
-	MaxProfileID  int64  `json:"max-profile-id"`
-	Iterations    int    `json:"iterations"`
-	Seed          int64  `json:"seed"`
-	importStdin   io.WriteCloser
-	rng           *rand.Rand
+	Name         string `json:"name"`
+	BaseRowID    int64  `json:"base-row-id"`
+	BaseColumnID int64  `json:"base-column-id"`
+	MaxRowID     int64  `json:"max-row-id"`
+	MaxColumnID  int64  `json:"max-column-id"`
+	Iterations   int    `json:"iterations"`
+	Seed         int64  `json:"seed"`
+	importStdin  io.WriteCloser
+	rng          *rand.Rand
 
 	*ctl.ImportCommand
 }
@@ -87,7 +87,7 @@ func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 
 // GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
 func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) (int64, error) {
-	maxbitnum := (b.MaxBitmapID - b.BaseBitmapID + 1) * (b.MaxProfileID - b.BaseProfileID + 1)
+	maxbitnum := (b.MaxRowID - b.BaseRowID + 1) * (b.MaxColumnID - b.BaseColumnID + 1)
 	avgdelta := float64(maxbitnum) / float64(b.Iterations)
 	lambda := 1.0 / avgdelta
 	var bitnum int64 = 0
@@ -99,8 +99,8 @@ func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) (int64, error) {
 			break
 		}
 		iterations++
-		rowID := (bitnum / (b.MaxProfileID - b.BaseProfileID + 1)) + b.BaseBitmapID
-		colID := bitnum%(b.MaxBitmapID-b.BaseBitmapID+1) + b.BaseProfileID
+		rowID := (bitnum / (b.MaxColumnID - b.BaseColumnID + 1)) + b.BaseRowID
+		colID := bitnum%(b.MaxRowID-b.BaseRowID+1) + b.BaseColumnID
 		_, err := w.Write([]byte(fmt.Sprintf("%d,%d\n", rowID, colID)))
 		if err != nil {
 			return iterations, fmt.Errorf("GenerateImportZipfCSV, writing: %v", err)
