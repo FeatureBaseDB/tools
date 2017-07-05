@@ -54,6 +54,16 @@ func (h *HasClient) InitIndex(index string, frame string) error {
 	return h.client.SyncSchema(h.schema)
 }
 
+func (h *HasClient) Import(index, frame string, iter pcli.BitIterator, batchSize uint) error {
+	pilosaIndex, err := h.schema.Index(index, nil)
+	if err != nil {
+		return err
+	}
+	pilosaFrame, err := pilosaIndex.Frame(frame, nil)
+	err = h.client.ImportFrame(pilosaFrame, iter, batchSize)
+	return err
+}
+
 func initIndex(host string, indexName string, frameName string) error {
 	pilosaURI, err := pcli.NewURIFromAddress(host)
 	setupClient := pcli.NewClientWithURI(pilosaURI)
