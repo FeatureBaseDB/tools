@@ -88,27 +88,3 @@ func (z *ZipfBitIterator) NextBit() (pilosa.Bit, error) {
 	bit.ColumnID = uint64(z.bitnum%(z.maxrow-z.baserow+1) + z.basecol)
 	return bit, nil
 }
-
-// // GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
-// func (b *ImportZipf) GenerateImportZipfCSV(w io.Writer) (int64, error) {
-// 	maxbitnum := (b.MaxRowID - b.BaseRowID + 1) * (b.MaxColumnID - b.BaseColumnID + 1)
-// 	avgdelta := float64(maxbitnum) / float64(b.Iterations)
-// 	lambda := 1.0 / avgdelta
-// 	var bitnum int64 = 0
-// 	var iterations int64 = 0
-// 	for {
-// 		delta := b.rng.ExpFloat64() / lambda
-// 		bitnum = int64(float64(bitnum) + delta)
-// 		if bitnum > maxbitnum {
-// 			break
-// 		}
-// 		iterations++
-// 		rowID := (bitnum / (b.MaxColumnID - b.BaseColumnID + 1)) + b.BaseRowID
-// 		colID := bitnum%(b.MaxRowID-b.BaseRowID+1) + b.BaseColumnID
-// 		_, err := w.Write([]byte(fmt.Sprintf("%d,%d\n", rowID, colID)))
-// 		if err != nil {
-// 			return iterations, fmt.Errorf("GenerateImportZipfCSV, writing: %v", err)
-// 		}
-// 	}
-// 	return iterations, nil
-// }
