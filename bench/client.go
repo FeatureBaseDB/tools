@@ -43,6 +43,9 @@ func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (inte
 }
 
 func (h *HasClient) InitIndex(index string, frame string) error {
+	if h.schema == nil {
+		return fmt.Errorf("You need to call HasClient.Init before InitIndex")
+	}
 	idx, err := h.schema.Index(index, &pcli.IndexOptions{})
 	if err != nil {
 		return err
@@ -60,6 +63,9 @@ func (h *HasClient) Import(index, frame string, iter pcli.BitIterator, batchSize
 		return err
 	}
 	pilosaFrame, err := pilosaIndex.Frame(frame, nil)
+	if err != nil {
+		return err
+	}
 	err = h.client.ImportFrame(pilosaFrame, iter, batchSize)
 	return err
 }

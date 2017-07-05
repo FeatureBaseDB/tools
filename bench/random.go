@@ -26,11 +26,11 @@ type RandomSetBits struct {
 func (b *RandomSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "random-set-bits"
 	b.Seed = b.Seed + int64(agentNum)
-	err := b.InitIndex(b.Index, b.Frame)
+	err := b.HasClient.Init(hosts, agentNum)
 	if err != nil {
 		return err
 	}
-	return b.HasClient.Init(hosts, agentNum)
+	return b.InitIndex(b.Index, b.Frame)
 }
 
 // Run runs the RandomSetBits benchmark

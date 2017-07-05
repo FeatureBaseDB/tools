@@ -62,12 +62,12 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
 	}
-	err := b.InitIndex(b.Index, b.Frame)
+	err := b.HasClient.Init(hosts, agentNum)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
 
-	return b.HasClient.Init(hosts, agentNum)
+	return b.InitIndex(b.Index, b.Frame)
 }
 
 // Run runs the Zipf benchmark

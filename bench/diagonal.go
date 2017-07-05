@@ -24,11 +24,11 @@ func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
 	b.Name = "diagonal-set-bits"
 	b.BaseRowID = b.BaseRowID + (agentNum * b.Iterations)
 	b.BaseColumnID = b.BaseColumnID + (agentNum * b.Iterations)
-	err := b.InitIndex(b.Index, b.Frame)
+	err := b.HasClient.Init(hosts, agentNum)
 	if err != nil {
 		return err
 	}
-	return b.HasClient.Init(hosts, agentNum)
+	return b.InitIndex(b.Index, b.Frame)
 }
 
 // Run runs the DiagonalSetBits benchmark
