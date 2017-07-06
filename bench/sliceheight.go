@@ -53,7 +53,7 @@ func (b *SliceHeight) Init(hosts []string, agentNum int) error {
 func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 
-	imp := &ImportZipf{
+	imp := &Import{
 		MaxRowID:     100,
 		MaxColumnID:  1048576, // must match pilosa.SliceWidth
 		Iterations:   b.BaseIterations,
