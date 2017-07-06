@@ -45,6 +45,7 @@ interface. Agent num has no effect`,
 	flags.Int64Var(&importZipf.Seed, "seed", 0, "Random seed.")
 	flags.StringVar(&importZipf.Index, "index", "benchindex", "Pilosa index in which to set bits.")
 	flags.StringVar(&importZipf.Frame, "frame", "frame", "Pilosa frame in which to set bits.")
+	flags.StringVar(&importZipf.Distribution, "distribution", "exponential", "Random distribution for deltas between set bits (exponential or uniform).")
 	flags.UintVar(&importZipf.BufferSize, "buffer-size", 10000000, "Number of set bits to buffer in importer before POSTing to Pilosa.")
 
 	return importZipfCmd

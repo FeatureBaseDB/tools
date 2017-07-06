@@ -20,6 +20,7 @@ type ImportZipf struct {
 	Frame        string `json:"frame"`
 	Iterations   int64  `json:"iterations"`
 	Seed         int64  `json:"seed"`
+	Distribution string `json:"distribution"`
 	BufferSize   uint
 	rng          *rand.Rand
 	HasClient
@@ -47,7 +48,7 @@ func (b *ImportZipf) Run(ctx context.Context) map[string]interface{} {
 	bitIterator := b.NewZipfBitIterator()
 	err := b.HasClient.Import(b.Index, b.Frame, bitIterator, b.BufferSize)
 	if err != nil {
-		results["error"] = fmt.Errorf("running go client import: %v", err)
+		results["error"] = fmt.Sprintf("running go client import: %v", err)
 	}
 	results["actual-iterations"] = bitIterator.actualIterations
 	return results
@@ -64,20 +65,31 @@ type ZipfBitIterator struct {
 	avgdelta         float64
 	lambda           float64
 	rng              *rand.Rand
+	fdelta           func(z *ZipfBitIterator) float64
 }
 
 func (b *ImportZipf) NewZipfBitIterator() *ZipfBitIterator {
 	z := &ZipfBitIterator{}
+	z.rng = b.rng
 	z.maxbitnum = (b.MaxRowID - b.BaseRowID + 1) * (b.MaxColumnID - b.BaseColumnID + 1)
 	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
-	z.lambda = 1.0 / z.avgdelta
-	z.rng = b.rng
 	z.baserow, z.basecol, z.maxrow, z.maxcol = b.BaseRowID, b.BaseColumnID, b.MaxRowID, b.MaxColumnID
+
+	if b.Distribution == "exponential" {
+		z.lambda = 1.0 / z.avgdelta
+		z.fdelta = func(z *ZipfBitIterator) float64 {
+			return z.rng.ExpFloat64() / z.lambda
+		}
+	} else { // if b.Distribution == "uniform" {
+		z.fdelta = func(z *ZipfBitIterator) float64 {
+			return z.rng.Float64() * z.avgdelta * 2
+		}
+	}
 	return z
 }
 
 func (z *ZipfBitIterator) NextBit() (pilosa.Bit, error) {
-	delta := z.rng.ExpFloat64() / z.lambda
+	delta := z.fdelta(z)
 	z.bitnum = int64(float64(z.bitnum) + delta)
 	if z.bitnum > z.maxbitnum {
 		return pilosa.Bit{}, io.EOF

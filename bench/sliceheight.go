@@ -2,11 +2,11 @@ package bench
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strconv"
 	"time"
 
-	"github.com/pilosa/pilosa"
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -26,12 +26,11 @@ type SliceHeight struct {
 	MaxTime time.Duration `json:"max-time"`
 	hosts   []string
 
-	Name          string `json:"name"`
-	MinBitsPerMap int64  `json:"min-bits-per-map"`
-	MaxBitsPerMap int64  `json:"max-bits-per-map"`
-	Seed          int64  `json:"seed"`
-	Index         string `json:"index"`
-	Frame         string `json:"frame"`
+	Name           string `json:"name"`
+	BaseIterations int64  `json:"base-iterations"`
+	Seed           int64  `json:"seed"`
+	Index          string `json:"index"`
+	Frame          string `json:"frame"`
 
 	Stdin  io.Reader `json:"-"`
 	Stdout io.Writer `json:"-"`
@@ -54,13 +53,15 @@ func (b *SliceHeight) Init(hosts []string, agentNum int) error {
 func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
 
-	imp := NewImport(b.Stdin, b.Stdout, b.Stderr)
-	imp.MaxRowID = 100
-	imp.MaxColumnID = pilosa.SliceWidth
-	imp.MinBitsPerMap = b.MinBitsPerMap
-	imp.MaxBitsPerMap = b.MaxBitsPerMap
-	imp.Index = b.Index
-	imp.Frame = b.Frame
+	imp := &ImportZipf{
+		MaxRowID:     100,
+		MaxColumnID:  1048576, // must match pilosa.SliceWidth
+		Iterations:   b.BaseIterations,
+		Index:        b.Index,
+		Frame:        b.Frame,
+		Distribution: "exponential",
+		BufferSize:   1000000,
+	}
 
 	start := time.Now()
 
@@ -68,12 +69,15 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 		iresults := make(map[string]interface{})
 		results["iteration"+strconv.Itoa(i)] = iresults
 
-		genstart := time.Now()
-		imp.Init(b.hosts, 0)
-		gendur := time.Now().Sub(genstart)
-		iresults["csvgen"] = gendur
-
-		iresults["import"] = imp.Run(ctx)
+		err := imp.Init(b.hosts, 0)
+		if err != nil {
+			iresults["error"] = fmt.Sprintf("error initializing importer, round %d, err: %v", i, err)
+			break
+		}
+		importStart := time.Now()
+		importRes := imp.Run(ctx)
+		importRes["duration"] = time.Since(importStart)
+		iresults["import"] = importRes
 
 		qstart := time.Now()
 		q := &pql.Call{
@@ -83,15 +87,17 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 				"n":     50,
 			},
 		}
-		_, err := imp.Client.ExecuteQuery(ctx, b.Index, q.String(), true)
+		res, err := imp.HasClient.ExecuteQuery(ctx, b.Index, q.String())
 		if err != nil {
 			iresults["query_error"] = err.Error()
 		} else {
 			qdur := time.Now().Sub(qstart)
-			iresults["query"] = qdur
+			iresults["query_duration"] = qdur
+			iresults["query_results"] = res
 		}
 		imp.BaseRowID = imp.MaxRowID
 		imp.MaxRowID = imp.MaxRowID * 10
+		imp.Iterations *= 10
 
 		if time.Now().Sub(start) > b.MaxTime {
 			break

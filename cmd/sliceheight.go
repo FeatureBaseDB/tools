@@ -43,8 +43,7 @@ Agent number has no effect.`,
 
 	flags := sliceHeightCmd.Flags()
 	flags.Int("max-time", 30, "Stop benchmark after this many seconds.")
-	flags.Int64Var(&sliceHeight.MinBitsPerMap, "min-bits-per-map", 0, "Minimum number of bits set per row.")
-	flags.Int64Var(&sliceHeight.MaxBitsPerMap, "max-bits-per-map", 10, "Maximum number of bits set per row.")
+	flags.Int64Var(&sliceHeight.BaseIterations, "base-iterations", 1000, "Number of iterations for first import - grows by 10x each round.")
 	flags.Int64Var(&sliceHeight.Seed, "seed", 0, "Seed for RNG.")
 	flags.StringVar(&sliceHeight.Index, "index", "benchindex", "Pilosa index to use.")
 	flags.StringVar(&sliceHeight.Frame, "frame", "slice-height", "Frame to import into.")
