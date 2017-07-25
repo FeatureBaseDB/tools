@@ -87,7 +87,7 @@ func (b *SliceHeight) Run(ctx context.Context) map[string]interface{} {
 				"n":     50,
 			},
 		}
-		res, err := imp.HasClient.ExecuteQuery(ctx, b.Index, q.String())
+		res, err := imp.ExecuteQuery(ctx, b.Index, q.String())
 		if err != nil {
 			iresults["query_error"] = err.Error()
 		} else {
