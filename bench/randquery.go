@@ -42,7 +42,12 @@ func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseRowID), uint64(b.RowIDRange))
 		start = time.Now()
-		b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
+		_, err := b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
+		if err != nil {
+			results["error"] = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
+			return results
+		}
+
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)
