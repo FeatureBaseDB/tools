@@ -44,7 +44,7 @@ type SpawnCommand struct {
 
 	SpawnFile string
 
-	// Benchmarks is a slice of Spawns which specifies all of the bagent
+	// Benchmarks is a slice of Spawns which specifies all of the bench
 	// commands to run. These will all be run in parallel, started on each
 	// of the agents in a round robin fashion.
 	Benchmarks []Spawn `json:"benchmarks"`
@@ -60,7 +60,7 @@ type SpawnCommand struct {
 type Spawn struct {
 	Num  int      `json:"num"`  // number of agents to run
 	Name string   `json:"name"` // Should describe what this Spawn does
-	Args []string `json:"args"` // everything that comes after `pitool bagent [arguments]`
+	Args []string `json:"args"` // everything that comes after `pitool bench [arguments]`
 }
 
 // NewSpawnCommand returns a new instance of SpawnCommand.
@@ -90,10 +90,10 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	output["pitool-version"] = tools.Version
 	output["pitool-build-time"] = tools.BuildTime
 	if len(cmd.PilosaHosts) == 0 {
-		return fmt.Errorf("bspawn: pilosa-hosts not specified")
+		return fmt.Errorf("spawn: pilosa-hosts not specified")
 	}
 	if len(cmd.AgentHosts) == 0 {
-		fmt.Fprintln(cmd.Stderr, "bpspawn: no agent-hosts specified; all agents will be spawned on localhost")
+		fmt.Fprintln(cmd.Stderr, "spawn: no agent-hosts specified; all agents will be spawned on localhost")
 		cmd.AgentHosts = []string{"localhost"}
 	}
 	output["spawn"] = cmd
@@ -109,7 +109,7 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	} else if cmd.Output == "stdout" {
 		writer = cmd.Stdout
 	} else {
-		return fmt.Errorf("invalid bspawn output destination")
+		return fmt.Errorf("invalid spawn output destination")
 	}
 
 	enc := json.NewEncoder(writer)
@@ -130,7 +130,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{
 	cmdName := "pi"
 	if cmd.CopyBinary {
 		cmdName = "/tmp/pi" + strconv.Itoa(rand.Int())
-		fmt.Fprintf(cmd.Stderr, "bspawn: building pitool binary with GOOS=%v and GOARCH=%v to copy to agents at %v\n", cmd.GOOS, cmd.GOARCH, cmdName)
+		fmt.Fprintf(cmd.Stderr, "spawn: building pi binary with GOOS=%v and GOARCH=%v to copy to agents at %v\n", cmd.GOOS, cmd.GOARCH, cmdName)
 		pkg := "github.com/pilosa/tools/cmd/pitool"
 		bin, err := build.Binary(pkg, cmd.GOOS, cmd.GOARCH)
 		if err != nil {
@@ -144,7 +144,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{
 
 	results := make(map[string]interface{})
 	resLock := sync.Mutex{}
-	fmt.Fprintln(cmd.Stderr, "bspawn: running benchmarks")
+	fmt.Fprintln(cmd.Stderr, "spawn: running benchmarks")
 	for _, sp := range cmd.Benchmarks {
 		sessions := make([]*ssh.Session, 0)
 		wg := sync.WaitGroup{}
@@ -175,7 +175,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{
 				resLock.Unlock()
 			}(stdout, sp.Name, i)
 			sess.Stderr = cmd.Stderr
-			err = sess.Start(cmdName + " bagent -agent-num=" + strconv.Itoa(i) + " -hosts=" + strings.Join(cmd.PilosaHosts, ",") + " " + strings.Join(sp.Args, " "))
+			err = sess.Start(cmdName + " bench -agent-num=" + strconv.Itoa(i) + " -hosts=" + strings.Join(cmd.PilosaHosts, ",") + " " + strings.Join(sp.Args, " "))
 			if err != nil {
 				return nil, err
 			}
@@ -183,7 +183,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{
 		for _, sess := range sessions {
 			err = sess.Wait()
 			if err != nil {
-				return nil, fmt.Errorf("error waiting for remote bagent: %v", err)
+				return nil, fmt.Errorf("error waiting for remote bench cmd: %v", err)
 			}
 		}
 		wg.Wait()

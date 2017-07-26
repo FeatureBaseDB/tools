@@ -36,7 +36,7 @@ type Benchmark interface {
 
 func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
 	if len(hosts) == 0 {
-		return "", fmt.Errorf("bagent can't get cluster version with no pilosa hosts configured")
+		return "", fmt.Errorf("can't get cluster version with no pilosa hosts configured")
 	}
 	resp, err := http.Get("http://" + hosts[0] + "/version")
 	if err != nil {
