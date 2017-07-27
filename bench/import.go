@@ -97,6 +97,6 @@ func (z *BitIterator) NextBit() (pilosa.Bit, error) {
 	bit := pilosa.Bit{}
 	z.actualIterations++
 	bit.RowID = uint64((z.bitnum / (z.maxcol - z.basecol + 1)) + z.baserow)
-	bit.ColumnID = uint64(z.bitnum%(z.maxrow-z.baserow+1) + z.basecol)
+	bit.ColumnID = uint64(z.bitnum%(z.maxcol-z.basecol+1) + z.basecol)
 	return bit, nil
 }

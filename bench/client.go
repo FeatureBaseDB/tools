@@ -32,7 +32,7 @@ func (h *HasClient) Init(hosts []string, agentNum int) error {
 	return nil
 }
 
-func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (interface{}, error) {
+func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (*pcli.QueryResponse, error) {
 	idx, err := h.schema.Index(index, nil)
 	if err != nil {
 		return nil, err
