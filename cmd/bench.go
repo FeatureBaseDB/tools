@@ -35,7 +35,7 @@ See the various subcommands for specific benchmarks and their arguments.`,
 // PrintResults encodes the output of a benchmark subcommand as json and writes
 // it to the given Writer. It takes the "human" flag into account when encoding
 // the json. TODO: this functionality may not belong here...
-func PrintResults(cmd *cobra.Command, result map[string]interface{}, out io.Writer) error {
+func PrintResults(cmd *cobra.Command, result *bench.BenchResult, out io.Writer) error {
 	human, err := cmd.Flags().GetBool("human")
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func PrintResults(cmd *cobra.Command, result map[string]interface{}, out io.Writ
 	enc := json.NewEncoder(out)
 	if human {
 		enc.SetIndent("", "  ")
-		result = bench.Prettify(result)
+		bench.PrettifyBenchResult(result)
 	}
 	err = enc.Encode(result)
 	if err != nil {

@@ -14,9 +14,7 @@ func NewImportCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 	importCmd := &cobra.Command{
 		Use:   "import",
 		Short: "Import random data into Pilosa quickly.",
-		Long: `import generates random data which can be controlled by command
-line flags and streams it into Pilosa's /import endpointa. Agent num has
-no effect`,
+		Long:  `import generates random data which can be controlled by command line flags and streams it into Pilosa's /import endpoint. Agent num has no effect`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")

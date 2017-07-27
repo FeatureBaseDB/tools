@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"strconv"
@@ -37,12 +38,12 @@ type SpawnCommand struct {
 	// Result destination, ["stdout", "s3"]
 	Output string `json:"output"`
 
-	// If this is true, build and copy pitool binary to agent hosts.
+	// If this is true, build and copy pi binary to agent hosts.
 	CopyBinary bool   `json:"copy-binary"`
 	GOOS       string `json:"goos"`
 	GOARCH     string `json:"goarch"`
 
-	SpawnFile string
+	SpawnFile string `json:"spawn-file"`
 
 	// Benchmarks is a slice of Spawns which specifies all of the bench
 	// commands to run. These will all be run in parallel, started on each
@@ -60,7 +61,7 @@ type SpawnCommand struct {
 type Spawn struct {
 	Num  int      `json:"num"`  // number of agents to run
 	Name string   `json:"name"` // Should describe what this Spawn does
-	Args []string `json:"args"` // everything that comes after `pitool bench [arguments]`
+	Args []string `json:"args"` // everything that comes after `pi bench [arguments]`
 }
 
 // NewSpawnCommand returns a new instance of SpawnCommand.
@@ -85,10 +86,6 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	}
 
 	runUUID := uuid.NewV1()
-	output := make(map[string]interface{})
-	output["run-uuid"] = runUUID.String()
-	output["pitool-version"] = tools.Version
-	output["pitool-build-time"] = tools.BuildTime
 	if len(cmd.PilosaHosts) == 0 {
 		return fmt.Errorf("spawn: pilosa-hosts not specified")
 	}
@@ -96,12 +93,17 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 		fmt.Fprintln(cmd.Stderr, "spawn: no agent-hosts specified; all agents will be spawned on localhost")
 		cmd.AgentHosts = []string{"localhost"}
 	}
-	output["spawn"] = cmd
 	res, err := cmd.spawnRemote(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("spawn remote: %v", err)
 	}
-	output["results"] = res
+	output := &SpawnResult{
+		RunUUID:          runUUID.String(),
+		PiVersion:        tools.Version,
+		PiBuildTime:      tools.BuildTime,
+		Configuration:    cmd,
+		BenchmarkResults: res,
+	}
 
 	var writer io.Writer
 	if cmd.Output == "s3" {
@@ -115,41 +117,60 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	enc := json.NewEncoder(writer)
 	if cmd.HumanReadable {
 		enc.SetIndent("", "  ")
-		output = Prettify(output)
+		PrettifySpawnResult(output)
 	}
 	return enc.Encode(output)
 }
 
-func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{}, error) {
+// SpawnResult represents the full JSON output of the spawn command.
+type SpawnResult struct {
+	RunUUID          string            `json:"run-uuid"`
+	BenchmarkResults []BenchmarkResult `json:"benchmark-results"`
+	PiVersion        string            `json:"pi-version"`
+	PiBuildTime      string            `json:"pi-build-time"`
+	Configuration    *SpawnCommand     `json:"configuration"`
+}
+
+// BenchmarkResult represents the result of a single benchmark run by
+// potentially multiple agents. Each agent's result is represented in the slice
+// of BenchResult objects.
+type BenchmarkResult struct {
+	BenchmarkName string        `json:"benchmark-name"`
+	AgentResults  []BenchResult `json:"agent-results"`
+}
+
+func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, error) {
 	agentIdx := 0
 	agentFleet, err := pssh.NewFleet(cmd.AgentHosts, cmd.SSHUser, "", cmd.Stderr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating fleet: %v", err)
 	}
 
 	cmdName := "pi"
 	if cmd.CopyBinary {
 		cmdName = "/tmp/pi" + strconv.Itoa(rand.Int())
 		fmt.Fprintf(cmd.Stderr, "spawn: building pi binary with GOOS=%v and GOARCH=%v to copy to agents at %v\n", cmd.GOOS, cmd.GOARCH, cmdName)
-		pkg := "github.com/pilosa/tools/cmd/pitool"
+		pkg := "github.com/pilosa/tools/cmd/pi"
 		bin, err := build.Binary(pkg, cmd.GOOS, cmd.GOARCH)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("building binary: %v", err)
 		}
 		err = agentFleet.WriteFile(cmdName, "+x", bin)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("writing binary to agents: %v", err)
 		}
 	}
 
-	results := make(map[string]interface{})
-	resLock := sync.Mutex{}
+	results := make([]BenchmarkResult, len(cmd.Benchmarks))
 	fmt.Fprintln(cmd.Stderr, "spawn: running benchmarks")
-	for _, sp := range cmd.Benchmarks {
+	for bmNum, bm := range cmd.Benchmarks {
 		sessions := make([]*ssh.Session, 0)
 		wg := sync.WaitGroup{}
-		results[sp.Name] = make(map[int]interface{})
-		for i := 0; i < sp.Num; i++ {
+		results[bmNum] = BenchmarkResult{
+			BenchmarkName: bm.Name,
+			AgentResults:  make([]BenchResult, bm.Num),
+		}
+		for agentNum := 0; agentNum < bm.Num; agentNum++ {
 			agentIdx %= len(cmd.AgentHosts)
 			sess, err := agentFleet[cmd.AgentHosts[agentIdx]].NewSession()
 			if err != nil {
@@ -161,21 +182,27 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) (map[string]interface{
 			if err != nil {
 				return nil, err
 			}
+			stderr, err := sess.StderrPipe()
+			if err != nil {
+				return nil, err
+			}
 			wg.Add(1)
-			go func(stdout io.Reader, name string, num int) {
+			go func(stdout, stderr io.Reader, name string, bmNum, agentNum int) {
 				defer wg.Done()
 				dec := json.NewDecoder(stdout)
-				var v interface{}
-				err := dec.Decode(&v)
+				benchResult := BenchResult{}
+				err := dec.Decode(&benchResult)
 				if err != nil {
-					fmt.Fprintf(cmd.Stderr, "error decoding json: %v, spawn: %v\n", err, name)
+					errOut, err := ioutil.ReadAll(stderr)
+					if err != nil {
+						errOut = []byte(fmt.Sprintf("problem reading remote stderr: %v", err))
+					}
+					fmt.Fprintf(cmd.Stderr, "error decoding json: %v, spawn: %v, stderr: %s\n", err, name, errOut)
 				}
-				resLock.Lock()
-				results[name].(map[int]interface{})[num] = v
-				resLock.Unlock()
-			}(stdout, sp.Name, i)
+				results[bmNum].AgentResults[agentNum] = benchResult
+			}(stdout, stderr, bm.Name, bmNum, agentNum)
 			sess.Stderr = cmd.Stderr
-			err = sess.Start(cmdName + " bench -agent-num=" + strconv.Itoa(i) + " -hosts=" + strings.Join(cmd.PilosaHosts, ",") + " " + strings.Join(sp.Args, " "))
+			err = sess.Start(cmdName + " bench --agent-num=" + strconv.Itoa(agentNum) + " --hosts=" + strings.Join(cmd.PilosaHosts, ",") + " " + strings.Join(bm.Args, " "))
 			if err != nil {
 				return nil, err
 			}
