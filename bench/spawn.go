@@ -193,9 +193,9 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 				benchResult := BenchResult{}
 				err := dec.Decode(&benchResult)
 				if err != nil {
-					errOut, err := ioutil.ReadAll(stderr)
-					if err != nil {
-						errOut = []byte(fmt.Sprintf("problem reading remote stderr: %v", err))
+					errOut, err2 := ioutil.ReadAll(stderr)
+					if err2 != nil {
+						errOut = []byte(fmt.Sprintf("problem reading remote stderr: %v", err2))
 					}
 					fmt.Fprintf(cmd.Stderr, "error decoding json: %v, spawn: %v, stderr: %s\n", err, name, errOut)
 				}

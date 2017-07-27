@@ -56,7 +56,7 @@ type BenchResult struct {
 	Duration      time.Duration          `json:"duration"`
 	AgentNum      int                    `json:"agentnum"`
 	PilosaVersion string                 `json:"pilosa-version"`
-	Configuration Benchmark              `json:"configuration"`
+	Configuration interface{}            `json:"configuration"`
 	Error         error                  `json:"error"`
 }
 
