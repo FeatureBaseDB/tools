@@ -79,10 +79,11 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("trying to open spawn file: %v", err)
 	}
+
 	dec := json.NewDecoder(f)
 	err = dec.Decode(cmd)
 	if err != nil {
-		return err
+		return fmt.Errorf("decoding spawn file: %v", err)
 	}
 
 	runUUID := uuid.NewV1()
