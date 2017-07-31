@@ -2,9 +2,8 @@ package bench
 
 import (
 	"context"
-	//"fmt"
 	"io"
-	//"strconv"
+	"strconv"
 	"fmt"
 	"github.com/pilosa/pilosa/pql"
 	"time"
@@ -23,6 +22,7 @@ func NewSliceWidth(stdin io.Reader, stdout, stderr io.Writer) *SliceWidth {
 // SliceHeight benchmark tests the effect of an increasing number of rows in
 // a single slice on query time.
 type SliceWidth struct {
+	HasClient
 	MaxTime time.Duration `json:"max-time"`
 	hosts   []string
 
@@ -49,52 +49,62 @@ func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 	if err != nil {
 		return err
 	}
-	return nil
+	return b.HasClient.Init(hosts, agentNum)
 }
 
 // Run runs the SliceWidth benchmark
 func (b *SliceWidth) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
+	defer b.CallQuery(ctx, results)
 	bitDensity := b.BitDensity
 	iteration := b.BaseIterations
 	sliceCount := b.SliceCount
-	maxColumnID := b.MaxColumnID * sliceCount
 	if bitDensity > 0 {
 		iteration = int64(float64(b.MaxColumnID) * bitDensity)
 	}
 
-	imp := &Import{
-		MaxRowID:     100,
-		MaxColumnID:  maxColumnID, // must match pilosa.SliceWidth 1048576
-		Iterations:   iteration,
-		Index:        b.Index,
-		Frame:        b.Frame,
-		Distribution: "uniform",
-		BufferSize:   1000000,
+	// uniformly import to different slices
+	for i :=int64(1); i<=sliceCount; i++ {
+		iresults := make(map[string]interface{})
+		results["iteration"+strconv.Itoa(int(i))] = iresults
+		maxColumnID := b.MaxColumnID * i
+		baseColumnID := b.MaxColumnID * (i-1)
+		imp := &Import{
+			MaxRowID:     100,
+			BaseColumnID: baseColumnID,
+			MaxColumnID:  maxColumnID,
+			Iterations:   iteration,
+			Index:        b.Index,
+			Frame:        b.Frame,
+			Distribution: "uniform",
+			BufferSize:   1000000,
+		}
+
+		err := imp.Init(b.hosts, 0)
+		if err != nil {
+			iresults["error"] = fmt.Sprintf("error initializing importer, err: %v", err)
+		}
+
+		importStart := time.Now()
+		importRes := imp.Run(ctx)
+		importRes["duration"] = time.Since(importStart)
+		iresults["import"] = importRes
+
 	}
+	return results
+}
 
-	iresults := make(map[string]interface{})
-	results["iteration"] = iresults
-	err := imp.Init(b.hosts, 0)
-	if err != nil {
-		iresults["error"] = fmt.Sprintf("error initializing importer, err: %v", err)
-	}
-
-	importStart := time.Now()
-	importRes := imp.Run(ctx)
-	fmt.Println("ImportRes", importRes)
-	importRes["duration"] = time.Since(importStart)
-	iresults["import"] = importRes
-
+func (b *SliceWidth) CallQuery(ctx context.Context, results map[string]interface{}) map[string]interface{} {
 	q := &pql.Call{
 		Name: "TopN",
 		Args: map[string]interface{}{
 			"frame": b.Frame,
-			"n":     50,
+			"n":     10000,
 		},
 	}
+	iresults := make(map[string]interface{})
 	qstart := time.Now()
-	res, err := imp.ExecuteQuery(ctx, b.Index, q.String())
+	res, err := b.ExecuteQuery(ctx, b.Index, q.String())
 	if err != nil {
 		iresults["query_error"] = err.Error()
 	} else {
@@ -103,5 +113,6 @@ func (b *SliceWidth) Run(ctx context.Context) map[string]interface{} {
 		iresults["query_results"] = res
 	}
 
+	results["output"] = iresults
 	return results
 }
