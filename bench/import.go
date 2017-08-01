@@ -1,135 +1,102 @@
 package bench
 
 import (
-	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 
-	"sort"
+	"context"
 
-	"github.com/pilosa/pilosa/ctl"
+	"github.com/pilosa/go-pilosa"
 )
 
-// NewImport returns an Import Benchmark which pilosa/ctl importer configured.
-func NewImport(stdin io.Reader, stdout, stderr io.Writer) *Import {
-	return &Import{
-		ImportCommand: ctl.NewImportCommand(stdin, stdout, stderr),
-	}
-}
-
-// Import sets bits with increasing profile id and bitmap id.
 type Import struct {
-	Name              string `json:"name"`
-	BaseBitmapID      int64  `json:"base-bitmap-id"`
-	MaxBitmapID       int64  `json:"max-bitmap-id"`
-	BaseProfileID     int64  `json:"base-profile-id"`
-	MaxProfileID      int64  `json:"max-profile-id"`
-	RandomBitmapOrder bool   `json:"random-bitmap-order"`
-	MinBitsPerMap     int64  `json:"min-bits-per-map"`
-	MaxBitsPerMap     int64  `json:"max-bits-per-map"`
-	AgentControls     string `json:"agent-controls"`
-	Seed              int64  `json:"seed"`
-	numbits           int
-
-	*ctl.ImportCommand
+	Name         string `json:"name"`
+	BaseRowID    int64  `json:"base-row-id"`
+	BaseColumnID int64  `json:"base-column-id"`
+	MaxRowID     int64  `json:"max-row-id"`
+	MaxColumnID  int64  `json:"max-column-id"`
+	Index        string `json:"index"`
+	Frame        string `json:"frame"`
+	Iterations   int64  `json:"iterations"`
+	Seed         int64  `json:"seed"`
+	Distribution string `json:"distribution"`
+	BufferSize   uint
+	rng          *rand.Rand
+	HasClient
 }
 
-// Init generates import data based on the agent num and fields of 'b'.
+// Init generates import data based on
 func (b *Import) Init(hosts []string, agentNum int) error {
 	if len(hosts) == 0 {
 		return fmt.Errorf("Need at least one host")
 	}
 	b.Name = "import"
-	b.Host = hosts[0]
-	// generate csv data
 	b.Seed = b.Seed + int64(agentNum)
-	switch b.AgentControls {
-	case "height":
-		numBitmapIDs := (b.MaxBitmapID - b.BaseBitmapID)
-		b.BaseBitmapID = b.BaseBitmapID + (numBitmapIDs * int64(agentNum))
-		b.MaxBitmapID = b.BaseBitmapID + numBitmapIDs
-	case "width":
-		numProfileIDs := (b.MaxProfileID - b.BaseProfileID)
-		b.BaseProfileID = b.BaseProfileID + (numProfileIDs * int64(agentNum))
-		b.MaxProfileID = b.BaseProfileID + numProfileIDs
-	case "":
-		break
-	default:
-		return fmt.Errorf("agent-controls: '%v' is not supported", b.AgentControls)
-	}
-	f, err := ioutil.TempFile("", "")
+	b.rng = rand.New(rand.NewSource(b.Seed))
+	err := b.HasClient.Init(hosts, agentNum)
 	if err != nil {
-		return err
+		return fmt.Errorf("client init: %v", err)
 	}
-	// set b.Paths)
-	num := GenerateImportCSV(f, b.BaseBitmapID, b.MaxBitmapID, b.BaseProfileID, b.MaxProfileID,
-		b.MinBitsPerMap, b.MaxBitsPerMap, b.Seed, b.RandomBitmapOrder)
-	b.numbits = num
-	// set b.Paths
-	b.Paths = []string{f.Name()}
-
-	err = initIndex(b.Host, b.Index, b.Frame)
-	if err != nil {
-		return err
-	}
-
-	return f.Close()
+	return b.InitIndex(b.Index, b.Frame)
 }
 
 // Run runs the Import benchmark
 func (b *Import) Run(ctx context.Context) map[string]interface{} {
 	results := make(map[string]interface{})
-	results["numbits"] = b.numbits
 	results["index"] = b.Index
-	err := b.ImportCommand.Run(ctx)
-
+	bitIterator := b.NewBitIterator()
+	err := b.HasClient.Import(b.Index, b.Frame, bitIterator, b.BufferSize)
 	if err != nil {
-		results["error"] = err.Error()
+		results["error"] = fmt.Sprintf("running go client import: %v", err)
 	}
+	results["actual-iterations"] = bitIterator.actualIterations
 	return results
 }
 
-// Int64Slice is a sortable slice of 64 bit signed ints
-type Int64Slice []int64
+type BitIterator struct {
+	actualIterations int64
+	bitnum           int64
+	maxbitnum        int64
+	baserow          int64
+	maxrow           int64
+	basecol          int64
+	maxcol           int64
+	avgdelta         float64
+	lambda           float64
+	rng              *rand.Rand
+	fdelta           func(z *BitIterator) float64
+}
 
-func (s Int64Slice) Len() int           { return len(s) }
-func (s Int64Slice) Less(i, j int) bool { return s[i] < s[j] }
-func (s Int64Slice) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (b *Import) NewBitIterator() *BitIterator {
+	z := &BitIterator{}
+	z.rng = b.rng
+	z.maxbitnum = (b.MaxRowID - b.BaseRowID + 1) * (b.MaxColumnID - b.BaseColumnID + 1)
+	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
+	z.baserow, z.basecol, z.maxrow, z.maxcol = b.BaseRowID, b.BaseColumnID, b.MaxRowID, b.MaxColumnID
 
-// GenerateImportCSV writes a generated csv to 'w' which is in the form pilosa/ctl expects for imports.
-func GenerateImportCSV(w io.Writer, baseBitmapID, maxBitmapID, baseProfileID, maxProfileID, minBitsPerMap, maxBitsPerMap, seed int64, randomOrder bool) int {
-	src := rand.NewSource(seed)
-	rng := rand.New(src)
-
-	var bitmapIDs []int
-	if randomOrder {
-		bitmapIDs = rng.Perm(int(maxBitmapID - baseBitmapID))
+	if b.Distribution == "exponential" {
+		z.lambda = 1.0 / z.avgdelta
+		z.fdelta = func(z *BitIterator) float64 {
+			return z.rng.ExpFloat64() / z.lambda
+		}
+	} else { // if b.Distribution == "uniform" {
+		z.fdelta = func(z *BitIterator) float64 {
+			return z.rng.Float64() * z.avgdelta * 2
+		}
 	}
-	numrows := 0
-	profileIDs := make(Int64Slice, maxBitsPerMap)
-	for i := baseBitmapID; i < maxBitmapID; i++ {
-		var bitmapID int64
-		if randomOrder {
-			bitmapID = int64(bitmapIDs[i-baseBitmapID])
-		} else {
-			bitmapID = int64(i)
-		}
+	return z
+}
 
-		numBitsToSet := rng.Int63n(maxBitsPerMap-minBitsPerMap) + minBitsPerMap
-		numrows += int(numBitsToSet)
-		for j := int64(0); j < numBitsToSet; j++ {
-			profileIDs[j] = rng.Int63n(maxProfileID-baseProfileID) + baseProfileID
-		}
-		profIDs := profileIDs[:numBitsToSet]
-		if !randomOrder {
-			sort.Sort(profIDs)
-		}
-		for j := int64(0); j < numBitsToSet; j++ {
-			fmt.Fprintf(w, "%d,%d\n", bitmapID, profIDs[j])
-		}
-
+func (z *BitIterator) NextBit() (pilosa.Bit, error) {
+	delta := z.fdelta(z)
+	z.bitnum = int64(float64(z.bitnum) + delta)
+	if z.bitnum > z.maxbitnum {
+		return pilosa.Bit{}, io.EOF
 	}
-	return numrows
+	bit := pilosa.Bit{}
+	z.actualIterations++
+	bit.RowID = uint64((z.bitnum / (z.maxcol - z.basecol + 1)) + z.baserow)
+	bit.ColumnID = uint64(z.bitnum%(z.maxcol-z.basecol+1) + z.basecol)
+	return bit, nil
 }

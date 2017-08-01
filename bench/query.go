@@ -38,35 +38,39 @@ func (b *Query) Run(ctx context.Context) map[string]interface{} {
 	for n := 0; n < b.Iterations; n++ {
 		resSlice[n] = make(map[string]interface{})
 		start = time.Now()
-		res, err := b.client.ExecuteQuery(ctx, b.Index, b.Query, true)
+		res, err := b.ExecuteQuery(ctx, b.Index, b.Query)
 		resSlice[n]["duration"] = time.Now().Sub(start)
 		if err != nil {
 			resSlice[n]["error"] = err.Error()
-			continue
 		}
-		resSlice[n]["result"] = res
+		if res != nil {
+			resSlice[n]["results"] = res.Results()
+			resSlice[n]["columns"] = res.Columns()
+			resSlice[n]["error-message"] = res.ErrorMessage
+			resSlice[n]["success"] = res.Success
+		}
 	}
 	return results
 }
 
-// BasicQuery runs a query against pilosa multiple times with increasing bitmap
+// BasicQuery runs a query against pilosa multiple times with increasing row
 // ids.
 type BasicQuery struct {
 	HasClient
-	Name         string `json:"name"`
-	BaseBitmapID int64  `json:"base-bitmap-id"`
-	Iterations   int    `json:"iterations"`
-	NumArgs      int    `json:"num-args"`
-	Query        string `json:"query"`
-	Index        string `json:"index"`
-	Frame        string `json:"frame"`
+	Name       string `json:"name"`
+	BaseRowID  int64  `json:"base-row-id"`
+	Iterations int    `json:"iterations"`
+	NumArgs    int    `json:"num-args"`
+	Query      string `json:"query"`
+	Index      string `json:"index"`
+	Frame      string `json:"frame"`
 }
 
 // Init sets up the pilosa client and modifies the configured values based on
 // the agent num.
 func (b *BasicQuery) Init(hosts []string, agentNum int) error {
 	b.Name = "basic-query"
-	b.BaseBitmapID = b.BaseBitmapID + int64(agentNum*b.Iterations)
+	b.BaseRowID = b.BaseRowID + int64(agentNum*b.Iterations)
 	return b.HasClient.Init(hosts, agentNum)
 }
 
@@ -92,11 +96,11 @@ func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		for i, _ := range bms {
-			bms[i].Args["rowID"] = b.BaseBitmapID + int64(n)
+			bms[i].Args["rowID"] = b.BaseRowID + int64(n)
 		}
 		query.Children = bms
 		start = time.Now()
-		_, err := b.client.ExecuteQuery(ctx, b.Index, query.String(), true)
+		_, err := b.ExecuteQuery(ctx, b.Index, query.String())
 		if err != nil {
 			results["error"] = err.Error()
 			return results
@@ -151,8 +155,8 @@ func (q *QueryGenerator) RandomTopN(maxN, depth, maxargs int, idmin, idmax uint6
 // RandomBitmapCall returns a randomly generate query which returns a bitmap.
 func (q *QueryGenerator) RandomBitmapCall(depth, maxargs int, idmin, idmax uint64) *pql.Call {
 	if depth <= 1 {
-		bitmapID := q.R.Int63n(int64(idmax)-int64(idmin)) + int64(idmin)
-		return Bitmap(uint64(bitmapID), q.IDToFrameFn(uint64(bitmapID)))
+		rowID := q.R.Int63n(int64(idmax)-int64(idmin)) + int64(idmin)
+		return Bitmap(uint64(rowID), q.IDToFrameFn(uint64(rowID)))
 	}
 	call := q.R.Intn(4)
 	if call == 0 {
@@ -185,13 +189,13 @@ func (q *QueryGenerator) RandomBitmapCall(depth, maxargs int, idmin, idmax uint6
 // Helpers TODO: move elsewhere
 ///////////////////////////////////////////////////
 
-func ClearBit(id uint64, frame string, profileID uint64) *pql.Call {
+func ClearBit(id uint64, frame string, columnID uint64) *pql.Call {
 	return &pql.Call{
 		Name: "ClearBit",
 		Args: map[string]interface{}{
-			"id":        id,
-			"frame":     frame,
-			"profileID": profileID,
+			"id":       id,
+			"frame":    frame,
+			"columnID": columnID,
 		},
 	}
 }
@@ -203,41 +207,41 @@ func Count(child *pql.Call) *pql.Call {
 	}
 }
 
-func Profile(id uint64) *pql.Call {
+func Column(id uint64) *pql.Call {
 	return &pql.Call{
-		Name: "Profile",
+		Name: "Column",
 		Args: map[string]interface{}{"id": id},
 	}
 }
 
-func SetBit(id uint64, frame string, profileID uint64) *pql.Call {
+func SetBit(id uint64, frame string, columnID uint64) *pql.Call {
 	return &pql.Call{
 		Name: "SetBit",
 		Args: map[string]interface{}{
-			"id":        id,
-			"frame":     frame,
-			"profileID": profileID,
+			"id":       id,
+			"frame":    frame,
+			"columnID": columnID,
 		},
 	}
 }
 
-func SetBitmapAttrs(id uint64, frame string, attrs map[string]interface{}) *pql.Call {
+func SetRowAttrs(id uint64, frame string, attrs map[string]interface{}) *pql.Call {
 	args := copyArgs(attrs)
 	args["id"] = id
-	args["profileID"] = frame
+	args["columnID"] = frame
 
 	return &pql.Call{
-		Name: "SetBitmapAttrs",
+		Name: "SetRowAttrs",
 		Args: args,
 	}
 }
 
-func SetProfileAttrs(id uint64, attrs map[string]interface{}) *pql.Call {
+func SetColumnAttrs(id uint64, attrs map[string]interface{}) *pql.Call {
 	args := copyArgs(attrs)
 	args["id"] = id
 
 	return &pql.Call{
-		Name: "SetProfileAttrs",
+		Name: "SetColumnAttrs",
 		Args: args,
 	}
 }

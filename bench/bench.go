@@ -36,7 +36,7 @@ type Benchmark interface {
 
 func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
 	if len(hosts) == 0 {
-		return "", fmt.Errorf("bagent can't get cluster version with no pilosa hosts configured")
+		return "", fmt.Errorf("can't get cluster version with no pilosa hosts configured")
 	}
 	resp, err := http.Get("http://" + hosts[0] + "/version")
 	if err != nil {
@@ -51,24 +51,33 @@ func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
 	return v.Version, nil
 }
 
-func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) (result map[string]interface{}) {
-	result = make(map[string]interface{})
+type BenchResult struct {
+	Output        map[string]interface{} `json:"output"`
+	Duration      time.Duration          `json:"duration"`
+	AgentNum      int                    `json:"agentnum"`
+	PilosaVersion string                 `json:"pilosa-version"`
+	Configuration interface{}            `json:"configuration"`
+	Error         error                  `json:"error"`
+}
+
+func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) *BenchResult {
+	result := &BenchResult{}
 	version, err := getClusterVersion(ctx, hosts)
 	if err != nil {
-		result["error"] = err.Error()
+		result.Error = err
 		return result
 	}
 
 	err = b.Init(hosts, agentNum)
 	if err != nil {
-		result["error"] = err.Error()
+		result.Error = err
 		return result
 	}
 	start := time.Now()
-	result["output"] = b.Run(context.Background())
-	result["duration"] = time.Since(start)
-	result["agent-num"] = agentNum
-	result["pilosa-version"] = version
-	result["configuration"] = b
+	result.Output = b.Run(context.Background())
+	result.Duration = time.Since(start)
+	result.AgentNum = agentNum
+	result.PilosaVersion = version
+	result.Configuration = b
 	return result
 }

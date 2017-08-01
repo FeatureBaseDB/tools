@@ -14,8 +14,8 @@ func NewSliceHeightCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Com
 	sliceHeight := bench.NewSliceHeight(stdin, stdout, stderr)
 	sliceHeightCmd := &cobra.Command{
 		Use:   "slice-height",
-		Short: "Repeatedly imports more bitmaps into a single slice and tests query times in between.",
-		Long: `Repeatedly imports more bitmaps into a single slice and tests query times in between.
+		Short: "Repeatedly imports more rows into a single slice and tests query times in between.",
+		Long: `Repeatedly imports more rows into a single slice and tests query times in between.
 Agent number has no effect.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
@@ -43,8 +43,7 @@ Agent number has no effect.`,
 
 	flags := sliceHeightCmd.Flags()
 	flags.Int("max-time", 30, "Stop benchmark after this many seconds.")
-	flags.Int64Var(&sliceHeight.MinBitsPerMap, "min-bits-per-map", 0, "Minimum number of bits set per bitmap.")
-	flags.Int64Var(&sliceHeight.MaxBitsPerMap, "max-bits-per-map", 10, "Maximum number of bits set per bitmap.")
+	flags.Int64Var(&sliceHeight.BaseIterations, "base-iterations", 1000, "Number of iterations for first import - grows by 10x each round.")
 	flags.Int64Var(&sliceHeight.Seed, "seed", 0, "Seed for RNG.")
 	flags.StringVar(&sliceHeight.Index, "index", "benchindex", "Pilosa index to use.")
 	flags.StringVar(&sliceHeight.Frame, "frame", "slice-height", "Frame to import into.")

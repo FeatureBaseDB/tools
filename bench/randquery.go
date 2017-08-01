@@ -9,16 +9,16 @@ import (
 // RandomQuery queries randomly and deterministically based on a seed.
 type RandomQuery struct {
 	HasClient
-	Name          string   `json:"name"`
-	MaxDepth      int      `json:"max-depth"`
-	MaxArgs       int      `json:"max-args"`
-	MaxN          int      `json:"max-n"`
-	BaseBitmapID  int64    `json:"base-bitmap-id"`
-	BitmapIDRange int64    `json:"bitmap-id-range"`
-	Iterations    int      `json:"iterations"`
-	Seed          int64    `json:"seed"`
-	Frame         string   `json:"frame"`
-	Indexes       []string `json:"indexes"`
+	Name       string   `json:"name"`
+	MaxDepth   int      `json:"max-depth"`
+	MaxArgs    int      `json:"max-args"`
+	MaxN       int      `json:"max-n"`
+	BaseRowID  int64    `json:"base-row-id"`
+	RowIDRange int64    `json:"row-id-range"`
+	Iterations int      `json:"iterations"`
+	Seed       int64    `json:"seed"`
+	Frame      string   `json:"frame"`
+	Indexes    []string `json:"indexes"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -40,9 +40,14 @@ func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
 	s := NewStats()
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseBitmapID), uint64(b.BitmapIDRange))
+		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseRowID), uint64(b.RowIDRange))
 		start = time.Now()
-		b.ExecuteQuery(b.ContentType, b.Indexes[n%len(b.Indexes)], call.String(), ctx)
+		_, err := b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
+		if err != nil {
+			results["error"] = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
+			return results
+		}
+
 		s.Add(time.Now().Sub(start))
 	}
 	AddToResults(s, results)

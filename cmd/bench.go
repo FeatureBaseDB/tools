@@ -17,7 +17,13 @@ func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		Use:   "bench",
 		Short: "Runs benchmarks against a pilosa cluster.",
 		Long: `Runs benchmarks against a pilosa cluster.
-See the various subcommands for specific benchmarks and their arguments.`,
+
+See the various subcommands for specific benchmarks and their arguments. The
+various benchmarks should modulate their behavior based on what agent-num is
+given, so that multiple benchmarks with identical configurations but differing
+agent numbers will do interesting work.
+
+`,
 	}
 
 	flags := benchCmd.PersistentFlags()
@@ -35,7 +41,7 @@ See the various subcommands for specific benchmarks and their arguments.`,
 // PrintResults encodes the output of a benchmark subcommand as json and writes
 // it to the given Writer. It takes the "human" flag into account when encoding
 // the json. TODO: this functionality may not belong here...
-func PrintResults(cmd *cobra.Command, result map[string]interface{}, out io.Writer) error {
+func PrintResults(cmd *cobra.Command, result *bench.BenchResult, out io.Writer) error {
 	human, err := cmd.Flags().GetBool("human")
 	if err != nil {
 		return err
@@ -44,7 +50,7 @@ func PrintResults(cmd *cobra.Command, result map[string]interface{}, out io.Writ
 	enc := json.NewEncoder(out)
 	if human {
 		enc.SetIndent("", "  ")
-		result = bench.Prettify(result)
+		bench.PrettifyBenchResult(result)
 	}
 	err = enc.Encode(result)
 	if err != nil {

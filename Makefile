@@ -5,5 +5,5 @@ CLONE_URL=github.com/pilosa/tools
 LDFLAGS="-X $(CLONE_URL).Version=$(VERSION) -X $(CLONE_URL).BuildTime=$(BUILD_TIME)"
 
 
-pitool: vendor
-	go install -ldflags $(LDFLAGS) $(CLONE_URL)/cmd/pitool
+pi: vendor
+	go install -ldflags $(LDFLAGS) $(CLONE_URL)/cmd/pi

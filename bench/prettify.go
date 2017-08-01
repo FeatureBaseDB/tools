@@ -12,6 +12,14 @@ func (d PrettyDuration) MarshalJSON() ([]byte, error) {
 	return []byte("\"" + s + "\""), nil
 }
 
+func PrettifySpawnResult(sr *SpawnResult) {
+	return // TODO
+}
+
+func PrettifyBenchResult(b *BenchResult) {
+	b.Output = Prettify(b.Output)
+}
+
 // Recursively replaces elements of ugly types with their pretty wrappers
 func Prettify(m map[string]interface{}) map[string]interface{} {
 	newmap := make(map[string]interface{})
