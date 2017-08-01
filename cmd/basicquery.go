@@ -40,8 +40,8 @@ Agent num has no effect.`,
 	flags.IntVar(&basicQuery.Iterations, "iterations", 1, "Number of queries to make.")
 	flags.IntVar(&basicQuery.NumArgs, "num-args", 2, "Number of rows to put in each query (i.e. number of rows to intersect)")
 	flags.StringVar(&basicQuery.Query, "query", "Intersect", "query to perform (Intersect, Union, Difference, Xor)")
-	flags.StringVar(&basicQuery.Frame, "frame", "frame", "Frame to query.")
-	flags.StringVar(&basicQuery.Index, "index", "benchindex", "Pilosa index to use.")
+	flags.StringVar(&basicQuery.Frame, "frame", "fbench", "Frame to query.")
+	flags.StringVar(&basicQuery.Index, "index", "ibench", "Pilosa index to use.")
 	flags.StringVar(&basicQuery.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'")
 	flags.StringVar(&basicQuery.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
 
