@@ -36,7 +36,8 @@ type SpawnCommand struct {
 	HumanReadable bool `json:"human-readable"`
 
 	// Result destination, ["stdout", "s3"]
-	Output string `json:"output"`
+	Output     string `json:"output"`
+	BucketName string `json:"bucket-name"`
 
 	// If this is true, build and copy pi binary to agent hosts.
 	CopyBinary bool   `json:"copy-binary"`
@@ -108,7 +109,7 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 
 	var writer io.Writer
 	if cmd.Output == "s3" {
-		writer = NewS3Uploader("benchmarks-pilosa", runUUID.String()+".json")
+		writer = NewS3Uploader(cmd.BucketName, runUUID.String()+".json")
 	} else if cmd.Output == "stdout" {
 		writer = cmd.Stdout
 	} else {
