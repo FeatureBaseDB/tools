@@ -17,9 +17,11 @@ func NewBviewCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	createCmd := &cobra.Command{
 		Use:   "bview",
 		Short: "View benchmarking results stored in an s3 bucket.",
-		Long: `This lists all objects in an s3 bucket and tried to intperpret them as JSON benchmarking results. 
+		Long: `This lists all objects in an s3 bucket and tried to intperpret them as JSON benchmarking results.
 
-It prints the benchmark results in a more palatable human readable format.`,
+It summarizes the benchmark results in a more palatable human readable format.
+AWS credentials must be present in the local environment.
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return viewer.Run()
 		},

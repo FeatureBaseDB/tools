@@ -43,10 +43,12 @@ func (b *Query) Run(ctx context.Context) map[string]interface{} {
 		if err != nil {
 			resSlice[n]["error"] = err.Error()
 		}
-		resSlice[n]["results"] = res.Results()
-		resSlice[n]["columns"] = res.Columns()
-		resSlice[n]["error-message"] = res.ErrorMessage
-		resSlice[n]["success"] = res.Success
+		if res != nil {
+			resSlice[n]["results"] = res.Results()
+			resSlice[n]["columns"] = res.Columns()
+			resSlice[n]["error-message"] = res.ErrorMessage
+			resSlice[n]["success"] = res.Success
+		}
 	}
 	return results
 }

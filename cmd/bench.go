@@ -17,7 +17,13 @@ func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 		Use:   "bench",
 		Short: "Runs benchmarks against a pilosa cluster.",
 		Long: `Runs benchmarks against a pilosa cluster.
-See the various subcommands for specific benchmarks and their arguments.`,
+
+See the various subcommands for specific benchmarks and their arguments. The
+various benchmarks should modulate their behavior based on what agent-num is
+given, so that multiple benchmarks with identical configurations but differing
+agent numbers will do interesting work.
+
+`,
 	}
 
 	flags := benchCmd.PersistentFlags()
