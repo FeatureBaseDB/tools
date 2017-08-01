@@ -39,7 +39,7 @@ func (b *RandomSetBits) Run(ctx context.Context) *Result {
 	rng := rand.New(src)
 	results := NewResult()
 	if b.client == nil {
-		results.Error = fmt.Errorf("No client set for RandomSetBits")
+		results.err = fmt.Errorf("No client set for RandomSetBits")
 		return results
 	}
 	for n := 0; n < b.Iterations; n++ {
@@ -50,7 +50,7 @@ func (b *RandomSetBits) Run(ctx context.Context) *Result {
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		results.Add(time.Since(start), nil)
 		if err != nil {
-			results.Error = err
+			results.err = err
 			return results
 		}
 	}

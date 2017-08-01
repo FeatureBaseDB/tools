@@ -74,7 +74,7 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 func (b *Zipf) Run(ctx context.Context) *Result {
 	results := NewResult()
 	if b.client == nil {
-		results.Error = fmt.Errorf("No client set for Zipf")
+		results.err = fmt.Errorf("No client set for Zipf")
 		return results
 	}
 	operation := "SetBit"
@@ -95,7 +95,7 @@ func (b *Zipf) Run(ctx context.Context) *Result {
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		results.Add(time.Since(start), nil)
 		if err != nil {
-			results.Error = err
+			results.err = err
 			return results
 		}
 	}

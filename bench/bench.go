@@ -69,7 +69,10 @@ type Result struct {
 	PilosaVersion string        `json:"pilosa-version"`
 	Configuration interface{}   `json:"configuration"`
 
-	Error error `json:"error"`
+	err error
+
+	// Error exists so that errors can be correctly marshalled to JSON. It is set using Result.err.Error()
+	Error string `json:"error"`
 }
 
 // NewResult intializes and returns a Result.
@@ -95,12 +98,12 @@ func (r *Result) Add(d time.Duration, resp *pcli.QueryResponse) {
 func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) *Result {
 	version, err := getClusterVersion(ctx, hosts)
 	if err != nil {
-		return &Result{Error: err}
+		return &Result{err: err, Error: err.Error()}
 	}
 
 	err = b.Init(hosts, agentNum)
 	if err != nil {
-		return &Result{Error: err}
+		return &Result{err: err, Error: err.Error()}
 	}
 	start := time.Now()
 	result := b.Run(context.Background())
@@ -108,5 +111,8 @@ func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark
 	result.AgentNum = agentNum
 	result.PilosaVersion = version
 	result.Configuration = b
+	if result.err != nil {
+		result.Error = result.err.Error()
+	}
 	return result
 }

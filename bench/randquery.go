@@ -32,7 +32,7 @@ func (b *RandomQuery) Init(hosts []string, agentNum int) error {
 func (b *RandomQuery) Run(ctx context.Context) *Result {
 	results := NewResult()
 	if b.client == nil {
-		results.Error = fmt.Errorf("No client set for RandomQuery")
+		results.err = fmt.Errorf("No client set for RandomQuery")
 		return results
 	}
 	qm := NewQueryGenerator(b.Seed)
@@ -45,7 +45,7 @@ func (b *RandomQuery) Run(ctx context.Context) *Result {
 		_, err := b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
 		results.Add(time.Since(start), nil)
 		if err != nil {
-			results.Error = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
+			results.err = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
 			return results
 		}
 	}

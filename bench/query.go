@@ -31,7 +31,7 @@ func (b *Query) Init(hosts []string, agentNum int) error {
 func (b *Query) Run(ctx context.Context) *Result {
 	results := NewResult()
 	if b.client == nil {
-		results.Error = fmt.Errorf("No client set for Query benchmark")
+		results.err = fmt.Errorf("No client set for Query benchmark")
 		return results
 	}
 	for n := 0; n < b.Iterations; n++ {
@@ -40,7 +40,7 @@ func (b *Query) Run(ctx context.Context) *Result {
 		fmt.Fprintf(os.Stderr, "results obj: %v, start time: %v, res: %v", results, start, res)
 		results.Add(time.Since(start), res)
 		if err != nil {
-			results.Error = fmt.Errorf("problem with query #%d: %v", n, err)
+			results.err = fmt.Errorf("problem with query #%d: %v", n, err)
 			return results
 		}
 	}
@@ -72,7 +72,7 @@ func (b *BasicQuery) Init(hosts []string, agentNum int) error {
 func (b *BasicQuery) Run(ctx context.Context) *Result {
 	results := NewResult()
 	if b.client == nil {
-		results.Error = fmt.Errorf("No client set for BasicQuery")
+		results.err = fmt.Errorf("No client set for BasicQuery")
 		return results
 	}
 
@@ -96,7 +96,7 @@ func (b *BasicQuery) Run(ctx context.Context) *Result {
 		_, err := b.ExecuteQuery(ctx, b.Index, query.String())
 		results.Add(time.Since(start), nil)
 		if err != nil {
-			results.Error = err
+			results.err = err
 			return results
 		}
 	}
@@ -106,9 +106,9 @@ func (b *BasicQuery) Run(ctx context.Context) *Result {
 // NewQueryGenerator initializes a new QueryGenerator
 func NewQueryGenerator(seed int64) *QueryGenerator {
 	return &QueryGenerator{
-		IDToFrameFn: func(id uint64) string { return "frame.n" },
+		IDToFrameFn: func(id uint64) string { return "fbench" },
 		R:           rand.New(rand.NewSource(seed)),
-		Frames:      []string{"frame.n"},
+		Frames:      []string{"fbench"},
 	}
 }
 
@@ -136,6 +136,7 @@ func (q *QueryGenerator) Random(maxN, depth, maxargs int, idmin, idmax uint64) *
 func (q *QueryGenerator) RandomTopN(maxN, depth, maxargs int, idmin, idmax uint64) *pql.Call {
 	frameIdx := q.R.Intn(len(q.Frames))
 	return &pql.Call{
+		Name: "TopN",
 		Args: map[string]interface{}{
 			"frame": q.Frames[frameIdx],
 			"n":     uint64(q.R.Intn(maxN-1) + 1),
@@ -278,7 +279,7 @@ func Bitmap(id uint64, frame string) *pql.Call {
 	return &pql.Call{
 		Name: "Bitmap",
 		Args: map[string]interface{}{
-			"id":    id,
+			"rowID": id,
 			"frame": frame,
 		},
 	}

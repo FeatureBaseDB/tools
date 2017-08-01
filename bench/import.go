@@ -47,7 +47,7 @@ func (b *Import) Run(ctx context.Context) *Result {
 	bitIterator := b.NewBitIterator()
 	err := b.HasClient.Import(b.Index, b.Frame, bitIterator, b.BufferSize)
 	if err != nil {
-		results.Error = fmt.Errorf("running go client import: %v", err)
+		results.err = fmt.Errorf("running go client import: %v", err)
 	}
 	results.Extra["actual-iterations"] = bitIterator.actualIterations
 	results.Extra["avgdelta"] = bitIterator.avgdelta

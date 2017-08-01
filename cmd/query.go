@@ -37,8 +37,8 @@ Agent num has no effect`,
 
 	flags := queryCmd.Flags()
 	flags.IntVar(&query.Iterations, "iterations", 1, "Number of times to repeat the query.")
-	flags.StringVar(&query.Query, "query", "Count(Bitmap(rowID=1, frame=frame))", "PQL query to perform.")
-	flags.StringVar(&query.Index, "index", "benchindex", "Pilosa index to use.")
+	flags.StringVar(&query.Query, "query", "Count(Bitmap(rowID=1, frame=fbench))", "PQL query to perform.")
+	flags.StringVar(&query.Index, "index", "ibench", "Pilosa index to use.")
 	flags.StringVar(&query.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'")
 	flags.StringVar(&query.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
 
