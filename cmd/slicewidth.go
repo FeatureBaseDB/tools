@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"context"
-	"io"
 	"github.com/pilosa/tools/bench"
 	"github.com/spf13/cobra"
+	"io"
 )
 
 // NewBenchCommand subcommands
