@@ -18,7 +18,7 @@ The bench command has a set of subcommands, one for each available benchmark. Al
 
 Example:
 ```
-pi bench import --hosts=one.example.com:10101,two.example.com:10101,three.example.com:10101 --iterations=100000 --max-column-id=10000 --max-orw-id=1000
+pi bench import --hosts=one.example.com:10101,two.example.com:10101,three.example.com:10101 --iterations=100000 --max-column-id=10000 --max-row-id=1000
 ```
 The above would import 100,000 random bits into the three node Pilosa cluster specified. All bits would have column ID between 0 and 10,000, and row ID between 0 and 1000.
 
@@ -49,6 +49,11 @@ The `num` field of each benchmark in the config file controls how many copies of
 `pi spawn` will ssh into each agent host, run the given benchmarks, and aggregate all the output.
 
 
+Example command which spawns a benchmark against a cluster of ubuntu hosts in AWS with a separate agent:
+```
+pi spawn --spawn-file=./spawn-configs/import.json --output=s3 --copy-binary --goos=linux --pilosa-hosts="node0.benchmark.sandbox.pilosa.com:10101,node1.benchmark.sandbox.pilosa.com:10101,node2.benchmark.sandbox.pilosa.com:10101" --agent-hosts="agent0.benchmark.sandbox.pilosa.com" --ssh-user=ubuntu
+```
+
 create
 ----------
 
@@ -59,3 +64,8 @@ bview
 ----------
 
 Experimental tool for summarizing `pi spawn` results which have been stored in an S3 bucket.
+
+Example:
+```
+pi bview --bucket-name=benchmarks-pilosa
+```

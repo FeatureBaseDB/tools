@@ -41,6 +41,7 @@ results by reading the stdout of each agent benchmark.
 	flags := spawnCmd.Flags()
 	flags.BoolVar(&spawn.HumanReadable, "human", true, "Make output human friendly.")
 	flags.StringVar(&spawn.Output, "output", "stdout", "(stdout | s3). Write JSON results to stdout, or store them in S3 (requires AWS credentials to be setup).")
+	flags.StringVar(&spawn.BucketName, "bucket-name", "benchmarks-pilosa", "S3 bucket name to write results to.")
 	flags.BoolVar(&spawn.CopyBinary, "copy-binary", false, "Build and copy pi binary to agent hosts for executing benchmarks.")
 	flags.StringVar(&spawn.GOOS, "goos", "linux", "Set GOOS for building binary.")
 	flags.StringVar(&spawn.GOARCH, "goarch", "amd64", "Set GOARCH for building binary.")
