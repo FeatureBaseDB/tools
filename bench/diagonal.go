@@ -32,24 +32,22 @@ func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the DiagonalSetBits benchmark
-func (b *DiagonalSetBits) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+func (b *DiagonalSetBits) Run(ctx context.Context) *Result {
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for DiagonalSetBits")
+		results.Error = fmt.Errorf("No client set for DiagonalSetBits")
 		return results
 	}
-	s := NewStats()
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseRowID+n, b.BaseColumnID+n)
 		start = time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
+		results.Add(time.Since(start), nil)
 		if err != nil {
-			results["error"] = err.Error()
+			results.Error = err
 			return results
 		}
-		s.Add(time.Now().Sub(start))
 	}
-	AddToResults(s, results)
 	return results
 }

@@ -16,8 +16,8 @@ func PrettifySpawnResult(sr *SpawnResult) {
 	return // TODO
 }
 
-func PrettifyBenchResult(b *BenchResult) {
-	b.Output = Prettify(b.Output)
+func PrettifyBenchResult(b *Result) {
+	return // TODO
 }
 
 // Recursively replaces elements of ugly types with their pretty wrappers
