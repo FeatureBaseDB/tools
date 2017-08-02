@@ -137,8 +137,8 @@ type SpawnResult struct {
 // potentially multiple agents. Each agent's result is represented in the slice
 // of BenchResult objects.
 type BenchmarkResult struct {
-	BenchmarkName string        `json:"benchmark-name"`
-	AgentResults  []BenchResult `json:"agent-results"`
+	BenchmarkName string   `json:"benchmark-name"`
+	AgentResults  []Result `json:"agent-results"`
 }
 
 func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, error) {
@@ -170,7 +170,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 		wg := sync.WaitGroup{}
 		results[bmNum] = BenchmarkResult{
 			BenchmarkName: bm.Name,
-			AgentResults:  make([]BenchResult, bm.Num),
+			AgentResults:  make([]Result, bm.Num),
 		}
 		for agentNum := 0; agentNum < bm.Num; agentNum++ {
 			agentIdx %= len(cmd.AgentHosts)
@@ -192,7 +192,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 			go func(stdout, stderr io.Reader, name string, bmNum, agentNum int) {
 				defer wg.Done()
 				dec := json.NewDecoder(stdout)
-				benchResult := BenchResult{}
+				benchResult := Result{}
 				err := dec.Decode(&benchResult)
 				if err != nil {
 					errOut, err2 := ioutil.ReadAll(stderr)

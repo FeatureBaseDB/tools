@@ -29,27 +29,25 @@ func (b *RandomQuery) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the RandomQuery benchmark
-func (b *RandomQuery) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+func (b *RandomQuery) Run(ctx context.Context) *Result {
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for RandomQuery")
+		results.err = fmt.Errorf("No client set for RandomQuery")
 		return results
 	}
 	qm := NewQueryGenerator(b.Seed)
 	qm.IDToFrameFn = func(id uint64) string { return b.Frame }
-	s := NewStats()
+
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseRowID), uint64(b.RowIDRange))
 		start = time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
+		results.Add(time.Since(start), nil)
 		if err != nil {
-			results["error"] = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
+			results.err = fmt.Errorf("Executing '%s' against '%s', err: %v", call.String(), b.Indexes[n%len(b.Indexes)], err)
 			return results
 		}
-
-		s.Add(time.Now().Sub(start))
 	}
-	AddToResults(s, results)
 	return results
 }

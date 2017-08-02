@@ -34,28 +34,25 @@ func (b *RandomSetBits) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the RandomSetBits benchmark
-func (b *RandomSetBits) Run(ctx context.Context) map[string]interface{} {
+func (b *RandomSetBits) Run(ctx context.Context) *Result {
 	src := rand.NewSource(b.Seed)
 	rng := rand.New(src)
-	results := make(map[string]interface{})
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for RandomSetBits")
+		results.err = fmt.Errorf("No client set for RandomSetBits")
 		return results
 	}
-	s := NewStats()
-	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		rowID := rng.Int63n(b.RowIDRange)
 		profID := rng.Int63n(b.ColumnIDRange)
 		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseRowID+rowID, b.BaseColumnID+profID)
-		start = time.Now()
+		start := time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
+		results.Add(time.Since(start), nil)
 		if err != nil {
-			results["error"] = err.Error()
+			results.err = err
 			return results
 		}
-		s.Add(time.Now().Sub(start))
 	}
-	AddToResults(s, results)
 	return results
 }

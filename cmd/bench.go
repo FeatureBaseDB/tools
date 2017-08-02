@@ -41,7 +41,7 @@ agent numbers will do interesting work.
 // PrintResults encodes the output of a benchmark subcommand as json and writes
 // it to the given Writer. It takes the "human" flag into account when encoding
 // the json. TODO: this functionality may not belong here...
-func PrintResults(cmd *cobra.Command, result *bench.BenchResult, out io.Writer) error {
+func PrintResults(cmd *cobra.Command, result *bench.Result, out io.Writer) error {
 	human, err := cmd.Flags().GetBool("human")
 	if err != nil {
 		return err

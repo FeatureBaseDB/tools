@@ -7,6 +7,8 @@ import (
 
 	"context"
 
+	"os"
+
 	"github.com/pilosa/pilosa/pql"
 )
 
@@ -26,28 +28,20 @@ func (b *Query) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the Query benchmark
-func (b *Query) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+func (b *Query) Run(ctx context.Context) *Result {
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for BasicQuery")
+		results.err = fmt.Errorf("No client set for Query benchmark")
 		return results
 	}
-	resSlice := make([]map[string]interface{}, b.Iterations)
-	results["iterations"] = resSlice
-	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		resSlice[n] = make(map[string]interface{})
-		start = time.Now()
+		start := time.Now()
 		res, err := b.ExecuteQuery(ctx, b.Index, b.Query)
-		resSlice[n]["duration"] = time.Now().Sub(start)
+		fmt.Fprintf(os.Stderr, "results obj: %v, start time: %v, res: %v", results, start, res)
+		results.Add(time.Since(start), res)
 		if err != nil {
-			resSlice[n]["error"] = err.Error()
-		}
-		if res != nil {
-			resSlice[n]["results"] = res.Results()
-			resSlice[n]["columns"] = res.Columns()
-			resSlice[n]["error-message"] = res.ErrorMessage
-			resSlice[n]["success"] = res.Success
+			results.err = fmt.Errorf("problem with query #%d: %v", n, err)
+			return results
 		}
 	}
 	return results
@@ -75,13 +69,12 @@ func (b *BasicQuery) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the BasicQuery benchmark
-func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+func (b *BasicQuery) Run(ctx context.Context) *Result {
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for BasicQuery")
+		results.err = fmt.Errorf("No client set for BasicQuery")
 		return results
 	}
-	s := NewStats()
 
 	bms := make([]*pql.Call, b.NumArgs)
 	for i, _ := range bms {
@@ -101,22 +94,21 @@ func (b *BasicQuery) Run(ctx context.Context) map[string]interface{} {
 		query.Children = bms
 		start = time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query.String())
+		results.Add(time.Since(start), nil)
 		if err != nil {
-			results["error"] = err.Error()
+			results.err = err
 			return results
 		}
-		s.Add(time.Now().Sub(start))
 	}
-	AddToResults(s, results)
 	return results
 }
 
 // NewQueryGenerator initializes a new QueryGenerator
 func NewQueryGenerator(seed int64) *QueryGenerator {
 	return &QueryGenerator{
-		IDToFrameFn: func(id uint64) string { return "frame.n" },
+		IDToFrameFn: func(id uint64) string { return "fbench" },
 		R:           rand.New(rand.NewSource(seed)),
-		Frames:      []string{"frame.n"},
+		Frames:      []string{"fbench"},
 	}
 }
 
@@ -144,6 +136,7 @@ func (q *QueryGenerator) Random(maxN, depth, maxargs int, idmin, idmax uint64) *
 func (q *QueryGenerator) RandomTopN(maxN, depth, maxargs int, idmin, idmax uint64) *pql.Call {
 	frameIdx := q.R.Intn(len(q.Frames))
 	return &pql.Call{
+		Name: "TopN",
 		Args: map[string]interface{}{
 			"frame": q.Frames[frameIdx],
 			"n":     uint64(q.R.Intn(maxN-1) + 1),
@@ -286,7 +279,7 @@ func Bitmap(id uint64, frame string) *pql.Call {
 	return &pql.Call{
 		Name: "Bitmap",
 		Args: map[string]interface{}{
-			"id":    id,
+			"rowID": id,
 			"frame": frame,
 		},
 	}

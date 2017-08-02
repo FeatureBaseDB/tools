@@ -1,18 +1,20 @@
 package bench
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
 
-	"context"
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 // Benchmark is an interface to guide the creation of new pilosa benchmarks or
 // benchmark components. It defines 2 methods, Init, and Run. These are separate
 // methods so that benchmark running code can time only the running of the
-// benchmark, and not any setup.
+// benchmark, and not any setup. Benchmarks should Marshal to valid JSON so that
+// their configuration may be recorded along with their results.
 type Benchmark interface {
 	// Init takes a list of hosts and an agent number. It is generally expected
 	// to set up a connection to pilosa using whatever client it chooses. The
@@ -25,13 +27,9 @@ type Benchmark interface {
 	// "name".
 	Init(hosts []string, agentNum int) error
 
-	// Run runs the benchmark. The return value of Run is kept generic so that
-	// any relevant statistics or metrics that may be specific to the benchmark
-	// in question can be reported. TODO guidelines for what gets included in
-	// results and what will get added by other stuff. Run does not need to
-	// report total run time in `results`, as that will be added by calling
-	// code.
-	Run(ctx context.Context) map[string]interface{}
+	// Run runs the benchmark. See the documentation for the Result object to
+	// see how Run() should use its fields to return benchmark results.
+	Run(ctx context.Context) *Result
 }
 
 func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
@@ -51,33 +49,70 @@ func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
 	return v.Version, nil
 }
 
-type BenchResult struct {
-	Output        map[string]interface{} `json:"output"`
-	Duration      time.Duration          `json:"duration"`
-	AgentNum      int                    `json:"agentnum"`
-	PilosaVersion string                 `json:"pilosa-version"`
-	Configuration interface{}            `json:"configuration"`
-	Error         error                  `json:"error"`
+// Results holds the output from the run of a benchmark - the Benchmark's Run()
+// method may set Stats, Responses, and Extra, and the RunBenchmark helper
+// function will set the Duration, AgentNum, PilosaVersion, and Configuration.
+// Either may set Error if there is an error. The structure of Result assumes
+// that most benchmarks will run multiple queries and track statistics about how
+// long each one takes. The Extra field is for benchmarks which either do not
+// fit this model, or want to return additional information not covered by Stats
+// and Responses.
+type Result struct {
+	// Set By Benchmark.Run
+	Stats     *Stats                 `json:"stats"`
+	Responses []*pcli.QueryResponse  `json:"responses"`
+	Extra     map[string]interface{} `json:"extra"`
+
+	// Set By RunBenchmark
+	Duration      time.Duration `json:"duration"`
+	AgentNum      int           `json:"agentnum"`
+	PilosaVersion string        `json:"pilosa-version"`
+	Configuration interface{}   `json:"configuration"`
+
+	err error
+
+	// Error exists so that errors can be correctly marshalled to JSON. It is set using Result.err.Error()
+	Error string `json:"error"`
 }
 
-func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) *BenchResult {
-	result := &BenchResult{}
+// NewResult intializes and returns a Result.
+func NewResult() *Result {
+	return &Result{
+		Stats:     NewStats(),
+		Extra:     make(map[string]interface{}),
+		Responses: make([]*pcli.QueryResponse, 0),
+	}
+}
+
+// Add adds the duration to the Result's Stats object. If resp is non-nil, it
+// also adds it to the slice of responses.
+func (r *Result) Add(d time.Duration, resp *pcli.QueryResponse) {
+	r.Stats.Add(d)
+	if resp != nil {
+		r.Responses = append(r.Responses, resp)
+	}
+}
+
+// RunBenchmark invokes the given benchmark's Init and Run methods, and
+// populates the Result object with their output, along with some metadata.
+func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) *Result {
 	version, err := getClusterVersion(ctx, hosts)
 	if err != nil {
-		result.Error = err
-		return result
+		return &Result{err: err, Error: err.Error()}
 	}
 
 	err = b.Init(hosts, agentNum)
 	if err != nil {
-		result.Error = err
-		return result
+		return &Result{err: err, Error: err.Error()}
 	}
 	start := time.Now()
-	result.Output = b.Run(context.Background())
+	result := b.Run(context.Background())
 	result.Duration = time.Since(start)
 	result.AgentNum = agentNum
 	result.PilosaVersion = version
 	result.Configuration = b
+	if result.err != nil {
+		result.Error = result.err.Error()
+	}
 	return result
 }
