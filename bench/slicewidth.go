@@ -26,7 +26,6 @@ type SliceWidth struct {
 
 	Name           string  `json:"name"`
 	BaseIterations int64   `json:"base-iterations"`
-	Seed           int64   `json:"seed"`
 	Index          string  `json:"index"`
 	Frame          string  `json:"frame"`
 	BitDensity     float64 `json:"bit-density"`
@@ -38,7 +37,7 @@ type SliceWidth struct {
 	Stderr io.Writer `json:"-"`
 }
 
-// Init sets up the slice height benchmark.
+// Init sets up the slice width benchmark.
 func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 	b.Name = "slice-width"
 	b.hosts = hosts
