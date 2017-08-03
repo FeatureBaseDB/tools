@@ -67,5 +67,5 @@ Experimental tool for summarizing `pi spawn` results which have been stored in a
 
 Example:
 ```
-pi bview --bucket-name=benchmarks-pilosa
+pi bview --bucket=benchmarks-pilosa
 ```
