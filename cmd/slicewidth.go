@@ -37,7 +37,6 @@ func NewSliceWidthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	}
 
 	flags := sliceWidthCmd.Flags()
-	flags.Int64Var(&sliceWidth.BaseIterations, "base-iterations", 0, "Number of iterations for first import")
 	flags.StringVar(&sliceWidth.Index, "index", "benchindex", "Pilosa index to use.")
 	flags.StringVar(&sliceWidth.Frame, "frame", "slice-width", "Frame to import into.")
 	flags.Float64Var(&sliceWidth.BitDensity, "bit-density", 0, "data density.")

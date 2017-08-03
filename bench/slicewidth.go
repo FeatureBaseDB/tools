@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strconv"
 	"time"
 )
 
-// NewSliceHeight creates a new slice height benchmark with stdin/out/err
+// NewSliceWidth creates a new slice width benchmark with stdin/out/err
 // initialized.
 func NewSliceWidth(stdin io.Reader, stdout, stderr io.Writer) *SliceWidth {
 	return &SliceWidth{
@@ -18,14 +17,13 @@ func NewSliceWidth(stdin io.Reader, stdout, stderr io.Writer) *SliceWidth {
 	}
 }
 
-// SliceHeight benchmark tests the effect of an increasing number of rows in
+// SliceWidth helps importing data based on slice-width and data density.
 // a single slice on query time.
 type SliceWidth struct {
 	HasClient
 	hosts []string
 
 	Name           string  `json:"name"`
-	BaseIterations int64   `json:"base-iterations"`
 	Index          string  `json:"index"`
 	Frame          string  `json:"frame"`
 	BitDensity     float64 `json:"bit-density"`
@@ -37,7 +35,7 @@ type SliceWidth struct {
 	Stderr io.Writer `json:"-"`
 }
 
-// Init sets up the slice width benchmark.
+// Init sets up the slice width.
 func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 	b.Name = "slice-width"
 	b.hosts = hosts
@@ -49,43 +47,30 @@ func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 	return b.HasClient.Init(hosts, agentNum)
 }
 
-// Run runs the SliceWidth benchmark
-func (b *SliceWidth) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+// Run runs the SliceWidth to import data
+func (b *SliceWidth) Run(ctx context.Context) *Result {
 	bitDensity := b.BitDensity
-	iteration := b.BaseIterations
 	sliceCount := b.SliceCount
-	if bitDensity > 0 {
-		iteration = int64(float64(b.SliceWidth) * bitDensity)
+	maxSliceWidth := b.SliceWidth * sliceCount
+	iteration := int64(float64(maxSliceWidth) * bitDensity)
+	results := NewResult()
+	imp := &Import{
+		MaxRowID: 1000,
+		BaseColumnID: 0,
+		MaxColumnID: maxSliceWidth,
+		Iterations: iteration,
+		Index: b.Index,
+		Frame: b.Frame,
+		Distribution: "uniform",
+		BufferSize: 1000000,
 	}
-
-	// uniformly import to different slices
-	for i := int64(1); i <= sliceCount; i++ {
-		iresults := make(map[string]interface{})
-		results["iteration"+strconv.Itoa(int(i))] = iresults
-		maxColumnID := b.SliceWidth * i
-		baseColumnID := b.SliceWidth * (i - 1)
-		imp := &Import{
-			MaxRowID:     100,
-			BaseColumnID: baseColumnID,
-			MaxColumnID:  maxColumnID,
-			Iterations:   iteration,
-			Index:        b.Index,
-			Frame:        b.Frame,
-			Distribution: "uniform",
-			BufferSize:   1000000,
-		}
-
-		err := imp.Init(b.hosts, 0)
-		if err != nil {
-			iresults["error"] = fmt.Sprintf("error initializing importer, err: %v", err)
-		}
-
-		importStart := time.Now()
-		importRes := imp.Run(ctx)
-		importRes["duration"] = time.Since(importStart)
-		iresults["import"] = importRes
-
+	err := imp.Init(b.hosts, 0)
+	if err != nil {
+		results.err = fmt.Errorf("error initializing importer, err: %v", err)
 	}
+	start := time.Now()
+	imp.Run(ctx)
+	results.Add(time.Since(start), nil)
+
 	return results
 }
