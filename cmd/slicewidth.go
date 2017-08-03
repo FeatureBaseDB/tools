@@ -12,8 +12,8 @@ func NewSliceWidthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	sliceWidth := bench.NewSliceWidth(stdin, stdout, stderr)
 	sliceWidthCmd := &cobra.Command{
 		Use:   "slice-width",
-		Short: "Repeatedly imports more rows into one or multiple slices.",
-		Long: `Repeatedly imports more rows into a one or multiple slices based on bit density and slice count`,
+		Short: "Imports a given density of data uniformly over a configurable number of slices.",
+		Long:  `Imports a given density of data uniformly over a configurable number of slices based on bit density and slice count`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
 			hosts, err := flags.GetStringSlice("hosts")
@@ -37,9 +37,9 @@ func NewSliceWidthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 	}
 
 	flags := sliceWidthCmd.Flags()
-	flags.StringVar(&sliceWidth.Index, "index", "benchindex", "Pilosa index to use.")
-	flags.StringVar(&sliceWidth.Frame, "frame", "slice-width", "Frame to import into.")
-	flags.Float64Var(&sliceWidth.BitDensity, "bit-density", 0, "data density.")
+	flags.StringVar(&sliceWidth.Index, "index", defaultIndex, "Pilosa index to use.")
+	flags.StringVar(&sliceWidth.Frame, "frame", defaultFrame, "Frame to import into.")
+	flags.Float64Var(&sliceWidth.BitDensity, "bit-density", 0.1, "data density.")
 	flags.Int64Var(&sliceWidth.SliceWidth, "slice-width", 1048576, "slice width, default to 2^20")
 	flags.Int64Var(&sliceWidth.SliceCount, "slice-count", 1, "slice count")
 

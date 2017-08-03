@@ -44,8 +44,8 @@ Agent num modifies random seed.`,
 	flags.Int64Var(&randomQuery.RowIDRange, "row-id-range", 100000, "Number of possible row ids to include in queries.")
 	flags.Int64Var(&randomQuery.Seed, "seed", 1, "random seed")
 	flags.IntVar(&randomQuery.Iterations, "iterations", 100, "Number queries to perform.")
-	flags.StringVar(&randomQuery.Frame, "frame", "fbench", "Frame to query.")
-	flags.StringSliceVar(&randomQuery.Indexes, "indexes", []string{"ibench"}, "Pilosa index to use.")
+	flags.StringVar(&randomQuery.Frame, "frame", defaultFrame, "Frame to query.")
+	flags.StringSliceVar(&randomQuery.Indexes, "indexes", []string{defaultIndex}, "Pilosa index to use.")
 	flags.StringVar(&randomQuery.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'.")
 	flags.StringVar(&randomQuery.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
 

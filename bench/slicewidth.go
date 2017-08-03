@@ -23,12 +23,12 @@ type SliceWidth struct {
 	HasClient
 	hosts []string
 
-	Name           string  `json:"name"`
-	Index          string  `json:"index"`
-	Frame          string  `json:"frame"`
-	BitDensity     float64 `json:"bit-density"`
-	SliceWidth     int64   `json:"slice-width"`
-	SliceCount     int64   `json:"slice-count"`
+	Name       string  `json:"name"`
+	Index      string  `json:"index"`
+	Frame      string  `json:"frame"`
+	BitDensity float64 `json:"bit-density"`
+	SliceWidth int64   `json:"slice-width"`
+	SliceCount int64   `json:"slice-count"`
 
 	Stdin  io.Reader `json:"-"`
 	Stdout io.Writer `json:"-"`
@@ -51,18 +51,19 @@ func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 func (b *SliceWidth) Run(ctx context.Context) *Result {
 	bitDensity := b.BitDensity
 	sliceCount := b.SliceCount
-	maxSliceWidth := b.SliceWidth * sliceCount
-	iteration := int64(float64(maxSliceWidth) * bitDensity)
+	numColumns := b.SliceWidth * sliceCount
+	numRows := int64(1000)
+	iteration := int64(float64(numColumns)*bitDensity) * numRows
 	results := NewResult()
 	imp := &Import{
-		MaxRowID: 1000,
+		MaxRowID:     numRows,
 		BaseColumnID: 0,
-		MaxColumnID: maxSliceWidth,
-		Iterations: iteration,
-		Index: b.Index,
-		Frame: b.Frame,
+		MaxColumnID:  numColumns,
+		Iterations:   iteration,
+		Index:        b.Index,
+		Frame:        b.Frame,
 		Distribution: "uniform",
-		BufferSize: 1000000,
+		BufferSize:   1000000,
 	}
 	err := imp.Init(b.hosts, 0)
 	if err != nil {

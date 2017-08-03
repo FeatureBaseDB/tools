@@ -11,6 +11,11 @@ import (
 
 var benchCommandFns = map[string]func(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command{}
 
+const (
+	defaultIndex = "ibench"
+	defaultFrame = "fbench"
+)
+
 // NewBenchCommand subcommands
 func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	benchCmd := &cobra.Command{
