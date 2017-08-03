@@ -1,20 +1,17 @@
 package bench
 
-import (
-	"math"
-	"time"
-)
+import "time"
 
 // Stats object helps track timing stats.
 type Stats struct {
-	Min            time.Duration
-	Max            time.Duration
-	Mean           time.Duration
+	Min            time.Duration `json:"min"`
+	Max            time.Duration `json:"max"`
+	Mean           time.Duration `json:"mean"`
 	sumSquareDelta float64
-	Total          time.Duration
-	Num            int64
-	All            []time.Duration
-	SaveAll        bool
+	Total          time.Duration   `json:"total-time"`
+	Num            int64           `json:"num"`
+	All            []time.Duration `json:"all"`
+	SaveAll        bool            `json:"-"`
 }
 
 // NewStats gets a Stats object.
@@ -44,22 +41,4 @@ func (s *Stats) Add(td time.Duration) {
 	delta := td - s.Mean
 	s.Mean += delta / time.Duration(s.Num)
 	s.sumSquareDelta += float64(delta * (td - s.Mean))
-}
-
-// Avg returns the average of all durations Added to the Stats object.
-func (s *Stats) Avg() time.Duration {
-	return s.Total / time.Duration(s.Num)
-}
-
-// AddToResults serializes the summary of Stats and adds them to the results
-// map.
-func AddToResults(s *Stats, results map[string]interface{}) {
-	results["min"] = s.Min
-	results["max"] = s.Max
-	results["avg"] = s.Mean
-	variance := s.sumSquareDelta / float64(s.Num)
-	results["std"] = time.Duration(math.Sqrt(variance))
-	if s.SaveAll {
-		results["all"] = s.All
-	}
 }

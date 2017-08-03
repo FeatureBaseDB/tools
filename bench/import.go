@@ -42,15 +42,15 @@ func (b *Import) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the Import benchmark
-func (b *Import) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
-	results["index"] = b.Index
+func (b *Import) Run(ctx context.Context) *Result {
+	results := NewResult()
 	bitIterator := b.NewBitIterator()
 	err := b.HasClient.Import(b.Index, b.Frame, bitIterator, b.BufferSize)
 	if err != nil {
-		results["error"] = fmt.Sprintf("running go client import: %v", err)
+		results.err = fmt.Errorf("running go client import: %v", err)
 	}
-	results["actual-iterations"] = bitIterator.actualIterations
+	results.Extra["actual-iterations"] = bitIterator.actualIterations
+	results.Extra["avgdelta"] = bitIterator.avgdelta
 	return results
 }
 

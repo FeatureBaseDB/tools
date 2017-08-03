@@ -71,18 +71,17 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 }
 
 // Run runs the Zipf benchmark
-func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
-	results := make(map[string]interface{})
+func (b *Zipf) Run(ctx context.Context) *Result {
+	results := NewResult()
 	if b.client == nil {
-		results["error"] = fmt.Errorf("No client set for Zipf")
+		results.err = fmt.Errorf("No client set for Zipf")
 		return results
 	}
 	operation := "SetBit"
 	if b.Operation == "clear" {
 		operation = "ClearBit"
 	}
-	s := NewStats()
-	var start time.Time
+
 	for n := 0; n < b.Iterations; n++ {
 		// generate IDs from Zipf distribution
 		rowIDOriginal := b.rowRng.Uint64()
@@ -92,14 +91,13 @@ func (b *Zipf) Run(ctx context.Context) map[string]interface{} {
 		profID := b.columnPerm.Next(int64(profIDOriginal))
 
 		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseRowID+int64(rowID), b.BaseColumnID+int64(profID))
-		start = time.Now()
+		start := time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
+		results.Add(time.Since(start), nil)
 		if err != nil {
-			results["error"] = err.Error()
+			results.err = err
 			return results
 		}
-		s.Add(time.Now().Sub(start))
 	}
-	AddToResults(s, results)
 	return results
 }
