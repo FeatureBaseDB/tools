@@ -42,8 +42,8 @@ overlap at all.`,
 	flags.IntVar(&diagonalSetBits.BaseRowID, "base-row-id", 0, "Rows being set will all be greater than this.")
 	flags.IntVar(&diagonalSetBits.BaseColumnID, "base-column-id", 0, "Columns being set will all be greater than this.")
 	flags.IntVar(&diagonalSetBits.Iterations, "iterations", 100, "Number of bits to set.")
-	flags.StringVar(&diagonalSetBits.Index, "index", "benchindex", "Pilosa index in which to set bits.")
-	flags.StringVar(&diagonalSetBits.Frame, "frame", "frame", "Pilosa frame in which to set bits.")
+	flags.StringVar(&diagonalSetBits.Index, "index", "ibench", "Pilosa index in which to set bits.")
+	flags.StringVar(&diagonalSetBits.Frame, "frame", "fbench", "Pilosa frame in which to set bits.")
 	flags.StringVar(&diagonalSetBits.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'.")
 	flags.StringVar(&diagonalSetBits.ContentType, "content-type", "protobuf", "Protobuf or pql.")
 
