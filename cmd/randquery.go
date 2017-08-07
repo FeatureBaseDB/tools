@@ -38,7 +38,7 @@ Agent num modifies random seed.`,
 	flags := randomQueryCmd.Flags()
 	flags.IntVar(&randomQuery.MaxDepth, "max-depth", 4, "Maximum nesting of queries.")
 	flags.IntVar(&randomQuery.MaxArgs, "max-args", 4, "Maximum number of arguments per query.")
-	flags.IntVar(&randomQuery.MaxN, "max-n", 4, "Maximum value of N for TopN queries.")
+	flags.IntVar(&randomQuery.MaxN, "max-n", 100, "Maximum value of N for TopN queries.")
 
 	flags.Int64Var(&randomQuery.MinRowID, "min-row-id", 0, "Minimum row id to include in queries.")
 	flags.Int64Var(&randomQuery.MaxRowID, "max-row-id", 100000, "Maximum row id to include in queries.")
