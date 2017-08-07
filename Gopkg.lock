@@ -101,8 +101,8 @@
 [[projects]]
   name = "github.com/pilosa/go-pilosa"
   packages = [".","internal"]
-  revision = "1fdeffa234a311d735ce214463e20dd482a7f5a6"
-  version = "v0.4.0"
+  revision = "96c2d45a4b208d0ab7f7fe416404f0acce6a6c84"
+  version = "v0.5.0"
 
 [[projects]]
   name = "github.com/pilosa/pilosa"
@@ -179,6 +179,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "61f40d86b15ca86a200f9d15d4b97900ae60be69b9ee06637583312c46b23afc"
+  inputs-digest = "d9a3f4ba9fb6d2364aabff12e334b264d5171d6ebf1b105c111ed851c452b588"
   solver-name = "gps-cdcl"
   solver-version = 1
