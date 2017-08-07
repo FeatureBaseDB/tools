@@ -13,8 +13,8 @@ type RandomQuery struct {
 	MaxDepth   int      `json:"max-depth"`
 	MaxArgs    int      `json:"max-args"`
 	MaxN       int      `json:"max-n"`
-	BaseRowID  int64    `json:"base-row-id"`
-	RowIDRange int64    `json:"row-id-range"`
+	MinRowID   int64    `json:"min-row-id"`
+	MaxRowID   int64    `json:"max-row-id"`
 	Iterations int      `json:"iterations"`
 	Seed       int64    `json:"seed"`
 	Frame      string   `json:"frame"`
@@ -40,7 +40,7 @@ func (b *RandomQuery) Run(ctx context.Context) *Result {
 
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.BaseRowID), uint64(b.RowIDRange))
+		call := qm.Random(b.MaxN, b.MaxDepth, b.MaxArgs, uint64(b.MinRowID), uint64(b.MaxRowID-b.MinRowID))
 		start = time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Indexes[n%len(b.Indexes)], call.String())
 		results.Add(time.Since(start), nil)

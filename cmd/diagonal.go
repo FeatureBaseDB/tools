@@ -16,7 +16,7 @@ func NewDiagonalSetBitsCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra
 		Short: "Sets bits with increasing column id and row id.",
 		Long: `Sets bits with increasing column id and row id.
 
-Agent num offsets both the base column id and base row id by the number of
+Agent num offsets both the min column id and min row id by the number of
 iterations, so that only bits on the main diagonal are set, and agents don't
 overlap at all.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -39,8 +39,8 @@ overlap at all.`,
 	}
 
 	flags := diagonalSetBitsCmd.Flags()
-	flags.IntVar(&diagonalSetBits.BaseRowID, "base-row-id", 0, "Rows being set will all be greater than this.")
-	flags.IntVar(&diagonalSetBits.BaseColumnID, "base-column-id", 0, "Columns being set will all be greater than this.")
+	flags.IntVar(&diagonalSetBits.MinRowID, "min-row-id", 0, "Rows being set will all be greater than this.")
+	flags.IntVar(&diagonalSetBits.MinColumnID, "min-column-id", 0, "Columns being set will all be greater than this.")
 	flags.IntVar(&diagonalSetBits.Iterations, "iterations", 100, "Number of bits to set.")
 	flags.StringVar(&diagonalSetBits.Index, "index", "ibench", "Pilosa index in which to set bits.")
 	flags.StringVar(&diagonalSetBits.Frame, "frame", "fbench", "Pilosa frame in which to set bits.")

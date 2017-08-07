@@ -11,15 +11,15 @@ import (
 // RandomSetBits sets bits randomly and deterministically based on a seed.
 type RandomSetBits struct {
 	HasClient
-	Name          string `json:"name"`
-	BaseRowID     int64  `json:"base-row-id"`
-	BaseColumnID  int64  `json:"base-column-id"`
-	RowIDRange    int64  `json:"row-id-range"`
-	ColumnIDRange int64  `json:"column-id-range"`
-	Iterations    int    `json:"iterations"`
-	Seed          int64  `json:"seed"`
-	Index         string `json:"index"`
-	Frame         string `json:"frame"`
+	Name        string `json:"name"`
+	MinRowID    int64  `json:"min-row-id"`
+	MaxRowID    int64  `json:"max-row-id"`
+	MinColumnID int64  `json:"min-column-id"`
+	MaxColumnID int64  `json:"max-column-id"`
+	Iterations  int    `json:"iterations"`
+	Seed        int64  `json:"seed"`
+	Index       string `json:"index"`
+	Frame       string `json:"frame"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -43,9 +43,9 @@ func (b *RandomSetBits) Run(ctx context.Context) *Result {
 		return results
 	}
 	for n := 0; n < b.Iterations; n++ {
-		rowID := rng.Int63n(b.RowIDRange)
-		profID := rng.Int63n(b.ColumnIDRange)
-		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.BaseRowID+rowID, b.BaseColumnID+profID)
+		rowID := rng.Int63n(b.MaxRowID - b.MinRowID)
+		profID := rng.Int63n(b.MaxColumnID - b.MinColumnID)
+		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.MinRowID+rowID, b.MinColumnID+profID)
 		start := time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		results.Add(time.Since(start), nil)

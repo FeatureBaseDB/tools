@@ -42,10 +42,10 @@ maximum variation of the distribution, with higher ratio being more uniform.
 	}
 
 	flags := zipfCmd.Flags()
-	flags.Int64Var(&zipf.BaseRowID, "base-row-id", 0, "Rows being set will all be greater than this.")
-	flags.Int64Var(&zipf.RowIDRange, "row-id-range", 100000, "Number of possible row ids that can be set.")
-	flags.Int64Var(&zipf.BaseColumnID, "base-column-id", 0, "Column id to start from.")
-	flags.Int64Var(&zipf.ColumnIDRange, "column-id-range", 100000, "Number of possible column ids that can be set.")
+	flags.Int64Var(&zipf.MinRowID, "min-row-id", 0, "Rows being set will all be greater than this.")
+	flags.Int64Var(&zipf.MaxRowID, "max-row-id", 100000, "Maximum row id for set bits.")
+	flags.Int64Var(&zipf.MinColumnID, "min-column-id", 0, "Column id to start from.")
+	flags.Int64Var(&zipf.MaxColumnID, "max-column-id", 100000, "Maximum column id for set bits.")
 	flags.IntVar(&zipf.Iterations, "iterations", 100, "Number of bits to set.")
 	flags.Int64Var(&zipf.Seed, "seed", 1, "Seed for RNG.")
 	flags.StringVar(&zipf.Frame, "frame", "fbench", "Pilosa frame in which to set bits.")
