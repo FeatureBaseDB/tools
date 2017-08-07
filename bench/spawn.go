@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -92,8 +93,13 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 		return fmt.Errorf("spawn: pilosa-hosts not specified")
 	}
 	if len(cmd.AgentHosts) == 0 {
-		fmt.Fprintln(cmd.Stderr, "spawn: no agent-hosts specified; all agents will be spawned on localhost")
-		cmd.AgentHosts = []string{"localhost"}
+		return fmt.Errorf("spawn: no agent-hosts specified - specify at least one agent host (localhost is acceptable)")
+	}
+	if cmd.GOOS == "" {
+		cmd.GOOS = runtime.GOOS
+	}
+	if cmd.GOARCH == "" {
+		cmd.GOARCH = runtime.GOARCH
 	}
 	res, err := cmd.spawnRemote(ctx)
 	if err != nil {
