@@ -4,14 +4,15 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"strings"
+
+	"github.com/pilosa/tools"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-
-	"net/http"
-	_ "net/http/pprof"
 )
 
 func init() {
@@ -26,9 +27,11 @@ func NewRootCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
 	rc := &cobra.Command{
 		Use:   "pi",
 		Short: "Pilosa Tools",
-		Long: `Contains various benchmarking and cluster 
-creation and management tools for Pilosa.
-`,
+		Long: `Contains various benchmarking and cluster creation and management tools for
+Pilosa. Try "pi <command> --help for more information."
+
+Version: ` + tools.Version + `
+Build Time: ` + tools.BuildTime + "\n",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			v := viper.New()
 			err := setAllConfig(v, cmd.Flags(), "PI")

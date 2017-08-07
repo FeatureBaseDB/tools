@@ -10,11 +10,6 @@ import (
 	"github.com/pilosa/tools/cmd"
 )
 
-var (
-	Version   = "v0.0.0"
-	BuildTime = "not recorded"
-)
-
 func main() {
 	rootCmd := cmd.NewRootCommand(os.Stdin, os.Stdout, os.Stderr)
 	if err := rootCmd.Execute(); err != nil {
