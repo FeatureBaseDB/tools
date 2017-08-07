@@ -41,6 +41,7 @@ results by reading the stdout of each agent benchmark.
 	flags := spawnCmd.Flags()
 	flags.BoolVar(&spawn.HumanReadable, "human", true, "Make output human friendly.")
 	flags.StringVar(&spawn.Output, "output", "stdout", "(stdout | s3). Write JSON results to stdout, or store them in S3 (requires AWS credentials to be setup).")
+	flags.StringVar(&spawn.AWSRegion, "aws-region", "", "Which AWS region to use when output is s3. (defaults to AWS_REGION from environment or 'us-east-1' if that is blank)")
 	flags.StringVar(&spawn.BucketName, "bucket-name", "benchmarks-pilosa", "S3 bucket name to write results to.")
 	flags.BoolVar(&spawn.CopyBinary, "copy-binary", true, "Build and copy pi binary to agent hosts for executing benchmarks.")
 	flags.StringVar(&spawn.GOOS, "goos", "", "Set GOOS for building binary. (defaults to local runtime's GOOS)")
@@ -48,7 +49,7 @@ results by reading the stdout of each agent benchmark.
 	flags.StringSliceVar(&spawn.PilosaHosts, "pilosa-hosts", []string{"localhost:10101"}, "Comma separated host:port of Pilosa cluster.")
 	flags.StringSliceVar(&spawn.AgentHosts, "agent-hosts", []string{"localhost"}, "Comma separated hostnames of agents.")
 	flags.StringVar(&spawn.SSHUser, "ssh-user", "", "SSH username for remote hosts. (defaults to current user)")
-	flags.StringVar(&spawn.SpawnFile, "spawn-file", "", "JSON file defining spawn benchmarks.")
+	flags.StringVar(&spawn.SpawnFile, "spawn-file", "", "JSON file defining spawn benchmarks. (required)")
 
 	return spawnCmd
 }

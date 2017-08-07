@@ -39,6 +39,7 @@ type SpawnCommand struct {
 	// Result destination, ["stdout", "s3"]
 	Output     string `json:"output"`
 	BucketName string `json:"bucket-name"`
+	AWSRegion  string `json:"aws-region"`
 
 	// If this is true, build and copy pi binary to agent hosts.
 	CopyBinary bool   `json:"copy-binary"`
@@ -77,6 +78,9 @@ func NewSpawnCommand(stdin io.Reader, stdout, stderr io.Writer) *SpawnCommand {
 
 // Run executes the main program execution.
 func (cmd *SpawnCommand) Run(ctx context.Context) error {
+	if cmd.SpawnFile == "" {
+		return fmt.Errorf("a spawn file must be specified")
+	}
 	f, err := os.Open(cmd.SpawnFile)
 	if err != nil {
 		return fmt.Errorf("trying to open spawn file: %v", err)
@@ -101,6 +105,12 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	if cmd.GOARCH == "" {
 		cmd.GOARCH = runtime.GOARCH
 	}
+	if cmd.AWSRegion == "" {
+		cmd.AWSRegion = os.Getenv("AWS_REGION")
+		if cmd.AWSRegion == "" {
+			cmd.AWSRegion = "us-east-1"
+		}
+	}
 	res, err := cmd.spawnRemote(ctx)
 	if err != nil {
 		return fmt.Errorf("spawn remote: %v", err)
@@ -115,7 +125,7 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 
 	var writer io.Writer
 	if cmd.Output == "s3" {
-		writer = NewS3Uploader(cmd.BucketName, runUUID.String()+".json")
+		writer = NewS3Uploader(cmd.BucketName, runUUID.String()+".json", cmd.AWSRegion)
 	} else if cmd.Output == "stdout" {
 		writer = cmd.Stdout
 	} else {
