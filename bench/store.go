@@ -10,10 +10,10 @@ import (
 )
 
 // NewS3Uploader creates an S3Uploader with specified bucket and key
-func NewS3Uploader(bucket string, key string) *S3Uploader {
+func NewS3Uploader(bucket, key, region string) *S3Uploader {
 	return &S3Uploader{
 		bucket,
-		s3.New(session.New(&aws.Config{})),
+		s3.New(session.New(&aws.Config{Region: &region})),
 		key,
 	}
 }

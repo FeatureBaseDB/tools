@@ -14,10 +14,10 @@ import (
 type Zipf struct {
 	HasClient
 	Name           string  `json:"name"`
-	BaseRowID      int64   `json:"base-row-id"`
-	BaseColumnID   int64   `json:"base-column-id"`
-	RowIDRange     int64   `json:"row-id-range"`
-	ColumnIDRange  int64   `json:"column-id-range"`
+	MinRowID       int64   `json:"min-row-id"`
+	MinColumnID    int64   `json:"min-column-id"`
+	MaxRowID       int64   `json:"max-row-id"`
+	MaxColumnID    int64   `json:"max-column-id"`
 	Iterations     int     `json:"iterations"`
 	Seed           int64   `json:"seed"`
 	Index          string  `json:"index"`
@@ -51,13 +51,13 @@ func (b *Zipf) Init(hosts []string, agentNum int) error {
 	b.Name = "zipf"
 	b.Seed = b.Seed + int64(agentNum)
 	rnd := rand.New(rand.NewSource(b.Seed))
-	rowOffset := getZipfOffset(b.RowIDRange, b.RowExponent, b.RowRatio)
-	b.rowRng = rand.NewZipf(rnd, b.RowExponent, rowOffset, uint64(b.RowIDRange-1))
-	columnOffset := getZipfOffset(b.ColumnIDRange, b.ColumnExponent, b.ColumnRatio)
-	b.columnRng = rand.NewZipf(rnd, b.ColumnExponent, columnOffset, uint64(b.ColumnIDRange-1))
+	rowOffset := getZipfOffset(b.MaxRowID-b.MinRowID, b.RowExponent, b.RowRatio)
+	b.rowRng = rand.NewZipf(rnd, b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
+	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
+	b.columnRng = rand.NewZipf(rnd, b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
 
-	b.rowPerm = NewPermutationGenerator(b.RowIDRange, b.Seed)
-	b.columnPerm = NewPermutationGenerator(b.ColumnIDRange, b.Seed+1)
+	b.rowPerm = NewPermutationGenerator(b.MaxRowID-b.MinRowID, b.Seed)
+	b.columnPerm = NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, b.Seed+1)
 
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
@@ -90,7 +90,7 @@ func (b *Zipf) Run(ctx context.Context) *Result {
 		rowID := b.rowPerm.Next(int64(rowIDOriginal))
 		profID := b.columnPerm.Next(int64(profIDOriginal))
 
-		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.BaseRowID+int64(rowID), b.BaseColumnID+int64(profID))
+		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.MinRowID+int64(rowID), b.MinColumnID+int64(profID))
 		start := time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, query)
 		results.Add(time.Since(start), nil)

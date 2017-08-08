@@ -35,8 +35,8 @@ func NewImportCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 	}
 
 	flags := importCmd.Flags()
-	flags.Int64Var(&importer.BaseRowID, "base-row-id", 0, "Minimum row id of set bits.")
-	flags.Int64Var(&importer.BaseColumnID, "base-column-id", 0, "Minimum column id of set bits.")
+	flags.Int64Var(&importer.MinRowID, "min-row-id", 0, "Minimum row id of set bits.")
+	flags.Int64Var(&importer.MinColumnID, "min-column-id", 0, "Minimum column id of set bits.")
 	flags.Int64Var(&importer.MaxRowID, "max-row-id", 1000, "Maximum row id of set bits.")
 	flags.Int64Var(&importer.MaxColumnID, "max-column-id", 1000, "Maximum column id of set bits.")
 	flags.Int64Var(&importer.Iterations, "iterations", 100000, "Number of bits to set")

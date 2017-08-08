@@ -36,10 +36,10 @@ Agent num modifies random seed`,
 	}
 
 	flags := randomSetBitsCmd.Flags()
-	flags.Int64Var(&randomSetBits.BaseRowID, "base-row-id", 0, "Minimum row id for bits to be set.")
-	flags.Int64Var(&randomSetBits.RowIDRange, "row-id-range", 100000, "Number of rows in which to set bits.")
-	flags.Int64Var(&randomSetBits.BaseColumnID, "base-column-id", 0, "Minimum column id for bits to be set.")
-	flags.Int64Var(&randomSetBits.ColumnIDRange, "column-id-range", 100000, "Number of columsn in which to set bits.")
+	flags.Int64Var(&randomSetBits.MinRowID, "min-row-id", 0, "Minimum row id for set bits.")
+	flags.Int64Var(&randomSetBits.MaxRowID, "max-row-id", 100000, "Maximum row id for set bits.")
+	flags.Int64Var(&randomSetBits.MinColumnID, "min-column-id", 0, "Minimum column id for set bits.")
+	flags.Int64Var(&randomSetBits.MaxColumnID, "max-column-id", 100000, "Maximum column id for set bits.")
 	flags.Int64Var(&randomSetBits.Seed, "seed", 1, "Random seed.")
 	flags.IntVar(&randomSetBits.Iterations, "iterations", 100, "Number of bits to set.")
 	flags.StringVar(&randomSetBits.Frame, "frame", "fbench", "Frame to set bits in.")

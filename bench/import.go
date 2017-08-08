@@ -12,8 +12,8 @@ import (
 
 type Import struct {
 	Name         string `json:"name"`
-	BaseRowID    int64  `json:"base-row-id"`
-	BaseColumnID int64  `json:"base-column-id"`
+	MinRowID     int64  `json:"min-row-id"`
+	MinColumnID  int64  `json:"min-column-id"`
 	MaxRowID     int64  `json:"max-row-id"`
 	MaxColumnID  int64  `json:"max-column-id"`
 	Index        string `json:"index"`
@@ -58,9 +58,9 @@ type BitIterator struct {
 	actualIterations int64
 	bitnum           int64
 	maxbitnum        int64
-	baserow          int64
+	minrow           int64
 	maxrow           int64
-	basecol          int64
+	mincol           int64
 	maxcol           int64
 	avgdelta         float64
 	lambda           float64
@@ -71,9 +71,9 @@ type BitIterator struct {
 func (b *Import) NewBitIterator() *BitIterator {
 	z := &BitIterator{}
 	z.rng = b.rng
-	z.maxbitnum = (b.MaxRowID - b.BaseRowID + 1) * (b.MaxColumnID - b.BaseColumnID + 1)
+	z.maxbitnum = (b.MaxRowID - b.MinRowID + 1) * (b.MaxColumnID - b.MinColumnID + 1)
 	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
-	z.baserow, z.basecol, z.maxrow, z.maxcol = b.BaseRowID, b.BaseColumnID, b.MaxRowID, b.MaxColumnID
+	z.minrow, z.mincol, z.maxrow, z.maxcol = b.MinRowID, b.MinColumnID, b.MaxRowID, b.MaxColumnID
 
 	if b.Distribution == "exponential" {
 		z.lambda = 1.0 / z.avgdelta
@@ -96,7 +96,7 @@ func (z *BitIterator) NextBit() (pilosa.Bit, error) {
 	}
 	bit := pilosa.Bit{}
 	z.actualIterations++
-	bit.RowID = uint64((z.bitnum / (z.maxcol - z.basecol + 1)) + z.baserow)
-	bit.ColumnID = uint64(z.bitnum%(z.maxcol-z.basecol+1) + z.basecol)
+	bit.RowID = uint64((z.bitnum / (z.maxcol - z.mincol + 1)) + z.minrow)
+	bit.ColumnID = uint64(z.bitnum%(z.maxcol-z.mincol+1) + z.mincol)
 	return bit, nil
 }

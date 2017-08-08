@@ -52,7 +52,7 @@ func (b *Query) Run(ctx context.Context) *Result {
 type BasicQuery struct {
 	HasClient
 	Name       string `json:"name"`
-	BaseRowID  int64  `json:"base-row-id"`
+	MinRowID   int64  `json:"min-row-id"`
 	Iterations int    `json:"iterations"`
 	NumArgs    int    `json:"num-args"`
 	Query      string `json:"query"`
@@ -64,7 +64,7 @@ type BasicQuery struct {
 // the agent num.
 func (b *BasicQuery) Init(hosts []string, agentNum int) error {
 	b.Name = "basic-query"
-	b.BaseRowID = b.BaseRowID + int64(agentNum*b.Iterations)
+	b.MinRowID = b.MinRowID + int64(agentNum*b.Iterations)
 	return b.HasClient.Init(hosts, agentNum)
 }
 
@@ -89,7 +89,7 @@ func (b *BasicQuery) Run(ctx context.Context) *Result {
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
 		for i, _ := range bms {
-			bms[i].Args["rowID"] = b.BaseRowID + int64(n)
+			bms[i].Args["rowID"] = b.MinRowID + int64(n)
 		}
 		query.Children = bms
 		start = time.Now()
