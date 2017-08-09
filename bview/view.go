@@ -60,7 +60,7 @@ func (m *Main) Run() error {
 
 func Summarize(marks []*Spawn, out io.Writer) {
 	fmt.Fprintf(out, "%6.6s | %20.20s | pilosa hosts | agent hosts |\n", "uuid", "time")
-	fmt.Fprintf(out, "\t%12.12s | %18s |\n", "name", "total-runtime")
+	fmt.Fprintf(out, "\t%12.12s | %18s | %16s | %16s | %16s\n", "name", "total-runtime", "min", "max", "mean")
 	for _, mark := range marks {
 		if len(mark.Output.BenchmarkResults) == 0 {
 			continue
@@ -68,7 +68,7 @@ func Summarize(marks []*Spawn, out io.Writer) {
 		fmt.Fprintf(out, "%6.6s | %20.20s | %.50s | %.50s |\n", mark.Output.RunUUID, mark.LastModified.Format("Jan 2 2006 15:04:05"), mark.Output.Configuration.PilosaHosts, mark.Output.Configuration.AgentHosts)
 		for idx, v := range mark.Output.BenchmarkResults {
 			for agentNum, res := range v.AgentResults {
-				fmt.Fprintf(out, " %v\t%18.18s | %18s \n", mark.Output.Configuration.Benchmarks[idx].Args[0], v.BenchmarkName+"-"+strconv.Itoa(agentNum), res.Duration)
+				fmt.Fprintf(out, " %v\t%38.38s | %16s | %16s | %16s | %16s \n", mark.Output.Configuration.Benchmarks[idx].Args[0], v.BenchmarkName+"-"+strconv.Itoa(agentNum), res.Duration, res.Stats.Min, res.Stats.Max, res.Stats.Mean)
 			}
 		}
 		fmt.Fprintf(out, "\n")
