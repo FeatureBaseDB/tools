@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 
+	"time"
+
 	"github.com/pilosa/tools"
 	"github.com/pilosa/tools/build"
 	pssh "github.com/pilosa/tools/ssh"
@@ -166,6 +168,7 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 
 	cmdName := "pi"
 	if cmd.CopyBinary {
+		rand.Seed(time.Now().UnixNano())
 		cmdName = "/tmp/pi" + strconv.Itoa(rand.Int())
 		fmt.Fprintf(cmd.Stderr, "spawn: building pi binary with GOOS=%v and GOARCH=%v to copy to agents at %v\n", cmd.GOOS, cmd.GOARCH, cmdName)
 		pkg := "github.com/pilosa/tools/cmd/pi"

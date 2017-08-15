@@ -90,6 +90,9 @@ func (b *Import) NewBitIterator() *BitIterator {
 
 func (z *BitIterator) NextBit() (pilosa.Bit, error) {
 	delta := z.fdelta(z)
+	if delta < 1.0 {
+		delta = 1.0
+	}
 	z.bitnum = int64(float64(z.bitnum) + delta)
 	if z.bitnum > z.maxbitnum {
 		return pilosa.Bit{}, io.EOF

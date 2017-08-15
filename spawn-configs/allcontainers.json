@@ -1,0 +1,89 @@
+{
+    "benchmarks": [
+        {
+            "num": 1,
+            "name": "import 100m bits over 100 rows by 31M cols",
+            "args": ["import", "--max-row-id", "99", "--max-column-id", "31457200","--seed", "0", "--iterations", "100000000", "--index", "compindex", "--frame", "farray"]
+        },
+        {
+            "num": 1,
+            "name": "import 100m bits over 15 rows by 31M cols",
+            "args": ["import", "--max-row-id", "14", "--max-column-id", "31457200","--seed", "0", "--iterations", "100000000", "--index", "compindex", "--frame", "fbitmap"]
+        },
+        {
+            "num": 1,
+            "name": "import 100m bits over 4 rows by 31M cols",
+            "args": ["import", "--max-row-id", "3", "--max-column-id", "31457200","--seed", "0", "--iterations", "1000000000", "--index", "compindex", "--frame", "frun"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Bitmap(0, array))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Bitmap(rowID=0, frame=farray))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Bitmap(0, bitmap))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Bitmap(rowID=0, frame=fbitmap))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Bitmap(0, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Bitmap(rowID=0, frame=frun))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Inter(array, bitmap))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Intersect(Bitmap(rowID=0, frame=farray),Bitmap(rowID=0, frame=fbitmap)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Inter(array, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Intersect(Bitmap(rowID=0, frame=farray),Bitmap(rowID=0, frame=frun)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Inter(bitmap, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Intersect(Bitmap(rowID=0, frame=fbitmap),Bitmap(rowID=0, frame=frun)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Union(array, bitmap))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Union(Bitmap(rowID=0, frame=farray),Bitmap(rowID=0, frame=fbitmap)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Union(array, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Union(Bitmap(rowID=0, frame=farray),Bitmap(rowID=0, frame=frun)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Union(bitmap, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Union(Bitmap(rowID=0, frame=fbitmap),Bitmap(rowID=0, frame=frun)))'", "--iterations", "5"]
+        },
+        {
+            "num": 1,
+            "name": "Count(Inter(array, bitmap, run, run))",
+            "args": ["query", "--index", "compindex", "--query", "'Count(Intersect(Bitmap(rowID=0, frame=farray),Bitmap(rowID=0, frame=fbitmap),Bitmap(rowID=0, frame=frun),Bitmap(rowID=1, frame=frun)))'", "--iterations", "3"]
+        },
+        {
+            "num": 1,
+            "name": "TopN(n=50)",
+            "args":["query", "--index", "compindex", "--query", "'TopN(frame=farray, n=50)'", "--iterations", "3"]
+        },
+        {
+            "num": 1,
+            "name": "TopN(Bitmap(array), n=50, array)",
+            "args":["query", "--index", "compindex", "--query", "'TopN(Bitmap(rowID=0, frame=farray), frame=farray, n=50)'", "--iterations", "3"]
+        },
+        {
+            "num": 1,
+            "name": "TopN(Bitmap(run), n=50, array)",
+            "args":["query", "--index", "compindex", "--query", "'TopN(Bitmap(rowID=0, frame=frun), frame=farray, n=50)'", "--iterations", "3"]
+        },
+        {
+            "num": 1,
+            "name": "TopN(Bitmap(bitmap), n=50, array)",
+            "args":["query", "--index", "compindex", "--query", "'TopN(Bitmap(rowID=0, frame=fbitmap), frame=farray, n=50)'", "--iterations", "3"]
+        }
+    ]
+}
