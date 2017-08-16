@@ -41,8 +41,8 @@ func NewImportCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 	flags.Int64Var(&importer.MaxColumnID, "max-column-id", 1000, "Maximum column id of set bits.")
 	flags.Int64Var(&importer.Iterations, "iterations", 100000, "Number of bits to set")
 	flags.Int64Var(&importer.Seed, "seed", 0, "Random seed.")
-	flags.StringVar(&importer.Index, "index", "ibench", "Pilosa index in which to set bits.")
-	flags.StringVar(&importer.Frame, "frame", "fbench", "Pilosa frame in which to set bits.")
+	flags.StringVar(&importer.Index, "index", defaultIndex, "Pilosa index in which to set bits.")
+	flags.StringVar(&importer.Frame, "frame", defaultFrame, "Pilosa frame in which to set bits.")
 	flags.StringVar(&importer.Distribution, "distribution", "exponential", "Random distribution for deltas between set bits (exponential or uniform).")
 	flags.UintVar(&importer.BufferSize, "buffer-size", 10000000, "Number of set bits to buffer in importer before POSTing to Pilosa.")
 

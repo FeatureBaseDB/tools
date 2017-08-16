@@ -34,6 +34,11 @@
             "num": 1,
             "name": "random-query",
             "args": ["random-query"]
+        },
+        {
+            "num": 1,
+            "name": "slice-width",
+            "args": ["slice-width"]
         }
     ]
 }
