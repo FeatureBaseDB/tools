@@ -75,7 +75,17 @@ func (iter *Iterator) Generate(w io.Writer) {
 		var c uint64
 		for c = 0; c < contsPerRow; c++ {
 			numRuns := rand.Intn(iter.RunsMax-iter.RunsMin) + iter.RunsMin
-			numN := rand.Intn(iter.NMax-max(iter.NMin, numRuns)) + max(iter.NMin, numRuns)
+			if numRuns > iter.NMax {
+				numRuns = iter.NMax - 1
+			}
+			numN := rand.Intn(iter.NMax-iter.NMin) + iter.NMin
+			if numN < numRuns {
+				if numRuns > iter.NMax {
+					numRuns = numN
+				} else {
+					numN = numRuns
+				}
+			}
 			fmt.Fprintf(os.Stderr, "gen container: N: %d, Runs: %d\n", numN, numRuns)
 			cont := randomContainer(numN, numRuns)
 			for _, col := range cont.Bits() {
