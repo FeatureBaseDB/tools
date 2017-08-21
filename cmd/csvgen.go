@@ -18,6 +18,7 @@ func NewCSVGenCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 		Use:   "csvgen",
 		Short: "Generate CSV files for import into Pilosa and other tools.",
 		Long: `
+
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return gen.Run()

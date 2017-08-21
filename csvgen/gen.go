@@ -89,7 +89,7 @@ func (iter *Iterator) Generate(w io.Writer) {
 			fmt.Fprintf(os.Stderr, "gen container: N: %d, Runs: %d\n", numN, numRuns)
 			cont := randomContainer(numN, numRuns)
 			for _, col := range cont.Bits() {
-				fmt.Fprintf(w, "%v,%v\n", r, col)
+				fmt.Fprintf(w, "%v,%v\n", r, (col + (c * 65536)))
 			}
 		}
 	}
