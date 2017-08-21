@@ -127,17 +127,19 @@ func randomContainer(N, Nruns int) *container {
 	// optionally: twiddle things so we get a mix of containers with bits at 0 or 65535 or not
 
 	c := &container{n: N}
-	c.runs = make([]interval16, Nruns)
+	// TODO Nruns-1 (here and in for loop) is de to a bug where the last run was always 0,0. Need to actually fix.
+	c.runs = make([]interval16, Nruns-1)
 
 	set_lengths := randomPartition(N, Nruns, 0, 1)
 	clear_lengths := randomPartition(65536-N, Nruns, 1, 0)
 	var start, last uint16
-	for i := 0; i < Nruns; i++ {
+	for i := 0; i < Nruns-1; i++ {
 		// TODO check off-by-one issues here
 		start = last + uint16(clear_lengths[i])
 		last = start + uint16(set_lengths[i])
 		c.runs[i] = interval16{start: start, last: last}
 	}
+
 	return c
 }
 
