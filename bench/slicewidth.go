@@ -57,7 +57,7 @@ func (b *SliceWidth) Run(ctx context.Context) *Result {
 	results := NewResult()
 	imp := &Import{
 		MaxRowID:     numRows,
-		BaseColumnID: 0,
+		MinColumnID:  0,
 		MaxColumnID:  numColumns,
 		Iterations:   iteration,
 		Index:        b.Index,
