@@ -39,6 +39,11 @@
             "num": 1,
             "name": "slice-width",
             "args": ["slice-width"]
+        },
+        {
+            "num": 1,
+            "name": "multiple-setbit",
+            "args": ["multiple-setbit"]
         }
     ]
 }
