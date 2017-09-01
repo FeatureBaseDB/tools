@@ -21,7 +21,7 @@ import (
 	"github.com/satori/go.uuid"
 	"golang.org/x/crypto/ssh"
 	"net/http"
-	url2 "net/url"
+	"net/url"
 )
 
 // SpawnCommand represents a command for spawning complex benchmarks. This
@@ -92,17 +92,17 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	var err error
 	var gitContent *GitContent
 	if cmd.FileName != "" {
-		out, err := ioutil.TempFile("", "tmp")
+		out, err := ioutil.TempFile("", "")
 		if err != nil {
 			return err
 		}
 		defer os.Remove(out.Name())
 
-		gitContent, err = cmd.getGithubContent(ctx)
+		gitContent, err = GetGithubContent(cmd.FileName, cmd.Repo)
 		if err != nil {
 			return err
 		}
-		err = cmd.downloadFile(gitContent.DownloadURL, out)
+		err = DownloadFile(gitContent.DownloadURL, out)
 		if err != nil {
 			return err
 		}
@@ -123,7 +123,6 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding spawn file: %v", err)
 	}
-	fmt.Println(cmd.BucketName)
 
 	runUUID := uuid.NewV1()
 	if len(cmd.PilosaHosts) == 0 {
@@ -277,10 +276,8 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 }
 
 // getGithubContent using github api return url of a file to download and commit hash
-func (cmd *SpawnCommand) getGithubContent(ctx context.Context) (*GitContent, error) {
-	fileName := cmd.FileName
-	repo := cmd.Repo
-	path, err := url2.Parse(repo)
+func GetGithubContent(fileName, repo string) (*GitContent, error) {
+	path, err := url.Parse(repo)
 	uri := path.Path
 	gitURL := fmt.Sprintf("https://api.github.com/repos%s/contents/%s", uri, fileName)
 
@@ -308,16 +305,16 @@ func (cmd *SpawnCommand) getGithubContent(ctx context.Context) (*GitContent, err
 }
 
 // downloadFile downloads git file and copy to temp file
-func (cmd *SpawnCommand) downloadFile(url string, fileName *os.File) error {
+func DownloadFile(url string, writer io.Writer) error {
 
-	respFile, err := http.Get(url)
+	res, err := http.Get(url)
 	if err != nil {
 		return err
 	}
-	defer respFile.Body.Close()
+	defer res.Body.Close()
 
 	// Writer the body to file
-	_, err = io.Copy(fileName, respFile.Body)
+	_, err = io.Copy(writer, res.Body)
 	if err != nil {
 		return err
 	}
