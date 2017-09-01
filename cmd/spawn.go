@@ -50,6 +50,8 @@ results by reading the stdout of each agent benchmark.
 	flags.StringSliceVar(&spawn.AgentHosts, "agent-hosts", []string{"localhost"}, "Comma separated hostnames of agents.")
 	flags.StringVar(&spawn.SSHUser, "ssh-user", "", "SSH username for remote hosts. (defaults to current user)")
 	flags.StringVar(&spawn.SpawnFile, "spawn-file", "", "JSON file defining spawn benchmarks. (required)")
+	flags.StringVar(&spawn.Repo, "repo", "https://github.com/pilosa/benchmarks", "URL repo to get spawn file")
+	flags.StringVar(&spawn.FileName, "filename", "", "Filename from github repo")
 
 	return spawnCmd
 }

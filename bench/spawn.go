@@ -20,6 +20,8 @@ import (
 	pssh "github.com/pilosa/tools/ssh"
 	"github.com/satori/go.uuid"
 	"golang.org/x/crypto/ssh"
+	"net/http"
+	url2 "net/url"
 )
 
 // SpawnCommand represents a command for spawning complex benchmarks. This
@@ -49,6 +51,8 @@ type SpawnCommand struct {
 	GOARCH     string `json:"goarch"`
 
 	SpawnFile string `json:"spawn-file"`
+	FileName  string `json:"filename"`
+	Repo      string `json:"repo"`
 
 	// Benchmarks is a slice of Spawns which specifies all of the bench
 	// commands to run. These will all be run in parallel, started on each
@@ -80,12 +84,38 @@ func NewSpawnCommand(stdin io.Reader, stdout, stderr io.Writer) *SpawnCommand {
 
 // Run executes the main program execution.
 func (cmd *SpawnCommand) Run(ctx context.Context) error {
-	if cmd.SpawnFile == "" {
+
+	if cmd.SpawnFile == "" && cmd.FileName == "" {
 		return fmt.Errorf("a spawn file must be specified")
 	}
-	f, err := os.Open(cmd.SpawnFile)
-	if err != nil {
-		return fmt.Errorf("trying to open spawn file: %v", err)
+	var f *os.File
+	var err error
+	var gitContent *GitContent
+	if cmd.FileName != "" {
+		out, err := ioutil.TempFile("", "tmp")
+		if err != nil {
+			return err
+		}
+		defer os.Remove(out.Name())
+
+		gitContent, err = cmd.getGithubContent(ctx)
+		if err != nil {
+			return err
+		}
+		err = cmd.downloadFile(gitContent.DownloadURL, out)
+		if err != nil {
+			return err
+		}
+
+		f, err = os.Open(out.Name())
+		if err != nil {
+			return fmt.Errorf("trying to open spawn file: %v", err)
+		}
+	} else {
+		f, err = os.Open(cmd.SpawnFile)
+		if err != nil {
+			return fmt.Errorf("trying to open spawn file: %v", err)
+		}
 	}
 
 	dec := json.NewDecoder(f)
@@ -93,6 +123,7 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("decoding spawn file: %v", err)
 	}
+	fmt.Println(cmd.BucketName)
 
 	runUUID := uuid.NewV1()
 	if len(cmd.PilosaHosts) == 0 {
@@ -125,6 +156,10 @@ func (cmd *SpawnCommand) Run(ctx context.Context) error {
 		BenchmarkResults: res,
 	}
 
+	if gitContent != nil {
+		output.Version = gitContent.Sha
+	}
+
 	var writer io.Writer
 	if cmd.Output == "s3" {
 		writer = NewS3Uploader(cmd.BucketName, runUUID.String()+".json", cmd.AWSRegion)
@@ -149,6 +184,7 @@ type SpawnResult struct {
 	PiVersion        string            `json:"pi-version"`
 	PiBuildTime      string            `json:"pi-build-time"`
 	Configuration    *SpawnCommand     `json:"configuration"`
+	Version          string            `json:"version"`
 }
 
 // BenchmarkResult represents the result of a single benchmark run by
@@ -238,4 +274,57 @@ func (cmd *SpawnCommand) spawnRemote(ctx context.Context) ([]BenchmarkResult, er
 	}
 
 	return results, nil
+}
+
+// getGithubContent using github api return url of a file to download and commit hash
+func (cmd *SpawnCommand) getGithubContent(ctx context.Context) (*GitContent, error) {
+	fileName := cmd.FileName
+	repo := cmd.Repo
+	path, err := url2.Parse(repo)
+	uri := path.Path
+	gitURL := fmt.Sprintf("https://api.github.com/repos%s/contents/%s", uri, fileName)
+
+	resp, err := http.Get(gitURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("getting file %v from %v, err: %v", fileName, repo, string(body))
+	}
+	var content GitContent
+	err = json.NewDecoder(resp.Body).Decode(&content)
+	if err != nil {
+		return nil, err
+	}
+	if content.DownloadURL == "" {
+		return nil, fmt.Errorf("No file to download")
+	}
+	return &content, nil
+}
+
+// downloadFile downloads git file and copy to temp file
+func (cmd *SpawnCommand) downloadFile(url string, fileName *os.File) error {
+
+	respFile, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer respFile.Body.Close()
+
+	// Writer the body to file
+	_, err = io.Copy(fileName, respFile.Body)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+type GitContent struct {
+	Sha         string `json:"sha"`
+	DownloadURL string `json:"download_url"`
 }
