@@ -42,6 +42,22 @@ func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (*pcl
 	return resp, err
 }
 
+func (h *HasClient) ExecuteBatchQuery(ctx context.Context, index string, queries []string) (*pcli.QueryResponse, error) {
+	idx, err := h.schema.Index(index, nil)
+	if err != nil {
+		return nil, err
+	}
+	var pqlQueries pcli.PQLBatchQuery
+	for _, q := range queries {
+		query := idx.RawQuery(q)
+		pqlQueries.Add(query)
+	}
+
+	query := idx.BatchQuery(&pqlQueries)
+	resp, err := h.client.Query(query, &pcli.QueryOptions{})
+	return resp, err
+}
+
 func (h *HasClient) InitIndex(index string, frame string) error {
 	if h.schema == nil {
 		return fmt.Errorf("You need to call HasClient.Init before InitIndex")
