@@ -57,6 +57,23 @@ func (h *HasClient) InitIndex(index string, frame string) error {
 	return h.client.SyncSchema(h.schema)
 }
 
+func (h *HasClient) InitRange(index, frame, field string, maxValue, minValue int64) error {
+	if h.schema == nil {
+		return fmt.Errorf("You need to call HasClient.Init before InitIndex")
+	}
+	idx, err := h.schema.Index(index, &pcli.IndexOptions{})
+	if err != nil {
+		return err
+	}
+	options := &pcli.FrameOptions{}
+	options.AddIntField(field, int(minValue), int(maxValue))
+	_, err = idx.Frame(frame, options)
+	if err != nil {
+		return err
+	}
+	return h.client.SyncSchema(h.schema)
+}
+
 func (h *HasClient) Import(index, frame string, iter pcli.BitIterator, batchSize uint) error {
 	pilosaIndex, err := h.schema.Index(index, nil)
 	if err != nil {
@@ -67,6 +84,21 @@ func (h *HasClient) Import(index, frame string, iter pcli.BitIterator, batchSize
 		return err
 	}
 	err = h.client.ImportFrame(pilosaFrame, iter, batchSize)
+	return err
+}
+
+func (h *HasClient) ImportRange(index, frame, field string, iter pcli.ValueIterator, batchSize uint) error {
+	pilosaIndex, err := h.schema.Index(index, nil)
+	if err != nil {
+		return err
+	}
+
+	pilosaFrame, err := pilosaIndex.Frame(frame, nil)
+	if err != nil {
+		return err
+	}
+
+	err = h.client.ImportValueFrame(pilosaFrame, field, iter, batchSize)
 	return err
 }
 

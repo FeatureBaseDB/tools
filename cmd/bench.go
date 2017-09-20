@@ -12,8 +12,10 @@ import (
 var benchCommandFns = map[string]func(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command{}
 
 const (
-	defaultIndex = "ibench"
-	defaultFrame = "fbench"
+	defaultIndex      = "ibench"
+	defaultFrame      = "fbench"
+	defaultRangeFrame = "range-frame"
+	defaultField      = "range-field"
 )
 
 // NewBenchCommand subcommands
