@@ -42,6 +42,23 @@ func (h *HasClient) ExecuteQuery(ctx context.Context, index, query string) (*pcl
 	return resp, err
 }
 
+func (h *HasClient) ExecuteRange(ctx context.Context, index, frame, field, query string) (*pcli.QueryResponse, error) {
+	idx, err := h.schema.Index(index, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	fr, err := idx.Frame(frame, &pcli.FrameOptions{})
+	if err != nil {
+		return nil, err
+	}
+	pqlQuery := pcli.NewPQLBitmapQuery(query, idx, err)
+	sumQuery := fr.Sum(pqlQuery, field)
+	resp, err := h.client.Query(sumQuery, &pcli.QueryOptions{})
+	return resp, err
+
+}
+
 func (h *HasClient) InitIndex(index string, frame string) error {
 	if h.schema == nil {
 		return fmt.Errorf("You need to call HasClient.Init before InitIndex")

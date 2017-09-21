@@ -21,6 +21,7 @@ type RangeQuery struct {
 	Frame      string   `json:"frame"`
 	Index      string   `json:"index"`
 	Fields     []string `json:"field"`
+	QueryType  string   `json:"type"`
 }
 
 // Init adds the agent num to the random seed and initializes the client.
@@ -41,23 +42,24 @@ func (b *RangeQuery) Run(ctx context.Context) *Result {
 	}
 	qm := NewQueryGenerator(b.Seed)
 	qm.IDToFrameFn = func(id uint64) string { return b.Frame }
+	qm.Frames = []string{b.Frame}
 
 	var start time.Time
 	for n := 0; n < b.Iterations; n++ {
-		rangeValue := rng.Int63n(b.MaxRange - b.MinRange)
 		var field int
 		if len(b.Fields) > 1 {
 			field = rng.Intn(len(b.Fields) - 1)
 		} else {
 			field = 0
 		}
-		query := fmt.Sprintf("Range(frame='%s', %s<%d)", b.Frame, b.Fields[field], rangeValue)
+		call := qm.RandomRangeQuery(b.MaxDepth, b.MaxArgs, b.Frame, b.Fields[field], uint64(b.MinRange), uint64(b.MaxRange))
 
+		fmt.Println(call.String())
 		start = time.Now()
-		_, err := b.ExecuteQuery(ctx, b.Index, query)
+		_, err := b.ExecuteQuery(ctx, b.Index, call.String())
 		results.Add(time.Since(start), nil)
 		if err != nil {
-			results.err = fmt.Errorf("Executing '%s', err: %v", query, err)
+			results.err = fmt.Errorf("Executing '%s', err: %v", call.String(), err)
 			return results
 		}
 	}

@@ -36,12 +36,11 @@ Agent num modifies random seed.`,
 	}
 
 	flags := rangeQueryCmd.Flags()
-	flags.IntVar(&rangeQuery.MaxDepth, "max-depth", 4, "Maximum nesting of queries.")
-	flags.IntVar(&rangeQuery.MaxArgs, "max-args", 4, "Maximum number of arguments per query.")
-	flags.IntVar(&rangeQuery.MaxN, "max-n", 100, "Maximum value of N for TopN queries.")
+	flags.IntVar(&rangeQuery.MaxDepth, "max-depth", 2, "Maximum nesting of queries.")
+	flags.IntVar(&rangeQuery.MaxArgs, "max-args", 2, "Maximum number of arguments per query.")
 
-	flags.Int64Var(&rangeQuery.MinRange, "min-range", 0, "Minimum row id to include in queries.")
-	flags.Int64Var(&rangeQuery.MaxRange, "max-range", 100000, "Maximum row id to include in queries.")
+	flags.Int64Var(&rangeQuery.MinRange, "min-range", 0, "Minimum range to include in queries.")
+	flags.Int64Var(&rangeQuery.MaxRange, "max-range", 100, "Maximum range to include in queries.")
 	flags.Int64Var(&rangeQuery.Seed, "seed", 1, "random seed")
 	flags.IntVar(&rangeQuery.Iterations, "iterations", 100, "Number queries to perform.")
 	flags.StringVar(&rangeQuery.Frame, "frame", defaultRangeFrame, "Frame to query.")
@@ -49,7 +48,7 @@ Agent num modifies random seed.`,
 	flags.StringSliceVar(&rangeQuery.Fields, "fields", []string{defaultField}, "Pilosa fields to use.")
 	flags.StringVar(&rangeQuery.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'.")
 	flags.StringVar(&rangeQuery.ContentType, "content-type", "protobuf", "Can be protobuf or pql.")
-
+	flags.StringVar(&rangeQuery.QueryType, "type", "sum", "Query type for range, default to sum")
 	return rangeQueryCmd
 }
 
