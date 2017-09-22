@@ -143,7 +143,7 @@ func (q *QueryGenerator) RandomRangeQuery(depth, maxargs int, frame, field strin
 	}
 }
 
-func (q *QueryGenerator) RandomRange(numArg int, field string, idmin, idmax uint64)  *pql.Call{
+func (q *QueryGenerator) RandomRange(numArg int, field string, idmin, idmax uint64) *pql.Call {
 	call := q.R.Intn(4)
 	if call == 0 {
 		return q.RangeCall(field, idmin, idmax)
@@ -165,18 +165,18 @@ func (q *QueryGenerator) RandomRange(numArg int, field string, idmin, idmax uint
 	return nil
 }
 
-func (q *QueryGenerator) RangeCall(field string, idmin, idmax uint64)  *pql.Call{
+func (q *QueryGenerator) RangeCall(field string, idmin, idmax uint64) *pql.Call {
 
 	var operations = []pql.Token{pql.GT, pql.LT, pql.GTE, pql.LTE}
 	opIndex := q.R.Intn(len(operations))
 	frameIdx := q.R.Intn(len(q.Frames))
 
-	condition := pql.Condition{operations[opIndex], q.R.Intn(int(idmax-idmin))}
+	condition := pql.Condition{operations[opIndex], q.R.Intn(int(idmax - idmin))}
 	return &pql.Call{
 		Name: "Range",
 		Args: map[string]interface{}{
 			"frame": q.Frames[frameIdx],
-			field: &condition,
+			field:   &condition,
 		},
 	}
 }
@@ -215,8 +215,6 @@ func (q *QueryGenerator) RandomSum(depth, maxargs int, frame, field string, idmi
 	}
 
 }
-
-
 
 // RandomTopN returns a randomly generated TopN query.
 func (q *QueryGenerator) RandomTopN(maxN, depth, maxargs int, idmin, idmax uint64) *pql.Call {

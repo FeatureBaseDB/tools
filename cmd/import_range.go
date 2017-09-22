@@ -39,7 +39,7 @@ func NewImportRangeCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Com
 	flags.Int64Var(&importer.MinColumnID, "min-column-id", 0, "Minimum column id of set bits.")
 	flags.Int64Var(&importer.MaxValue, "max-value", 1000, "Maximum row id of set bits.")
 	flags.Int64Var(&importer.MaxColumnID, "max-column-id", 1000, "Maximum column id of set bits.")
-	flags.Int64Var(&importer.Iterations, "iterations", 100000, "Number of bits to set")
+	flags.Int64Var(&importer.Iterations, "iterations", 1000, "Number of bits to set")
 	flags.Int64Var(&importer.Seed, "seed", 0, "Random seed.")
 	flags.StringVar(&importer.Index, "index", defaultIndex, "Pilosa index in which to set bits.")
 	flags.StringVar(&importer.Frame, "frame", defaultRangeFrame, "Pilosa frame in which to set bits.")
