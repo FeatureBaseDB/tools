@@ -132,10 +132,9 @@ func (q *QueryGenerator) Random(maxN, depth, maxargs int, idmin, idmax uint64) *
 	}
 }
 
-// RandomRangeQuery returns a randomly generated either sum/range query.
+// RandomRangeQuery returns a randomly generated sum or range query.
 func (q *QueryGenerator) RandomRangeQuery(depth, maxargs int, frame, field string, idmin, idmax uint64) *pql.Call {
-	val := q.R.Intn(5)
-	switch val {
+	switch q.R.Intn(5) {
 	case 1:
 		return q.RandomSum(depth, maxargs, frame, field, idmin, idmax)
 	default:
@@ -167,11 +166,25 @@ func (q *QueryGenerator) RandomRange(numArg int, field string, idmin, idmax uint
 
 func (q *QueryGenerator) RangeCall(field string, idmin, idmax uint64) *pql.Call {
 
-	var operations = []pql.Token{pql.GT, pql.LT, pql.GTE, pql.LTE}
+	var operations = []pql.Token{pql.GT, pql.LT, pql.GTE, pql.LTE, pql.EQ, pql.BETWEEN}
 	opIndex := q.R.Intn(len(operations))
 	frameIdx := q.R.Intn(len(q.Frames))
+	condition := pql.Condition{operations[opIndex], nil}
+	if operations[opIndex] == pql.BETWEEN {
+		var minVal int64
+		maxVal := q.R.Int63n(int64(idmax - idmin))
+		if maxVal > int64(idmin) {
+			minVal = q.R.Int63n(maxVal - int64(idmin))
+		} else {
+			maxVal = int64(idmax)
+		}
+		betweenVal := []interface{}{minVal, maxVal}
+		condition.Value = betweenVal
 
-	condition := pql.Condition{operations[opIndex], q.R.Intn(int(idmax - idmin))}
+	} else {
+		condition.Value = q.R.Intn(int(idmax - idmin))
+	}
+
 	return &pql.Call{
 		Name: "Range",
 		Args: map[string]interface{}{
@@ -184,36 +197,22 @@ func (q *QueryGenerator) RangeCall(field string, idmin, idmax uint64) *pql.Call 
 // RandomSum returns a randomly generated sum query.
 func (q *QueryGenerator) RandomSum(depth, maxargs int, frame, field string, idmin, idmax uint64) *pql.Call {
 	frameIdx := q.R.Intn(len(q.Frames))
-	val := q.R.Intn(5)
-	switch val {
+	pqlQuery := pql.Call{
+		Name: "Sum",
+		Args: map[string]interface{}{
+			"frame": q.Frames[frameIdx],
+			"field": field,
+		}}
+	switch q.R.Intn(5) {
 	case 0:
-		return &pql.Call{
-			Name: "Sum",
-			Args: map[string]interface{}{
-				"frame": q.Frames[frameIdx],
-				"field": field,
-			},
-		}
+		return &pqlQuery
 	case 1:
-		return &pql.Call{
-			Name: "Sum",
-			Args: map[string]interface{}{
-				"frame": q.Frames[frameIdx],
-				"field": field,
-			},
-			Children: []*pql.Call{q.RandomBitmapCall(depth, maxargs, idmin, idmax)},
-		}
+		pqlQuery.Children = []*pql.Call{q.RandomBitmapCall(depth, maxargs, idmin, idmax)}
+		return &pqlQuery
 	default:
-		return &pql.Call{
-			Name: "Sum",
-			Args: map[string]interface{}{
-				"frame": q.Frames[frameIdx],
-				"field": field,
-			},
-			Children: []*pql.Call{q.RandomRange(maxargs, field, idmin, idmax)},
-		}
+		pqlQuery.Children = []*pql.Call{q.RandomRange(maxargs, field, idmin, idmax)}
+		return &pqlQuery
 	}
-
 }
 
 // RandomTopN returns a randomly generated TopN query.

@@ -54,7 +54,6 @@ func (b *RangeQuery) Run(ctx context.Context) *Result {
 		}
 		call := qm.RandomRangeQuery(b.MaxDepth, b.MaxArgs, b.Frame, b.Fields[field], uint64(b.MinRange), uint64(b.MaxRange))
 
-		fmt.Println(call.String())
 		start = time.Now()
 		_, err := b.ExecuteQuery(ctx, b.Index, call.String())
 		results.Add(time.Since(start), nil)

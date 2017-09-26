@@ -3,7 +3,7 @@ package bench
 import (
 	"context"
 	"fmt"
-
+	"errors"
 	pcli "github.com/pilosa/go-pilosa"
 )
 
@@ -74,20 +74,22 @@ func (h *HasClient) InitIndex(index string, frame string) error {
 	return h.client.SyncSchema(h.schema)
 }
 
-func (h *HasClient) InitRange(index, frame, field string, maxValue, minValue int64) error {
+func (h *HasClient) InitRange(index, frame, field string, minValue, maxValue int64) error {
 	if h.schema == nil {
-		return fmt.Errorf("You need to call HasClient.Init before InitIndex")
+		return errors.New("You need to call HasClient.Init before InitRange.")
 	}
 	idx, err := h.schema.Index(index, &pcli.IndexOptions{})
 	if err != nil {
 		return err
 	}
+
 	options := &pcli.FrameOptions{}
 	options.AddIntField(field, int(minValue), int(maxValue))
 	_, err = idx.Frame(frame, options)
 	if err != nil {
 		return err
 	}
+
 	return h.client.SyncSchema(h.schema)
 }
 

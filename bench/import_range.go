@@ -39,7 +39,7 @@ type ValueIterator struct {
 	fdelta           func(z *ValueIterator) float64
 }
 
-// Init generates import range data based on
+// Init create client and range frame.
 func (b *ImportRange) Init(hosts []string, agentNum int) error {
 	if len(hosts) == 0 {
 		return fmt.Errorf("Need at least one host")
@@ -52,7 +52,7 @@ func (b *ImportRange) Init(hosts []string, agentNum int) error {
 		return fmt.Errorf("client init: %v", err)
 	}
 
-	return b.InitRange(b.Index, b.Frame, b.Field, b.MaxValue, b.MinValue)
+	return b.InitRange(b.Index, b.Frame, b.Field, b.MinValue, b.MaxValue)
 }
 
 // Run runs the ImportRange benchmark
