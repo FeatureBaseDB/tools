@@ -79,7 +79,7 @@ func (c *RemoteCluster) Start() error {
 		if err != nil {
 			return fmt.Errorf("splitting hostport: %v", err)
 		}
-		conf.Host = hostport
+		conf.Bind = hostport
 		conf.DataDir = "~/.pilosa" + port
 
 		// Get client for host
