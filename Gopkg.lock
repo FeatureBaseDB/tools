@@ -22,8 +22,7 @@
 [[projects]]
   name = "github.com/boltdb/bolt"
   packages = ["."]
-  revision = "2f1ce7a837dcb8da3ec595b1dac9d0632f0f99e8"
-  version = "v1.3.1"
+  revision = "4b1ebc1869ad66568b313d0dc410e2be72670dda"
 
 [[projects]]
   name = "github.com/fsnotify/fsnotify"
@@ -103,16 +102,22 @@
   version = "v1.0.1"
 
 [[projects]]
+  branch = "master"
   name = "github.com/pilosa/go-pilosa"
   packages = [".","internal"]
-  revision = "96c2d45a4b208d0ab7f7fe416404f0acce6a6c84"
-  version = "v0.5.0"
+  revision = "caab511e58850c3a9488f74e68558156b41ff489"
 
 [[projects]]
+  branch = "master"
   name = "github.com/pilosa/pilosa"
   packages = [".","internal","pql","roaring","statik"]
-  revision = "cc0064bf1b5f3324a14e6ffacb0dcb2ab083f3bf"
-  version = "v0.4.0"
+  revision = "162b084a820994867f117937fd7c99c3d63a0e9e"
+
+[[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
 
 [[projects]]
   name = "github.com/rakyll/statik"
@@ -189,6 +194,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "d9a3f4ba9fb6d2364aabff12e334b264d5171d6ebf1b105c111ed851c452b588"
+  inputs-digest = "db26bf7462c83b93e3878cb9bec97a2aaccbe848c044384d529b6ed91b621236"
   solver-name = "gps-cdcl"
   solver-version = 1
