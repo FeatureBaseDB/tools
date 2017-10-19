@@ -56,8 +56,12 @@ func (localCluster *LocalCluster) Start() error {
 		}
 
 		// Build server.
+		u, err := pilosa.NewURIFromAddress(fmt.Sprintf("localhost:%d", BasePort+i))
+		if err != nil {
+			return err
+		}
 		s := pilosa.NewServer()
-		s.Host = fmt.Sprintf("localhost:%d", BasePort+i)
+		s.URI = u
 		s.Cluster = cluster
 		s.Holder.Path = filepath.Join(path, strconv.Itoa(i), "data")
 
@@ -72,7 +76,7 @@ func (localCluster *LocalCluster) Start() error {
 		if err := s.Open(); err != nil {
 			return err
 		}
-		localCluster.hosts[i] = s.Host
+		localCluster.hosts[i] = s.URI.HostPort()
 	}
 
 	return nil

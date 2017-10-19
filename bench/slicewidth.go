@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 // NewSliceWidth creates a new slice width benchmark with stdin/out/err
@@ -36,7 +38,7 @@ type SliceWidth struct {
 }
 
 // Init sets up the slice width.
-func (b *SliceWidth) Init(hosts []string, agentNum int) error {
+func (b *SliceWidth) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
 	b.Name = "slice-width"
 	b.hosts = hosts
 
@@ -44,7 +46,7 @@ func (b *SliceWidth) Init(hosts []string, agentNum int) error {
 	if err != nil {
 		return err
 	}
-	return b.HasClient.Init(hosts, agentNum)
+	return b.HasClient.Init(hosts, agentNum, clientOptions)
 }
 
 // Run runs the SliceWidth to import data
@@ -65,7 +67,8 @@ func (b *SliceWidth) Run(ctx context.Context) *Result {
 		Distribution: "uniform",
 		BufferSize:   1000000,
 	}
-	err := imp.Init(b.hosts, 0)
+	clientOptions := ctx.Value("clientOptions").(*pcli.ClientOptions)
+	err := imp.Init(b.hosts, 0, clientOptions)
 	if err != nil {
 		results.err = fmt.Errorf("error initializing importer, err: %v", err)
 	}

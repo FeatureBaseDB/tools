@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	pcli "github.com/pilosa/go-pilosa"
@@ -25,7 +26,7 @@ type Benchmark interface {
 	// how the agentNum affects it. Every benchmark should have a 'Name' field
 	// set by init, which appears when the benchmark is marshalled to json as
 	// "name".
-	Init(hosts []string, agentNum int) error
+	Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error
 
 	// Run runs the benchmark. See the documentation for the Result object to
 	// see how Run() should use its fields to return benchmark results.
@@ -36,7 +37,16 @@ func getClusterVersion(ctx context.Context, hosts []string) (string, error) {
 	if len(hosts) == 0 {
 		return "", fmt.Errorf("can't get cluster version with no pilosa hosts configured")
 	}
-	resp, err := http.Get("http://" + hosts[0] + "/version")
+	clientOptions := ctx.Value("clientOptions").(*pcli.ClientOptions)
+	host := hosts[0]
+	transport := &http.Transport{
+		TLSClientConfig: clientOptions.TLSConfig,
+	}
+	httpClient := http.Client{Transport: transport}
+	if !strings.Contains(hosts[0], "://") {
+		host = fmt.Sprintf("http://%s", host)
+	}
+	resp, err := httpClient.Get(host + "/version")
 	if err != nil {
 		return "", fmt.Errorf("getClusterVersion http.Get: %v", err)
 	}
@@ -96,17 +106,17 @@ func (r *Result) Add(d time.Duration, resp *pcli.QueryResponse) {
 // RunBenchmark invokes the given benchmark's Init and Run methods, and
 // populates the Result object with their output, along with some metadata.
 func RunBenchmark(ctx context.Context, hosts []string, agentNum int, b Benchmark) *Result {
+	clientOptions := ctx.Value("clientOptions").(*pcli.ClientOptions)
 	version, err := getClusterVersion(ctx, hosts)
 	if err != nil {
 		return &Result{err: err, Error: err.Error()}
 	}
-
-	err = b.Init(hosts, agentNum)
+	err = b.Init(hosts, agentNum, clientOptions)
 	if err != nil {
 		return &Result{err: err, Error: err.Error()}
 	}
 	start := time.Now()
-	result := b.Run(context.Background())
+	result := b.Run(ctx)
 	result.Duration = time.Since(start)
 	result.AgentNum = agentNum
 	result.PilosaVersion = version

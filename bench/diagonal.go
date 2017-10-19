@@ -1,10 +1,11 @@
 package bench
 
 import (
-	"fmt"
-
 	"context"
+	"fmt"
 	"time"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 // DiagonalSetBits sets bits with increasing column id and row id.
@@ -20,11 +21,11 @@ type DiagonalSetBits struct {
 
 // Init sets up the pilosa client and modifies the configured values based on
 // the agent num.
-func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
+func (b *DiagonalSetBits) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
 	b.Name = "diagonal-set-bits"
 	b.MinRowID = b.MinRowID + (agentNum * b.Iterations)
 	b.MinColumnID = b.MinColumnID + (agentNum * b.Iterations)
-	err := b.HasClient.Init(hosts, agentNum)
+	err := b.HasClient.Init(hosts, agentNum, clientOptions)
 	if err != nil {
 		return err
 	}

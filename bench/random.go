@@ -6,6 +6,8 @@ import (
 	"context"
 	"math/rand"
 	"time"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 // RandomSetBits sets bits randomly and deterministically based on a seed.
@@ -23,10 +25,10 @@ type RandomSetBits struct {
 }
 
 // Init adds the agent num to the random seed and initializes the client.
-func (b *RandomSetBits) Init(hosts []string, agentNum int) error {
+func (b *RandomSetBits) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
 	b.Name = "random-set-bits"
 	b.Seed = b.Seed + int64(agentNum)
-	err := b.HasClient.Init(hosts, agentNum)
+	err := b.HasClient.Init(hosts, agentNum, clientOptions)
 	if err != nil {
 		return err
 	}

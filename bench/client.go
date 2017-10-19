@@ -2,8 +2,9 @@ package bench
 
 import (
 	"context"
-	"fmt"
 	"errors"
+	"fmt"
+
 	pcli "github.com/pilosa/go-pilosa"
 )
 
@@ -19,9 +20,9 @@ type HasClient struct {
 // Init for HasClient looks at the ClientType field and creates a pilosa client
 // either using the first host in the list of hosts or based on the agent
 // number mod len(hosts)
-func (h *HasClient) Init(hosts []string, agentNum int) error {
+func (h *HasClient) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
 	var err error
-	h.client, err = pcli.NewClientFromAddresses(hosts, &pcli.ClientOptions{})
+	h.client, err = pcli.NewClientFromAddresses(hosts, clientOptions)
 	if err != nil {
 		return fmt.Errorf("getting client from addresses: %v", err)
 	}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 // RandomQuery queries randomly and deterministically based on a seed.
@@ -22,10 +24,10 @@ type RandomQuery struct {
 }
 
 // Init adds the agent num to the random seed and initializes the client.
-func (b *RandomQuery) Init(hosts []string, agentNum int) error {
+func (b *RandomQuery) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
 	b.Name = "random-query"
 	b.Seed = b.Seed + int64(agentNum)
-	return b.HasClient.Init(hosts, agentNum)
+	return b.HasClient.Init(hosts, agentNum, clientOptions)
 }
 
 // Run runs the RandomQuery benchmark

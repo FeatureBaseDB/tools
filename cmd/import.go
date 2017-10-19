@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 
+	picli "github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/bench"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +27,15 @@ func NewImportCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command 
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, importer)
+			tlsSkipVerify, err := flags.GetBool("tls.skip-verify")
+			if err != nil {
+				return err
+			}
+			clientOptions := &picli.ClientOptions{
+				TLSConfig: &tls.Config{InsecureSkipVerify: tlsSkipVerify},
+			}
+			ctx := context.WithValue(context.Background(), "clientOptions", clientOptions)
+			result := bench.RunBenchmark(ctx, hosts, agentNum, importer)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err

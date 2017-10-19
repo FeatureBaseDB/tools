@@ -16,8 +16,8 @@
 [[projects]]
   name = "github.com/aws/aws-sdk-go"
   packages = ["aws","aws/awserr","aws/awsutil","aws/client","aws/client/metadata","aws/corehandlers","aws/credentials","aws/credentials/ec2rolecreds","aws/credentials/endpointcreds","aws/credentials/stscreds","aws/defaults","aws/ec2metadata","aws/endpoints","aws/request","aws/session","aws/signer/v4","internal/shareddefaults","private/protocol","private/protocol/query","private/protocol/query/queryutil","private/protocol/rest","private/protocol/restxml","private/protocol/xml/xmlutil","service/s3","service/sts"]
-  revision = "8b344ddb7a49daf794928d1db484ad9a81499858"
-  version = "v1.12.3"
+  revision = "21a783c1e3d759f7f0c0a6cdbd4acd56081a5cbb"
+  version = "v1.12.13"
 
 [[projects]]
   name = "github.com/boltdb/bolt"
@@ -33,14 +33,14 @@
 [[projects]]
   name = "github.com/go-ini/ini"
   packages = ["."]
-  revision = "20b96f641a5ea98f2f8619ff4f3e061cff4833bd"
-  version = "v1.28.2"
+  revision = "5b3e00af70a9484542169a976dcab8d03e601a17"
+  version = "v1.30.0"
 
 [[projects]]
   name = "github.com/gogo/protobuf"
   packages = ["proto"]
-  revision = "100ba4e885062801d56799d78530b73b178a78f3"
-  version = "v0.4"
+  revision = "342cbe0a04158f6dcb03ca0079991a51a4248c02"
+  version = "v0.5"
 
 [[projects]]
   branch = "master"
@@ -70,7 +70,7 @@
   branch = "master"
   name = "github.com/hashicorp/hcl"
   packages = [".","hcl/ast","hcl/parser","hcl/scanner","hcl/strconv","hcl/token","json/parser","json/scanner","json/token"]
-  revision = "68e816d1c783414e79bc65b3994d9ab6b0a722ab"
+  revision = "23c074d0eceb2b8a5bfdbb271ab780cde70f05a8"
 
 [[projects]]
   name = "github.com/inconshreveable/mousetrap"
@@ -93,7 +93,7 @@
   branch = "master"
   name = "github.com/mitchellh/mapstructure"
   packages = ["."]
-  revision = "d0303fe809921458f417bcf828397a65db30a7e4"
+  revision = "06020f85339e21b2478f756a78e295255ffa4d6a"
 
 [[projects]]
   name = "github.com/pelletier/go-toml"
@@ -104,14 +104,14 @@
 [[projects]]
   branch = "master"
   name = "github.com/pilosa/go-pilosa"
-  packages = [".","internal"]
-  revision = "caab511e58850c3a9488f74e68558156b41ff489"
+  packages = [".","gopilosa_pbuf"]
+  revision = "9ab4bcb1aa268806d78b5d0cf9d48c30f579778c"
 
 [[projects]]
   branch = "master"
   name = "github.com/pilosa/pilosa"
   packages = [".","internal","pql","roaring","statik"]
-  revision = "162b084a820994867f117937fd7c99c3d63a0e9e"
+  revision = "4bebc9b9c44a5d16860e8598f37e66d26f6c2ddd"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -135,7 +135,7 @@
   branch = "master"
   name = "github.com/spf13/afero"
   packages = [".","mem"]
-  revision = "ee1bd8ee15a1306d1f9201acc41ef39cd9f99a1b"
+  revision = "e67d870304c4bca21331b02f414f970df13aa694"
 
 [[projects]]
   name = "github.com/spf13/cast"
@@ -147,7 +147,7 @@
   branch = "master"
   name = "github.com/spf13/cobra"
   packages = ["."]
-  revision = "0dacccfbaabc71b872087c1719c5380d3e185173"
+  revision = "7b2c5ac9fc04fc5efafb60700713d4fa609b777b"
 
 [[projects]]
   branch = "master"
@@ -171,19 +171,19 @@
   branch = "master"
   name = "golang.org/x/crypto"
   packages = ["curve25519","ed25519","ed25519/internal/edwards25519","ssh","ssh/agent","ssh/terminal"]
-  revision = "9419663f5a44be8b34ca85f08abc5fe1be11f8a3"
+  revision = "ed5229da99e3a6df35c756cd64b6982d19505d86"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
   packages = ["unix","windows"]
-  revision = "314a259e304ff91bd6985da2a7149bbf91237993"
+  revision = "8dbc5d05d6edcc104950cc299a1ce6641235bc86"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/text"
   packages = ["internal/gen","internal/triegen","internal/ucd","transform","unicode/cldr","unicode/norm"]
-  revision = "1cbadb444a806fd9430d14ad08967ed91da4fa0a"
+  revision = "c01e4764d870b77f8abe5096ee19ad20d80e8075"
 
 [[projects]]
   branch = "v2"
