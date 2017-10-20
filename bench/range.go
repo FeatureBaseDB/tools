@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
-
-	pcli "github.com/pilosa/go-pilosa"
 )
 
 // RangeQuery runs Range query randomly
@@ -27,10 +25,10 @@ type RangeQuery struct {
 }
 
 // Init adds the agent num to the random seed and initializes the client.
-func (b *RangeQuery) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
+func (b *RangeQuery) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "range-query"
 	b.Seed = b.Seed + int64(agentNum)
-	return b.HasClient.Init(hosts, agentNum, clientOptions)
+	return b.HasClient.Init(hostSetup, agentNum)
 }
 
 // Run runs the RandomQuery benchmark

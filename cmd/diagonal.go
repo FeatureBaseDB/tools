@@ -21,7 +21,7 @@ iterations, so that only bits on the main diagonal are set, and agents don't
 overlap at all.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
-			hosts, err := flags.GetStringSlice("hosts")
+			hostSetup, err := bench.HostSetupFromFlags(flags)
 			if err != nil {
 				return err
 			}
@@ -29,7 +29,7 @@ overlap at all.`,
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, diagonalSetBits)
+			result := bench.RunBenchmark(context.Background(), hostSetup, agentNum, diagonalSetBits)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err

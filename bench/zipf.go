@@ -6,8 +6,6 @@ import (
 	"math"
 	"math/rand"
 	"time"
-
-	pcli "github.com/pilosa/go-pilosa"
 )
 
 // Zipf sets random bits according to the Zipf-Mandelbrot distribution.
@@ -49,7 +47,7 @@ func getZipfOffset(N int64, exp, ratio float64) float64 {
 
 // Init sets up the benchmark based on the agent number and initializes the
 // client.
-func (b *Zipf) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
+func (b *Zipf) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "zipf"
 	b.Seed = b.Seed + int64(agentNum)
 	rnd := rand.New(rand.NewSource(b.Seed))
@@ -64,7 +62,7 @@ func (b *Zipf) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOpti
 	if b.Operation != "set" && b.Operation != "clear" {
 		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
 	}
-	err := b.HasClient.Init(hosts, agentNum, clientOptions)
+	err := b.HasClient.Init(hostSetup, agentNum)
 	if err != nil {
 		return err
 	}

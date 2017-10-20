@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	pcli "github.com/pilosa/go-pilosa"
 )
 
 // NewSliceWidth creates a new slice width benchmark with stdin/out/err
@@ -23,7 +21,7 @@ func NewSliceWidth(stdin io.Reader, stdout, stderr io.Writer) *SliceWidth {
 // a single slice on query time.
 type SliceWidth struct {
 	HasClient
-	hosts []string
+	hostSetup *HostSetup
 
 	Name       string  `json:"name"`
 	Index      string  `json:"index"`
@@ -38,15 +36,15 @@ type SliceWidth struct {
 }
 
 // Init sets up the slice width.
-func (b *SliceWidth) Init(hosts []string, agentNum int, clientOptions *pcli.ClientOptions) error {
+func (b *SliceWidth) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "slice-width"
-	b.hosts = hosts
+	b.hostSetup = hostSetup
 
-	err := initIndex(b.hosts[0], b.Index, b.Frame)
+	err := initIndex(hostSetup.Hosts[0], hostSetup.ClientOptions, b.Index, b.Frame)
 	if err != nil {
 		return err
 	}
-	return b.HasClient.Init(hosts, agentNum, clientOptions)
+	return b.HasClient.Init(hostSetup, agentNum)
 }
 
 // Run runs the SliceWidth to import data
@@ -67,8 +65,7 @@ func (b *SliceWidth) Run(ctx context.Context) *Result {
 		Distribution: "uniform",
 		BufferSize:   1000000,
 	}
-	clientOptions := ctx.Value("clientOptions").(*pcli.ClientOptions)
-	err := imp.Init(b.hosts, 0, clientOptions)
+	err := imp.Init(b.hostSetup, 0)
 	if err != nil {
 		results.err = fmt.Errorf("error initializing importer, err: %v", err)
 	}
