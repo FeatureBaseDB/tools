@@ -19,15 +19,15 @@ func NewBasicQueryCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 Agent num has no effect.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
-			hosts, err := flags.GetStringSlice("hosts")
-			if err != nil {
-				return err
-			}
 			agentNum, err := flags.GetInt("agent-num")
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, basicQuery)
+			hostSetup, err := bench.HostSetupFromFlags(flags)
+			if err != nil {
+				return err
+			}
+			result := bench.RunBenchmark(context.Background(), hostSetup, agentNum, basicQuery)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err

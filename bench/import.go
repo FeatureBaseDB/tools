@@ -1,11 +1,10 @@
 package bench
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
-
-	"context"
 
 	"github.com/pilosa/go-pilosa"
 )
@@ -27,14 +26,14 @@ type Import struct {
 }
 
 // Init generates import data based on
-func (b *Import) Init(hosts []string, agentNum int) error {
-	if len(hosts) == 0 {
+func (b *Import) Init(hostSetup *HostSetup, agentNum int) error {
+	if len(hostSetup.Hosts) == 0 {
 		return fmt.Errorf("Need at least one host")
 	}
 	b.Name = "import"
 	b.Seed = b.Seed + int64(agentNum)
 	b.rng = rand.New(rand.NewSource(b.Seed))
-	err := b.HasClient.Init(hosts, agentNum)
+	err := b.HasClient.Init(hostSetup, agentNum)
 	if err != nil {
 		return fmt.Errorf("client init: %v", err)
 	}

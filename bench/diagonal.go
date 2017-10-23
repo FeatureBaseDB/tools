@@ -1,9 +1,8 @@
 package bench
 
 import (
-	"fmt"
-
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -20,11 +19,11 @@ type DiagonalSetBits struct {
 
 // Init sets up the pilosa client and modifies the configured values based on
 // the agent num.
-func (b *DiagonalSetBits) Init(hosts []string, agentNum int) error {
+func (b *DiagonalSetBits) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "diagonal-set-bits"
 	b.MinRowID = b.MinRowID + (agentNum * b.Iterations)
 	b.MinColumnID = b.MinColumnID + (agentNum * b.Iterations)
-	err := b.HasClient.Init(hosts, agentNum)
+	err := b.HasClient.Init(hostSetup, agentNum)
 	if err != nil {
 		return err
 	}

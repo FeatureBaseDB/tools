@@ -22,10 +22,10 @@ type RandomQuery struct {
 }
 
 // Init adds the agent num to the random seed and initializes the client.
-func (b *RandomQuery) Init(hosts []string, agentNum int) error {
+func (b *RandomQuery) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "random-query"
 	b.Seed = b.Seed + int64(agentNum)
-	return b.HasClient.Init(hosts, agentNum)
+	return b.HasClient.Init(hostSetup, agentNum)
 }
 
 // Run runs the RandomQuery benchmark

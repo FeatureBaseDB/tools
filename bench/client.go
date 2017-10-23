@@ -2,8 +2,9 @@ package bench
 
 import (
 	"context"
-	"fmt"
 	"errors"
+	"fmt"
+
 	pcli "github.com/pilosa/go-pilosa"
 )
 
@@ -19,9 +20,9 @@ type HasClient struct {
 // Init for HasClient looks at the ClientType field and creates a pilosa client
 // either using the first host in the list of hosts or based on the agent
 // number mod len(hosts)
-func (h *HasClient) Init(hosts []string, agentNum int) error {
+func (h *HasClient) Init(hostSetup *HostSetup, agentNum int) error {
 	var err error
-	h.client, err = pcli.NewClientFromAddresses(hosts, &pcli.ClientOptions{})
+	h.client, err = pcli.NewClientFromAddresses(hostSetup.Hosts, hostSetup.ClientOptions)
 	if err != nil {
 		return fmt.Errorf("getting client from addresses: %v", err)
 	}
@@ -121,9 +122,13 @@ func (h *HasClient) ImportRange(index, frame, field string, iter pcli.ValueItera
 	return err
 }
 
-func initIndex(host string, indexName string, frameName string) error {
+func initIndex(host string, clientOptions *pcli.ClientOptions, indexName string, frameName string) error {
 	pilosaURI, err := pcli.NewURIFromAddress(host)
-	setupClient := pcli.NewClientWithURI(pilosaURI)
+	if err != nil {
+		return err
+	}
+	cluster := pcli.NewClusterWithHost(pilosaURI)
+	setupClient := pcli.NewClientWithCluster(cluster, clientOptions)
 	index, err := pcli.NewIndex(indexName, &pcli.IndexOptions{})
 	if err != nil {
 		return fmt.Errorf("making index: %v", err)

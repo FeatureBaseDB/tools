@@ -24,7 +24,7 @@ maximum variation of the distribution, with higher ratio being more uniform.
 `,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
-			hosts, err := flags.GetStringSlice("hosts")
+			hostSetup, err := bench.HostSetupFromFlags(flags)
 			if err != nil {
 				return err
 			}
@@ -32,7 +32,7 @@ maximum variation of the distribution, with higher ratio being more uniform.
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, zipf)
+			result := bench.RunBenchmark(context.Background(), hostSetup, agentNum, zipf)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err

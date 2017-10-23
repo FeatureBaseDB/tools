@@ -3,9 +3,10 @@ package bench
 import (
 	"context"
 	"fmt"
-	"github.com/pilosa/go-pilosa"
 	"io"
 	"math/rand"
+
+	pcli "github.com/pilosa/go-pilosa"
 )
 
 type ImportRange struct {
@@ -40,14 +41,14 @@ type ValueIterator struct {
 }
 
 // Init create client and range frame.
-func (b *ImportRange) Init(hosts []string, agentNum int) error {
-	if len(hosts) == 0 {
+func (b *ImportRange) Init(hostSetup *HostSetup, agentNum int) error {
+	if len(hostSetup.Hosts) == 0 {
 		return fmt.Errorf("Need at least one host")
 	}
 	b.Name = "import-range"
 	b.Seed = b.Seed + int64(agentNum)
 	b.rng = rand.New(rand.NewSource(b.Seed))
-	err := b.HasClient.Init(hosts, agentNum)
+	err := b.HasClient.Init(hostSetup, agentNum)
 	if err != nil {
 		return fmt.Errorf("client init: %v", err)
 	}
@@ -89,17 +90,17 @@ func (b *ImportRange) NewValueIterator() *ValueIterator {
 	return z
 }
 
-func (z *ValueIterator) NextValue() (pilosa.FieldValue, error) {
+func (z *ValueIterator) NextValue() (pcli.FieldValue, error) {
 	delta := z.fdelta(z)
 	if delta < 1.0 {
 		delta = 1.0
 	}
 	z.bitnum = int64(float64(z.bitnum) + delta)
 	if z.bitnum > z.maxbitnum {
-		return pilosa.FieldValue{}, io.EOF
+		return pcli.FieldValue{}, io.EOF
 	}
 
-	field := pilosa.FieldValue{}
+	field := pcli.FieldValue{}
 	z.actualIterations++
 	field.Value = uint64((z.bitnum / (z.maxcol - z.mincol + 1)) + z.minvalue)
 	field.ColumnID = uint64(z.bitnum%(z.maxcol-z.mincol+1) + z.mincol)

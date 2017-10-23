@@ -1,13 +1,11 @@
 package bench
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
-	"time"
-
-	"context"
-
 	"os"
+	"time"
 
 	"github.com/pilosa/pilosa/pql"
 )
@@ -22,9 +20,9 @@ type Query struct {
 
 // Init sets up the pilosa client and modifies the configured values based on
 // the agent num.
-func (b *Query) Init(hosts []string, agentNum int) error {
+func (b *Query) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "query"
-	return b.HasClient.Init(hosts, agentNum)
+	return b.HasClient.Init(hostSetup, agentNum)
 }
 
 // Run runs the Query benchmark
@@ -62,10 +60,10 @@ type BasicQuery struct {
 
 // Init sets up the pilosa client and modifies the configured values based on
 // the agent num.
-func (b *BasicQuery) Init(hosts []string, agentNum int) error {
+func (b *BasicQuery) Init(hostSetup *HostSetup, agentNum int) error {
 	b.Name = "basic-query"
 	b.MinRowID = b.MinRowID + int64(agentNum*b.Iterations)
-	return b.HasClient.Init(hosts, agentNum)
+	return b.HasClient.Init(hostSetup, agentNum)
 }
 
 // Run runs the BasicQuery benchmark

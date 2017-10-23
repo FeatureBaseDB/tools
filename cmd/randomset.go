@@ -18,7 +18,7 @@ func NewRandomSetBitsCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 Agent num modifies random seed`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
-			hosts, err := flags.GetStringSlice("hosts")
+			hostSetup, err := bench.HostSetupFromFlags(flags)
 			if err != nil {
 				return err
 			}
@@ -26,7 +26,7 @@ Agent num modifies random seed`,
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, randomSetBits)
+			result := bench.RunBenchmark(context.Background(), hostSetup, agentNum, randomSetBits)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err

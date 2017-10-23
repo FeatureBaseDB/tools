@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"context"
+	"io"
+
 	"github.com/pilosa/tools/bench"
 	"github.com/spf13/cobra"
-	"io"
 )
 
 // NewBenchCommand subcommands
@@ -16,7 +17,7 @@ func NewSliceWidthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 		Long:  `Imports a given density of data uniformly over a configurable number of slices based on bit density and slice count`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := cmd.Flags()
-			hosts, err := flags.GetStringSlice("hosts")
+			hostSetup, err := bench.HostSetupFromFlags(flags)
 			if err != nil {
 				return err
 			}
@@ -27,7 +28,7 @@ func NewSliceWidthCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Comm
 			if err != nil {
 				return err
 			}
-			result := bench.RunBenchmark(context.Background(), hosts, agentNum, sliceWidth)
+			result := bench.RunBenchmark(context.Background(), hostSetup, agentNum, sliceWidth)
 			err = PrintResults(cmd, result, stdout)
 			if err != nil {
 				return err
