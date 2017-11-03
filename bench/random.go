@@ -16,6 +16,7 @@ type RandomSetBits struct {
 	MinColumnID int64  `json:"min-column-id"`
 	MaxColumnID int64  `json:"max-column-id"`
 	Iterations  int    `json:"iterations"`
+	BatchSize   int    `json:"batch-size"`
 	Seed        int64  `json:"seed"`
 	Index       string `json:"index"`
 	Frame       string `json:"frame"`
@@ -29,6 +30,9 @@ func (b *RandomSetBits) Init(hostSetup *HostSetup, agentNum int) error {
 	if err != nil {
 		return err
 	}
+	if b.BatchSize <= 0 {
+		return fmt.Errorf("batch size must be greater than 0, currently: %d", b.BatchSize)
+	}
 	return b.InitIndex(b.Index, b.Frame)
 }
 
@@ -41,12 +45,18 @@ func (b *RandomSetBits) Run(ctx context.Context) *Result {
 		results.err = fmt.Errorf("No client set for RandomSetBits")
 		return results
 	}
-	for n := 0; n < b.Iterations; n++ {
-		rowID := rng.Int63n(b.MaxRowID - b.MinRowID)
-		profID := rng.Int63n(b.MaxColumnID - b.MinColumnID)
-		query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.MinRowID+rowID, b.MinColumnID+profID)
+	n := 0
+	for n < b.Iterations {
+		queries := ""
+		for i := 0; i < b.BatchSize && n < b.Iterations; i++ {
+			n++
+			rowID := rng.Int63n(b.MaxRowID - b.MinRowID)
+			profID := rng.Int63n(b.MaxColumnID - b.MinColumnID)
+			query := fmt.Sprintf("SetBit(frame='%s', rowID=%d, columnID=%d)", b.Frame, b.MinRowID+rowID, b.MinColumnID+profID)
+			queries = queries + query
+		}
 		start := time.Now()
-		_, err := b.ExecuteQuery(ctx, b.Index, query)
+		_, err := b.ExecuteQuery(ctx, b.Index, queries)
 		results.Add(time.Since(start), nil)
 		if err != nil {
 			results.err = err

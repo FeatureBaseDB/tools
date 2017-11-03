@@ -42,6 +42,7 @@ Agent num modifies random seed`,
 	flags.Int64Var(&randomSetBits.MaxColumnID, "max-column-id", 100000, "Maximum column id for set bits.")
 	flags.Int64Var(&randomSetBits.Seed, "seed", 1, "Random seed.")
 	flags.IntVar(&randomSetBits.Iterations, "iterations", 100, "Number of bits to set.")
+	flags.IntVar(&randomSetBits.BatchSize, "batch-size", 1, "Number of bits to set per batch.")
 	flags.StringVar(&randomSetBits.Frame, "frame", defaultFrame, "Frame to set bits in.")
 	flags.StringVar(&randomSetBits.Index, "index", defaultIndex, "Pilosa index to use.")
 	flags.StringVar(&randomSetBits.ClientType, "client-type", "single", "Can be 'single' (all agents hitting one host) or 'round_robin'")
