@@ -1,25 +1,20 @@
-package cmd
+package main
 
 import (
-	"io"
-
 	"encoding/json"
+	"io"
 
 	"github.com/pilosa/tools/bench"
 	"github.com/spf13/cobra"
 )
 
-var benchCommandFns = map[string]func(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command{}
-
 const (
 	defaultIndex      = "ibench"
-	defaultFrame      = "fbench"
-	defaultRangeFrame = "range-frame"
-	defaultField      = "range-field"
+	defaultField      = "fbench"
+	defaultRangeField = "range-field"
 )
 
-// NewBenchCommand subcommands
-func NewBenchCommand(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+func NewBenchCommand() *cobra.Command {
 	benchCmd := &cobra.Command{
 		Use:   "bench",
 		Short: "Runs benchmarks against a pilosa cluster.",
@@ -39,16 +34,23 @@ agent numbers will do interesting work.
 	flags.Bool("human", true, "Make output human friendly.")
 	flags.Bool("tls.skip-verify", false, "Skip TLS certificate verification (not secure)")
 
-	for _, benchCommandFn := range benchCommandFns {
-		benchCmd.AddCommand(benchCommandFn(stdin, stdout, stderr))
-	}
+	benchCmd.AddCommand(NewBasicQueryCommand())
+	benchCmd.AddCommand(NewDiagonalSetBitsCommand())
+	benchCmd.AddCommand(NewImportCommand())
+	benchCmd.AddCommand(NewImportRangeCommand())
+	benchCmd.AddCommand(NewQueryCommand())
+	benchCmd.AddCommand(NewRandomQueryCommand())
+	benchCmd.AddCommand(NewRandomSetCommand())
+	benchCmd.AddCommand(NewRangeQueryCommand())
+	benchCmd.AddCommand(NewSliceWidthCommand())
+	benchCmd.AddCommand(NewZipfCommand())
 
 	return benchCmd
 }
 
 // PrintResults encodes the output of a benchmark subcommand as json and writes
 // it to the given Writer. It takes the "human" flag into account when encoding
-// the json. TODO: this functionality may not belong here...
+// the json.
 func PrintResults(cmd *cobra.Command, result *bench.Result, out io.Writer) error {
 	human, err := cmd.Flags().GetBool("human")
 	if err != nil {
@@ -58,15 +60,9 @@ func PrintResults(cmd *cobra.Command, result *bench.Result, out io.Writer) error
 	enc := json.NewEncoder(out)
 	if human {
 		enc.SetIndent("", "  ")
-		bench.PrettifyBenchResult(result)
 	}
-	err = enc.Encode(result)
-	if err != nil {
+	if err := enc.Encode(result); err != nil {
 		return err
 	}
 	return nil
-}
-
-func init() {
-	subcommandFns["bench"] = NewBenchCommand
 }

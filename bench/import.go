@@ -2,58 +2,85 @@ package bench
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"log"
 	"math/rand"
+	"os"
 
 	"github.com/pilosa/go-pilosa"
 )
 
-type Import struct {
+var _ Benchmark = (*ImportBenchmark)(nil)
+
+type ImportBenchmark struct {
 	Name         string `json:"name"`
 	MinRowID     int64  `json:"min-row-id"`
 	MinColumnID  int64  `json:"min-column-id"`
 	MaxRowID     int64  `json:"max-row-id"`
 	MaxColumnID  int64  `json:"max-column-id"`
 	Index        string `json:"index"`
-	Frame        string `json:"frame"`
+	Field        string `json:"field"`
 	Iterations   int64  `json:"iterations"`
 	Seed         int64  `json:"seed"`
 	Distribution string `json:"distribution"`
-	BufferSize   uint
-	rng          *rand.Rand
-	HasClient
+	BufferSize   int    `json:"-"`
+
+	Logger *log.Logger `json:"-"`
 }
 
-// Init generates import data based on
-func (b *Import) Init(hostSetup *HostSetup, agentNum int) error {
-	if len(hostSetup.Hosts) == 0 {
-		return fmt.Errorf("Need at least one host")
+// NewImportBenchmark returns a new instance of ImportBenchmark.
+func NewImportBenchmark() *ImportBenchmark {
+	return &ImportBenchmark{
+		Name:   "import",
+		Logger: log.New(os.Stderr, "", log.LstdFlags),
 	}
-	b.Name = "import"
-	b.Seed = b.Seed + int64(agentNum)
-	b.rng = rand.New(rand.NewSource(b.Seed))
-	err := b.HasClient.Init(hostSetup, agentNum)
-	if err != nil {
-		return fmt.Errorf("client init: %v", err)
-	}
-	return b.InitIndex(b.Index, b.Frame)
 }
 
 // Run runs the Import benchmark
-func (b *Import) Run(ctx context.Context) *Result {
-	results := NewResult()
-	bitIterator := b.NewBitIterator()
-	err := b.HasClient.Import(b.Index, b.Frame, bitIterator, b.BufferSize)
+func (b *ImportBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum int) (*Result, error) {
+	result := NewResult()
+	result.AgentNum = agentNum
+	result.Configuration = b
+
+	// Initialize schema.
+	_, field, err := ensureSchema(client, b.Index, b.Field)
 	if err != nil {
-		results.err = fmt.Errorf("running go client import: %v", err)
+		return result, err
 	}
-	results.Extra["actual-iterations"] = bitIterator.actualIterations
-	results.Extra["avgdelta"] = bitIterator.avgdelta
-	return results
+
+	itr := b.RecordIterator(b.Seed + int64(agentNum))
+	err = client.ImportField(field, itr, pilosa.OptImportBatchSize(b.BufferSize))
+	result.Extra["actual-iterations"] = itr.actualIterations
+	result.Extra["avgdelta"] = itr.avgdelta
+	return result, err
 }
 
-type BitIterator struct {
+func (b *ImportBenchmark) RecordIterator(seed int64) *RecordIterator {
+	rand := rand.New(rand.NewSource(seed))
+
+	itr := NewRecordIterator()
+	itr.maxbitnum = (b.MaxRowID - b.MinRowID + 1) * (b.MaxColumnID - b.MinColumnID + 1)
+	itr.avgdelta = float64(itr.maxbitnum) / float64(b.Iterations)
+	itr.minrow, itr.mincol, itr.maxrow, itr.maxcol = b.MinRowID, b.MinColumnID, b.MaxRowID, b.MaxColumnID
+
+	if b.Distribution == "exponential" {
+		itr.lambda = 1.0 / itr.avgdelta
+		itr.fdelta = func(itr *RecordIterator) float64 {
+			return rand.ExpFloat64() / itr.lambda
+		}
+	} else { // if b.Distribution == "uniform" {
+		itr.fdelta = func(itr *RecordIterator) float64 {
+			return rand.Float64() * itr.avgdelta * 2
+		}
+	}
+	return itr
+}
+
+func NewRecordIterator() *RecordIterator {
+	return &RecordIterator{}
+}
+
+type RecordIterator struct {
 	actualIterations int64
 	bitnum           int64
 	maxbitnum        int64
@@ -63,42 +90,22 @@ type BitIterator struct {
 	maxcol           int64
 	avgdelta         float64
 	lambda           float64
-	rng              *rand.Rand
-	fdelta           func(z *BitIterator) float64
+	rand             *rand.Rand
+	fdelta           func(z *RecordIterator) float64
 }
 
-func (b *Import) NewBitIterator() *BitIterator {
-	z := &BitIterator{}
-	z.rng = b.rng
-	z.maxbitnum = (b.MaxRowID - b.MinRowID + 1) * (b.MaxColumnID - b.MinColumnID + 1)
-	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
-	z.minrow, z.mincol, z.maxrow, z.maxcol = b.MinRowID, b.MinColumnID, b.MaxRowID, b.MaxColumnID
-
-	if b.Distribution == "exponential" {
-		z.lambda = 1.0 / z.avgdelta
-		z.fdelta = func(z *BitIterator) float64 {
-			return z.rng.ExpFloat64() / z.lambda
-		}
-	} else { // if b.Distribution == "uniform" {
-		z.fdelta = func(z *BitIterator) float64 {
-			return z.rng.Float64() * z.avgdelta * 2
-		}
-	}
-	return z
-}
-
-func (z *BitIterator) NextBit() (pilosa.Bit, error) {
-	delta := z.fdelta(z)
+func (itr *RecordIterator) NextRecord() (pilosa.Record, error) {
+	delta := itr.fdelta(itr)
 	if delta < 1.0 {
 		delta = 1.0
 	}
-	z.bitnum = int64(float64(z.bitnum) + delta)
-	if z.bitnum > z.maxbitnum {
-		return pilosa.Bit{}, io.EOF
+	itr.bitnum = int64(float64(itr.bitnum) + delta)
+	if itr.bitnum > itr.maxbitnum {
+		return pilosa.Column{}, io.EOF
 	}
-	bit := pilosa.Bit{}
-	z.actualIterations++
-	bit.RowID = uint64((z.bitnum / (z.maxcol - z.mincol + 1)) + z.minrow)
-	bit.ColumnID = uint64(z.bitnum%(z.maxcol-z.mincol+1) + z.mincol)
-	return bit, nil
+	itr.actualIterations++
+	return pilosa.Column{
+		RowID:    uint64((itr.bitnum / (itr.maxcol - itr.mincol + 1)) + itr.minrow),
+		ColumnID: uint64(itr.bitnum%(itr.maxcol-itr.mincol+1) + itr.mincol),
+	}, nil
 }
