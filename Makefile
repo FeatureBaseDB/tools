@@ -20,7 +20,7 @@ vendor: Gopkg.toml
 ifndef DEP
 	make dep
 endif
-	dep ensure
+	dep ensure -vendor-only
 	touch vendor
 
 Gopkg.lock: dep Gopkg.toml
