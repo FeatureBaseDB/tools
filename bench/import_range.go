@@ -2,28 +2,83 @@ package bench
 
 import (
 	"context"
-	"fmt"
 	"io"
+	"log"
 	"math/rand"
+	"os"
 
-	pcli "github.com/pilosa/go-pilosa"
+	"github.com/pilosa/go-pilosa"
 )
 
-type ImportRange struct {
+var _ Benchmark = (*ImportRangeBenchmark)(nil)
+
+type ImportRangeBenchmark struct {
 	Name         string `json:"name"`
 	MinValue     int64  `json:"min-value"`
 	MinColumnID  int64  `json:"min-column-id"`
 	MaxValue     int64  `json:"max-value"`
 	MaxColumnID  int64  `json:"max-column-id"`
 	Index        string `json:"index"`
-	Frame        string `json:"frame"`
 	Field        string `json:"field"`
+	Row          string `json:"row"`
 	Iterations   int64  `json:"iterations"`
 	Seed         int64  `json:"seed"`
 	Distribution string `json:"distribution"`
-	BufferSize   uint
-	rng          *rand.Rand
-	HasClient
+	BufferSize   int    `json:"-"`
+
+	Logger *log.Logger `json:"-"`
+}
+
+// NewImportRangeBenchmark returns a new instance of ImportRangeBenchmark.
+func NewImportRangeBenchmark() *ImportRangeBenchmark {
+	return &ImportRangeBenchmark{
+		Name:   "import-range",
+		Logger: log.New(os.Stderr, "", log.LstdFlags),
+	}
+}
+
+// Run runs the benchmark.
+func (b *ImportRangeBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum int) (*Result, error) {
+	result := NewResult()
+	result.AgentNum = agentNum
+	result.Configuration = b
+
+	// Initialize schema.
+	_, field, err := ensureSchema(client, b.Index, b.Field, pilosa.OptFieldTypeInt(b.MinValue, b.MaxValue))
+	if err != nil {
+		return result, err
+	}
+
+	itr := b.ValueIterator(b.Seed + int64(agentNum))
+	err = client.ImportField(field, itr, pilosa.OptImportBatchSize(b.BufferSize))
+	result.Extra["actual-iterations"] = itr.actualIterations
+	result.Extra["avgdelta"] = itr.avgdelta
+	return result, err
+}
+
+func (b *ImportRangeBenchmark) ValueIterator(seed int64) *ValueIterator {
+	rand := rand.New(rand.NewSource(seed))
+
+	itr := NewValueIterator()
+	itr.maxbitnum = (b.MaxValue - b.MinValue + 1) * (b.MaxColumnID - b.MinColumnID + 1)
+	itr.avgdelta = float64(itr.maxbitnum) / float64(b.Iterations)
+	itr.minvalue, itr.mincol, itr.maxvalue, itr.maxcol = b.MinValue, b.MinColumnID, b.MaxValue, b.MaxColumnID
+
+	if b.Distribution == "exponential" {
+		itr.lambda = 1.0 / itr.avgdelta
+		itr.fdelta = func(itr *ValueIterator) float64 {
+			return rand.ExpFloat64() / itr.lambda
+		}
+	} else { // if b.Distribution == "uniform" {
+		itr.fdelta = func(itr *ValueIterator) float64 {
+			return rand.Float64() * itr.avgdelta * 2
+		}
+	}
+	return itr
+}
+
+func NewValueIterator() *ValueIterator {
+	return &ValueIterator{}
 }
 
 type ValueIterator struct {
@@ -37,72 +92,22 @@ type ValueIterator struct {
 	avgdelta         float64
 	lambda           float64
 	rng              *rand.Rand
-	fdelta           func(z *ValueIterator) float64
+	fdelta           func(itr *ValueIterator) float64
 }
 
-// Init create client and range frame.
-func (b *ImportRange) Init(hostSetup *HostSetup, agentNum int) error {
-	if len(hostSetup.Hosts) == 0 {
-		return fmt.Errorf("Need at least one host")
-	}
-	b.Name = "import-range"
-	b.Seed = b.Seed + int64(agentNum)
-	b.rng = rand.New(rand.NewSource(b.Seed))
-	err := b.HasClient.Init(hostSetup, agentNum)
-	if err != nil {
-		return fmt.Errorf("client init: %v", err)
-	}
-
-	return b.InitRange(b.Index, b.Frame, b.Field, b.MinValue, b.MaxValue)
-}
-
-// Run runs the ImportRange benchmark
-func (b *ImportRange) Run(ctx context.Context) *Result {
-	results := NewResult()
-
-	valueIterator := b.NewValueIterator()
-	err := b.HasClient.ImportRange(b.Index, b.Frame, b.Field, valueIterator, b.BufferSize)
-	if err != nil {
-		results.err = fmt.Errorf("running go client import: %v", err)
-	}
-	results.Extra["actual-iterations"] = valueIterator.actualIterations
-	results.Extra["avgdelta"] = valueIterator.avgdelta
-	return results
-}
-
-func (b *ImportRange) NewValueIterator() *ValueIterator {
-	z := &ValueIterator{}
-	z.rng = b.rng
-	z.maxbitnum = (b.MaxValue - b.MinValue + 1) * (b.MaxColumnID - b.MinColumnID + 1)
-	z.avgdelta = float64(z.maxbitnum) / float64(b.Iterations)
-	z.minvalue, z.mincol, z.maxvalue, z.maxcol = b.MinValue, b.MinColumnID, b.MaxValue, b.MaxColumnID
-
-	if b.Distribution == "exponential" {
-		z.lambda = 1.0 / z.avgdelta
-		z.fdelta = func(z *ValueIterator) float64 {
-			return z.rng.ExpFloat64() / z.lambda
-		}
-	} else { // if b.Distribution == "uniform" {
-		z.fdelta = func(z *ValueIterator) float64 {
-			return z.rng.Float64() * z.avgdelta * 2
-		}
-	}
-	return z
-}
-
-func (z *ValueIterator) NextValue() (pcli.FieldValue, error) {
-	delta := z.fdelta(z)
+func (itr *ValueIterator) NextRecord() (pilosa.Record, error) {
+	delta := itr.fdelta(itr)
 	if delta < 1.0 {
 		delta = 1.0
 	}
-	z.bitnum = int64(float64(z.bitnum) + delta)
-	if z.bitnum > z.maxbitnum {
-		return pcli.FieldValue{}, io.EOF
+	itr.bitnum = int64(float64(itr.bitnum) + delta)
+	if itr.bitnum > itr.maxbitnum {
+		return pilosa.FieldValue{}, io.EOF
 	}
 
-	field := pcli.FieldValue{}
-	z.actualIterations++
-	field.Value = uint64((z.bitnum / (z.maxcol - z.mincol + 1)) + z.minvalue)
-	field.ColumnID = uint64(z.bitnum%(z.maxcol-z.mincol+1) + z.mincol)
-	return field, nil
+	itr.actualIterations++
+	return pilosa.FieldValue{
+		Value:    int64((itr.bitnum / (itr.maxcol - itr.mincol + 1)) + itr.minvalue),
+		ColumnID: uint64(itr.bitnum%(itr.maxcol-itr.mincol+1) + itr.mincol),
+	}, nil
 }

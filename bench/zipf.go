@@ -3,16 +3,19 @@ package bench
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"math/rand"
+	"os"
 	"time"
+
+	"github.com/pilosa/go-pilosa"
 )
 
-// Zipf sets random bits according to the Zipf-Mandelbrot distribution.
+// ZipfBenchmark sets random bits according to the Zipf-Mandelbrot distribution.
 // This distribution accepts two parameters, Exponent and Ratio, for both rows and columns.
 // It also uses PermutationGenerator to permute IDs randomly.
-type Zipf struct {
-	HasClient
+type ZipfBenchmark struct {
 	Name           string  `json:"name"`
 	MinRowID       int64   `json:"min-row-id"`
 	MinColumnID    int64   `json:"min-column-id"`
@@ -21,16 +24,71 @@ type Zipf struct {
 	Iterations     int     `json:"iterations"`
 	Seed           int64   `json:"seed"`
 	Index          string  `json:"index"`
-	Frame          string  `json:"frame"`
+	Field          string  `json:"field"`
 	RowExponent    float64 `json:"row-exponent"`
 	RowRatio       float64 `json:"row-ratio"`
 	ColumnExponent float64 `json:"column-exponent"`
 	ColumnRatio    float64 `json:"column-ratio"`
 	Operation      string  `json:"operation"`
-	rowRng         *rand.Zipf
-	columnRng      *rand.Zipf
-	rowPerm        *PermutationGenerator
-	columnPerm     *PermutationGenerator
+
+	Logger *log.Logger `json:"-"`
+}
+
+// NewZipfBenchmark returns a new instance of ZipfBenchmark.
+func NewZipfBenchmark() *ZipfBenchmark {
+	return &ZipfBenchmark{
+		Name:   "zipf",
+		Logger: log.New(os.Stderr, "", log.LstdFlags),
+	}
+}
+
+// Run runs the Zipf benchmark
+func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum int) (*Result, error) {
+	result := NewResult()
+	result.AgentNum = agentNum
+	result.Configuration = b
+
+	// Initialize schema.
+	_, field, err := ensureSchema(client, b.Index, b.Field)
+	if err != nil {
+		return result, err
+	}
+
+	seed := b.Seed + int64(agentNum)
+	rowOffset := getZipfOffset(b.MaxRowID-b.MinRowID, b.RowExponent, b.RowRatio)
+	rowRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
+	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
+	columnRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
+	rowPerm := NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
+	columnPerm := NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
+
+	for n := 0; n < b.Iterations; n++ {
+		// generate IDs from Zipf distribution
+		rowIDOriginal := rowRand.Uint64()
+		profIDOriginal := columnRand.Uint64()
+
+		// permute IDs randomly, but repeatably
+		rowID := rowPerm.Next(int64(rowIDOriginal))
+		profID := columnPerm.Next(int64(profIDOriginal))
+
+		var q pilosa.PQLQuery
+		switch b.Operation {
+		case "set":
+			q = field.Set(b.MinRowID+int64(rowID), b.MinColumnID+int64(profID))
+		case "clear":
+			q = field.Clear(b.MinRowID+int64(rowID), b.MinColumnID+int64(profID))
+		default:
+			return result, fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
+		}
+
+		start := time.Now()
+		_, err := client.Query(q)
+		result.Add(time.Since(start), nil)
+		if err != nil {
+			return result, err
+		}
+	}
+	return result, err
 }
 
 // Offset is the true parameter used by the Zipf distribution, but the ratio,
@@ -43,61 +101,4 @@ type Zipf struct {
 func getZipfOffset(N int64, exp, ratio float64) float64 {
 	z := math.Pow(ratio, 1/exp)
 	return z * float64(N-1) / (1 - z)
-}
-
-// Init sets up the benchmark based on the agent number and initializes the
-// client.
-func (b *Zipf) Init(hostSetup *HostSetup, agentNum int) error {
-	b.Name = "zipf"
-	b.Seed = b.Seed + int64(agentNum)
-	rnd := rand.New(rand.NewSource(b.Seed))
-	rowOffset := getZipfOffset(b.MaxRowID-b.MinRowID, b.RowExponent, b.RowRatio)
-	b.rowRng = rand.NewZipf(rnd, b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
-	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
-	b.columnRng = rand.NewZipf(rnd, b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
-
-	b.rowPerm = NewPermutationGenerator(b.MaxRowID-b.MinRowID, b.Seed)
-	b.columnPerm = NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, b.Seed+1)
-
-	if b.Operation != "set" && b.Operation != "clear" {
-		return fmt.Errorf("Unsupported operation: \"%s\" (must be \"set\" or \"clear\")", b.Operation)
-	}
-	err := b.HasClient.Init(hostSetup, agentNum)
-	if err != nil {
-		return err
-	}
-
-	return b.InitIndex(b.Index, b.Frame)
-}
-
-// Run runs the Zipf benchmark
-func (b *Zipf) Run(ctx context.Context) *Result {
-	results := NewResult()
-	if b.client == nil {
-		results.err = fmt.Errorf("No client set for Zipf")
-		return results
-	}
-	operation := "SetBit"
-	if b.Operation == "clear" {
-		operation = "ClearBit"
-	}
-
-	for n := 0; n < b.Iterations; n++ {
-		// generate IDs from Zipf distribution
-		rowIDOriginal := b.rowRng.Uint64()
-		profIDOriginal := b.columnRng.Uint64()
-		// permute IDs randomly, but repeatably
-		rowID := b.rowPerm.Next(int64(rowIDOriginal))
-		profID := b.columnPerm.Next(int64(profIDOriginal))
-
-		query := fmt.Sprintf("%s(frame='%s', rowID=%d, columnID=%d)", operation, b.Frame, b.MinRowID+int64(rowID), b.MinColumnID+int64(profID))
-		start := time.Now()
-		_, err := b.ExecuteQuery(ctx, b.Index, query)
-		results.Add(time.Since(start), nil)
-		if err != nil {
-			results.err = err
-			return results
-		}
-	}
-	return results
 }
