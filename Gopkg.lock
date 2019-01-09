@@ -69,15 +69,15 @@
   version = "v1.2.0"
 
 [[projects]]
-  digest = "1:700b7bfe7a023e33d759171b33802731446ca87dfb11e6ca5b9ebd0bb23fdd2b"
+  branch = "master"
+  digest = "1:92b68160529f1cbef1b2812c88a49977b934a4929aabb3dc8372b42859486293"
   name = "github.com/pilosa/go-pilosa"
   packages = [
     ".",
     "gopilosa_pbuf",
   ]
   pruneopts = ""
-  revision = "5dc3944939371328f7d96be993f6e252fe973f18"
-  version = "v1.2.0"
+  revision = "685e4c64e70ec3fb183a1b124323ece421d92f14"
 
 [[projects]]
   branch = "master"
