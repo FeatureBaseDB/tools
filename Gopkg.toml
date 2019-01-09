@@ -1,0 +1,3 @@
+[[constraint]]
+    name = "github.com/pilosa/go-pilosa"
+    branch = "master"
