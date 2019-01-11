@@ -60,8 +60,14 @@ func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum
 	rowRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
 	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
 	columnRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
-	rowPerm := permute.NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
-	columnPerm := permute.NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
+	rowPerm, err := permute.NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
+	if err != nil {
+		return result, err
+	}
+	columnPerm, err := permute.NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
+	if err != nil {
+		return result, err
+	}
 
 	for n := 0; n < b.Iterations; n++ {
 		// generate IDs from Zipf distribution
@@ -69,8 +75,8 @@ func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum
 		profIDOriginal := columnRand.Uint64()
 
 		// permute IDs randomly, but repeatably
-		rowID := rowPerm.Next(int64(rowIDOriginal))
-		profID := columnPerm.Next(int64(profIDOriginal))
+		rowID := rowPerm.Nth(int64(rowIDOriginal))
+		profID := columnPerm.Nth(int64(profIDOriginal))
 
 		var q pilosa.PQLQuery
 		switch b.Operation {
