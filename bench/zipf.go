@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pilosa/go-pilosa"
+	"github.com/pilosa/tools/permute"
 )
 
 // ZipfBenchmark sets random bits according to the Zipf-Mandelbrot distribution.
@@ -59,8 +60,8 @@ func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum
 	rowRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
 	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
 	columnRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
-	rowPerm := NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
-	columnPerm := NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
+	rowPerm := permute.NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
+	columnPerm := permute.NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
 
 	for n := 0; n < b.Iterations; n++ {
 		// generate IDs from Zipf distribution
