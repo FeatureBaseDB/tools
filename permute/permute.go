@@ -16,13 +16,12 @@ import (
 //
 // Not actually cryptographically secure.
 type PermutationGenerator struct {
-	aes          cipher.Block
-	max          int64
-	counter      int64
-	rounds       int
-	hIn, hOut    []byte
-	hits, values int64
-	k            []uint64
+	aes       cipher.Block
+	max       int64
+	counter   int64
+	rounds    int
+	hIn, hOut []byte
+	k         []uint64
 }
 
 // NewPermutationGenerator creates a PermutationGenerator which will
@@ -72,7 +71,6 @@ func (p *PermutationGenerator) Next() (ret int64) {
 func (p *PermutationGenerator) Nth(n int64) (ret int64) {
 	p.counter = n
 	ret = p.nextValue()
-	p.values++
 	return ret
 }
 
@@ -80,28 +78,24 @@ func (p *PermutationGenerator) nextValue() int64 {
 	p.counter++
 	p.counter = int64(uint64(p.counter) % uint64(p.max))
 	x := uint64(p.counter)
+	// a value which can't possibly be the next value we need, so we
+	// always hash on the first pass.
+	prev := uint64(p.max) + 1
 	for i := uint64(0); i < uint64(p.rounds); i++ {
+		word, bit := (i/8)%16, byte(1<<(i&7))
 		xPrime := (p.k[i] + uint64(p.max) - x) % uint64(p.max)
 		xCaret := x
 		if xPrime > xCaret {
 			xCaret = xPrime
 		}
-		binary.LittleEndian.PutUint64(p.hIn, uint64(p.max)*i+xCaret)
-		p.aes.Encrypt(p.hOut, p.hIn)
-		crypt := binary.LittleEndian.Uint64(p.hOut)
-		fSubI := crypt >> 63
-		if fSubI == 1 {
+		if xCaret != prev {
+			binary.LittleEndian.PutUint64(p.hIn, xCaret)
+			p.aes.Encrypt(p.hOut, p.hIn)
+			prev = xCaret
+		}
+		if p.hOut[word]&bit != 0 {
 			x = xPrime
 		}
 	}
-	p.hits++
 	return int64(x)
-}
-
-// Hits tells you how many values you've gotten, and how many values were
-// generated to get them. Worst-case rounding would be that, for a range of
-// [0,5), the algorithm in use needs to cycle over 16 values -- it rounds up
-// to 2^3, and then to 2^4 because it needs the next even power of 2.
-func (p *PermutationGenerator) Hits() (values int64, hits int64) {
-	return p.values, p.hits
 }
