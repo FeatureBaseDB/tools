@@ -22,6 +22,7 @@ type PermutationGenerator struct {
 	rounds       int
 	hIn, hOut    []byte
 	hits, values int64
+	k            []uint64
 }
 
 // NewPermutationGenerator creates a PermutationGenerator which will
@@ -48,6 +49,13 @@ func NewPermutationGenerator(max int64, seed int64) (*PermutationGenerator, erro
 	}
 	p.hIn = make([]byte, p.aes.BlockSize())
 	p.hOut = make([]byte, p.aes.BlockSize())
+	p.k = make([]uint64, p.rounds)
+	for i := uint64(0); i < uint64(p.rounds); i++ {
+		binary.LittleEndian.PutUint64(p.hIn, i)
+		p.aes.Encrypt(p.hOut, p.hIn)
+		crypt := binary.LittleEndian.Uint64(p.hOut)
+		p.k[i] = crypt % uint64(p.max)
+	}
 	return &p, nil
 }
 
@@ -72,19 +80,15 @@ func (p *PermutationGenerator) nextValue() int64 {
 	p.counter++
 	p.counter = int64(uint64(p.counter) % uint64(p.max))
 	x := uint64(p.counter)
-	for i := uint64(1); i <= uint64(p.rounds); i++ {
-		binary.LittleEndian.PutUint64(p.hIn, i)
-		p.aes.Encrypt(p.hOut, p.hIn)
-		crypt := binary.LittleEndian.Uint64(p.hOut)
-		kSubI := crypt % uint64(p.max)
-		xPrime := (kSubI + uint64(p.max) - x) % uint64(p.max)
+	for i := uint64(0); i < uint64(p.rounds); i++ {
+		xPrime := (p.k[i] + uint64(p.max) - x) % uint64(p.max)
 		xCaret := x
 		if xPrime > xCaret {
 			xCaret = xPrime
 		}
 		binary.LittleEndian.PutUint64(p.hIn, uint64(p.max)*i+xCaret)
 		p.aes.Encrypt(p.hOut, p.hIn)
-		crypt = binary.LittleEndian.Uint64(p.hOut)
+		crypt := binary.LittleEndian.Uint64(p.hOut)
 		fSubI := crypt >> 63
 		if fSubI == 1 {
 			x = xPrime
