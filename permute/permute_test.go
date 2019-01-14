@@ -113,8 +113,6 @@ func Benchmark_PermuteCycle(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_ = p.Next()
 			}
-			v, h := p.Hits()
-			b.Logf("N %d: %d values, %d hits", b.N, v, h)
 		})
 	}
 }
