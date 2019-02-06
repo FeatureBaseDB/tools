@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pilosa/go-pilosa"
+	"github.com/pilosa/tools/apophenia"
 )
 
 // ZipfBenchmark sets random bits according to the Zipf-Mandelbrot distribution.
@@ -59,8 +60,16 @@ func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum
 	rowRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.RowExponent, rowOffset, uint64(b.MaxRowID-b.MinRowID-1))
 	columnOffset := getZipfOffset(b.MaxColumnID-b.MinColumnID, b.ColumnExponent, b.ColumnRatio)
 	columnRand := rand.NewZipf(rand.New(rand.NewSource(seed)), b.ColumnExponent, columnOffset, uint64(b.MaxColumnID-b.MinColumnID-1))
-	rowPerm := NewPermutationGenerator(b.MaxRowID-b.MinRowID, seed)
-	columnPerm := NewPermutationGenerator(b.MaxColumnID-b.MinColumnID, seed+1)
+	rowSeq := apophenia.NewSequence(seed)
+	colSeq := apophenia.NewSequence(seed + 1)
+	rowPerm, err := apophenia.NewPermutation(b.MaxRowID-b.MinRowID, 0, rowSeq)
+	if err != nil {
+		return result, err
+	}
+	columnPerm, err := apophenia.NewPermutation(b.MaxColumnID-b.MinColumnID, 0, colSeq)
+	if err != nil {
+		return result, err
+	}
 
 	for n := 0; n < b.Iterations; n++ {
 		// generate IDs from Zipf distribution
@@ -68,8 +77,8 @@ func (b *ZipfBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum
 		profIDOriginal := columnRand.Uint64()
 
 		// permute IDs randomly, but repeatably
-		rowID := rowPerm.Next(int64(rowIDOriginal))
-		profID := columnPerm.Next(int64(profIDOriginal))
+		rowID := rowPerm.Nth(int64(rowIDOriginal))
+		profID := columnPerm.Nth(int64(profIDOriginal))
 
 		var q pilosa.PQLQuery
 		switch b.Operation {
