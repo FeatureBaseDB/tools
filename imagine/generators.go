@@ -551,22 +551,3 @@ func (rvg *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 	}
 	return nil, io.EOF
 }
-
-// a densityFunc computes revised density/scale values for a given row,
-// storing them in place
-// type densityFunc func(d *dataGenerator, row uint64) int
-
-// var densityRules = map[densityType]densityFunc{
-//	densityTypeLinear: func(dg *dataGenerator, row uint64) int {
-//		return int(dg.densityBase * float64(dg.densityScale))
-//	},
-//	densityTypeZipf: func(dg *dataGenerator, row uint64) int {
-//		// from the README as of when I wrote this:
-//		// For instance, with v=2, s=2, the k=0 probability is proportional to
-//		// `(2+0)**(-2)` (1/4), and the k=1 probability is proportional to
-//		// `(2+1)**(-2)` (1/9). Thus, the probability of a bit being set in the k=1 row is
-//		// 4/9 the base density.
-//		proportion := math.Pow(float64(row)+dg.zipfV, -dg.zipfS)
-//		return int(dg.densityBase * proportion * float64(dg.densityScale))
-//	},
-//}
