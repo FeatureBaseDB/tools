@@ -55,7 +55,7 @@ func newSetGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
 	}
 	dvg.densityGen = makeDensityGenerator(fs)
 	dvg.densityScale = *fs.DensityScale
-	dvg.weighted, err = apophenia.NewWeighted(sequence(*fs.Seed))
+	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*fs.Seed))
 
 	switch fs.DimensionOrder {
 	case dimensionOrderRow:
@@ -159,18 +159,6 @@ func makeValueGenerator(fs *fieldSpec) (vg valueGenerator, err error) {
 	return vg, err
 }
 
-// reuse sequences
-var sequences = make(map[int64]apophenia.Sequence)
-
-func sequence(seed int64) apophenia.Sequence {
-	if seq, ok := sequences[seed]; ok {
-		return seq
-	}
-	seq := apophenia.NewSequence(seed)
-	sequences[seed] = seq
-	return seq
-}
-
 // sequenceGenerator represents something that iterates through a
 // range or series. It runs until done, then resets on further calls.
 // For example, a sequenceGenerator generating 1..3 would generate:
@@ -251,7 +239,7 @@ func (pg *permutedGenerator) Next() (value int64, done bool) {
 
 func newPermutedGenerator(min, max, total int64, row uint32, seed int64) (*permutedGenerator, error) {
 	var err error
-	seq := sequence(seed)
+	seq := apophenia.NewSequence(seed)
 	pg := &permutedGenerator{offset: min, total: total}
 	pg.permutation, err = apophenia.NewPermutation(max-min, row, seq)
 	return pg, err
@@ -273,7 +261,7 @@ type linearValueGenerator struct {
 }
 
 func newLinearValueGenerator(min, max, seed int64) (*linearValueGenerator, error) {
-	lvg := &linearValueGenerator{offset: min, max: uint64(max - min), seq: sequence(seed)}
+	lvg := &linearValueGenerator{offset: min, max: uint64(max - min), seq: apophenia.NewSequence(seed)}
 	lvg.bitoffset = apophenia.OffsetFor(apophenia.SequenceUser1, 0, 0, 0)
 	return lvg, nil
 }
@@ -293,7 +281,7 @@ type zipfValueGenerator struct {
 func newZipfValueGenerator(s, v float64, min, max, seed int64) (*zipfValueGenerator, error) {
 	var err error
 	zvg := zipfValueGenerator{offset: min}
-	zvg.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, sequence(seed))
+	zvg.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, apophenia.NewSequence(seed))
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +301,7 @@ type permutedValueGenerator struct {
 
 func permuteValueGenerator(vg valueGenerator, min, max, seed int64) (*permutedValueGenerator, error) {
 	var err error
-	seq := sequence(seed)
+	seq := apophenia.NewSequence(seed)
 	nvg := permutedValueGenerator{base: vg, offset: min}
 	// 2 is an arbitrary magic number; we used 0 and 1 for other permutation sequences.
 	nvg.permuter, err = apophenia.NewPermutation(max-min, 2, seq)
