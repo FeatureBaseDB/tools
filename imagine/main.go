@@ -6,6 +6,7 @@ import (
 	"os"
 	"runtime/pprof"
 	"sync"
+	"time"
 
 	"github.com/jaffee/commandeer"
 	pilosa "github.com/pilosa/go-pilosa"
@@ -29,6 +30,7 @@ type Config struct {
 	Spec          string `help:"filename of .toml spec file"`
 	CPUProfile    string `help:"record CPU profile to file"`
 	MemProfile    string `help:"record allocation profile to file"`
+	Time          bool   `help:"report on time elapsed for a spec"`
 }
 
 // Run does validation on the configuration data. Used by
@@ -142,7 +144,7 @@ func main() {
 	}
 
 	if conf.Create {
-		err = createIndexes(client, spec)
+		err = createIndexes(client, spec, conf)
 		if err != nil {
 			log.Fatalf("creating indexes: %s", err.Error())
 		}
@@ -166,7 +168,7 @@ func deleteIndexes(client *pilosa.Client, spec *tomlSpec) error {
 	return nil
 }
 
-func createIndexes(client *pilosa.Client, spec *tomlSpec) error {
+func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) error {
 	// yes, we might already have it from deleteIndexes, but it might also
 	// be stale.
 	schema, err := client.Schema()
@@ -179,7 +181,7 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec) error {
 			return fmt.Errorf("index '%s' already exists [%#v]", index.FullName, *dbIndexes[index.FullName])
 		}
 		newIndex := schema.Index(index.FullName)
-		err = createIndex(client, spec, index, newIndex)
+		err = createIndex(client, spec, index, newIndex, conf)
 		if err != nil {
 			return err
 		}
@@ -194,7 +196,7 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec) error {
 	}
 	dbIndexes = schema.Indexes()
 	for _, index := range spec.Indexes {
-		err = populateIndex(client, spec, index, dbIndexes[index.FullName])
+		err = populateIndex(client, spec, index, dbIndexes[index.FullName], conf)
 		if err != nil {
 			return err
 		}
@@ -202,7 +204,7 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec) error {
 	return nil
 }
 
-func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index) error {
+func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
 	for name, field := range iSpec.Fields {
 		switch field.Type {
 		case fieldTypeBSI:
@@ -238,7 +240,7 @@ func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index 
 	return nil
 }
 
-func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index) error {
+func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
 	var imports sync.WaitGroup
 	var errors []*error
 	threadCount := iSpec.ThreadCount
@@ -251,11 +253,17 @@ func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, inde
 		var errPtr = new(error)
 		errors = append(errors, errPtr)
 		go func() {
+			before := time.Now()
 			*errPtr = client.ImportField(index.Field(field), d, pilosa.OptImportThreadCount(threadCount))
+			if conf.Time {
+				after := time.Now()
+				fmt.Printf("%s/%s: %v\n", iSpec.Name, field, after.Sub(before))
+			}
 			imports.Done()
 		}()
 	}
-	fmt.Printf("populating '%s' table [%d columns]...", iSpec.Name, iSpec.Columns)
+	before := time.Now()
+	fmt.Printf("populating '%s' table [%d columns]...\n", iSpec.Name, iSpec.Columns)
 	for name, fs := range iSpec.Fields {
 		iter, err := NewGenerator(fs)
 		if err != nil {
@@ -266,7 +274,11 @@ func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, inde
 		importField(name, iter)
 	}
 	imports.Wait()
-	fmt.Printf("done.\n")
+	if conf.Time {
+		after := time.Now()
+		fmt.Printf("%s: %v\n", iSpec.Name, after.Sub(before))
+	}
+	fmt.Printf("done with '%s'.\n", iSpec.Name)
 	for _, ep := range errors {
 		if *ep != nil {
 			return *ep
