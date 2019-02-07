@@ -33,6 +33,7 @@ Each index has settings, plus field entries under the index. Fields are
 a mapping of names to field specifications.
 
     * name: The index's name. (This will be prefixed later.)
+    * description: A longer description of the index's purpose within a set.
     * columns: The number of columns.
     * seed: A default PRNG seed to use for fields that don't specify their own.
     * threadCount: Number of importer threads. (Experimental feature for

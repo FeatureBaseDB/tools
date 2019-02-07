@@ -65,6 +65,7 @@ type tomlSpec struct {
 type indexSpec struct {
 	parent      *tomlSpec
 	Name        string
+	Description string // for human-friendly descriptions
 	FullName    string // not actually intended to be user-set
 	Columns     uint64 // total columns to create data for
 	Fields      map[string]*fieldSpec

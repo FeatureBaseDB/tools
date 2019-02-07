@@ -11,7 +11,7 @@ import (
 	"github.com/pilosa/tools/apophenia"
 )
 
-type genfunc func(*fieldSpec) (pilosa.RecordIterator, error)
+type genfunc func(*fieldSpec) (CountingIterator, error)
 
 var newGenerators = map[fieldType]genfunc{
 	fieldTypeSet:   newSetGenerator,
@@ -24,9 +24,14 @@ var newGenerators = map[fieldType]genfunc{
 // thing it's on. But it also has to be able to mess with orders
 // and probabilities.
 
+type CountingIterator interface {
+	pilosa.RecordIterator
+	Values() int64
+}
+
 // NewGenerator makes a generator which will generate the specified field's
 // values.
-func NewGenerator(fs *fieldSpec) (pilosa.RecordIterator, error) {
+func NewGenerator(fs *fieldSpec) (CountingIterator, error) {
 	if fs == nil {
 		return nil, errors.New("nil field spec is invalid")
 	}
@@ -43,7 +48,7 @@ func NewGenerator(fs *fieldSpec) (pilosa.RecordIterator, error) {
 // Mutex: Column, one per column.
 // Set: FieldValue, possibly many per column, possibly column-major.
 
-func newSetGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
+func newSetGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
 	dvg := doubleValueGenerator{}
 	dvg.colGen, err = makeColumnGenerator(fs)
 	if err != nil {
@@ -81,7 +86,7 @@ func newSetGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
 	return nil, errors.New("unknown dimension order for set")
 }
 
-func newMutexGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
+func newMutexGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
 	cvg := columnValueGenerator{}
 	cvg.colGen, err = makeColumnGenerator(fs)
 	if err != nil {
@@ -94,7 +99,7 @@ func newMutexGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
 	return &cvg, nil
 }
 
-func newBSIGenerator(fs *fieldSpec) (iter pilosa.RecordIterator, err error) {
+func newBSIGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
 	fvg := fieldValueGenerator{}
 	fvg.colGen, err = makeColumnGenerator(fs)
 	if err != nil {
@@ -319,7 +324,12 @@ func (pvg *permutedValueGenerator) Nth(n int64) int64 {
 type singleValueGenerator struct {
 	colGen    sequenceGenerator
 	valueGen  valueGenerator
+	values    int64
 	completed bool
+}
+
+func (svg *singleValueGenerator) Values() int64 {
+	return svg.values
 }
 
 // Iterate loops over columns, producing a value for each column.
@@ -341,6 +351,7 @@ func (fvg *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
 		return nil, io.EOF
 	}
 	col, val, _ := fvg.Iterate()
+	fvg.values++
 	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
 }
 
@@ -355,6 +366,7 @@ func (cvg *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 		return nil, io.EOF
 	}
 	col, val, _ := cvg.Iterate()
+	cvg.values++
 	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val)}, nil
 }
 
@@ -412,6 +424,7 @@ type incrementColumnValueGenerator struct {
 	densityGen        densityGenerator
 	densityScale      uint64
 	weighted          *apophenia.Weighted
+	values            int64
 }
 
 func (ivg *incrementColumnValueGenerator) NextRow() {
@@ -430,6 +443,10 @@ func (ivg *incrementColumnValueGenerator) NextRow() {
 	ivg.col = 0
 	ivg.bit = 0
 	ivg.hasPendingBits = false
+}
+
+func (ivg *incrementColumnValueGenerator) Values() int64 {
+	return ivg.values
 }
 
 // NextBits grabs the next set of bits, and tries to find a 1 bit; it will
@@ -468,6 +485,7 @@ func (ivg *incrementColumnValueGenerator) NextRecord() (pilosa.Record, error) {
 				ret := pilosa.Column{ColumnID: uint64(ivg.col), RowID: uint64(ivg.row)}
 				ivg.bit <<= 1
 				ivg.col++
+				ivg.values++
 				return ret, nil
 			}
 			ivg.col++
@@ -486,6 +504,11 @@ type doubleValueGenerator struct {
 	densityScale     uint64
 	weighted         *apophenia.Weighted
 	coord            int64
+	values           int64
+}
+
+func (dvg *doubleValueGenerator) Values() int64 {
+	return dvg.values
 }
 
 type rowMajorValueGenerator struct {
@@ -510,6 +533,7 @@ func (rvg *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(row), 0, uint64(col))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
 		if bit != 0 {
+			rvg.values++
 			return pilosa.Column{ColumnID: uint64(col), RowID: uint64(row)}, nil
 		}
 	}
@@ -533,6 +557,7 @@ func (rvg *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		density := rvg.densityGen.Density(uint64(row))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
 		if bit != 0 {
+			rvg.values++
 			return pilosa.Column{ColumnID: uint64(col), RowID: uint64(row)}, nil
 		}
 	}
