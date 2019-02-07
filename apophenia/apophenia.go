@@ -30,7 +30,7 @@ type aesSequence128 struct {
 
 // NewSequence generates a sequence initialized with the given seed.
 func NewSequence(seed int64) Sequence {
-	s := aesSequence128{}
+	s := aesSequence128{offset: OffsetFor(SequenceRandSource, 0, 0, 0)}
 	s.Seed(seed)
 	if s.err != nil {
 		panic("impossible error: " + s.err.Error())
@@ -84,12 +84,19 @@ const (
 	SequenceLinear
 	// SequenceZipfU is the random numbers for the Zipf computations.
 	SequenceZipfU
+	// SequenceRandSource is used by default when a Sequence is being
+	// used as a rand.Source.
+	SequenceRandSource
+	// SequenceUser1 is eserved for non-apophenia package usage.
+	SequenceUser1
+	// SequenceUser2 is reserved for non-apophenia package usage.
+	SequenceUser2
 )
 
-// OffsetFor determines the uint128 offset for a given class/iteration/row/column.
-func OffsetFor(class SequenceClass, row uint32, iter uint32, col uint64) Uint128 {
-	return Uint128{hi: (uint64(class) << 56) | (uint64(row) << 24) | uint64(iter),
-		lo: col}
+// OffsetFor determines the Uint128 offset for a given class/seed/iteration/id.
+func OffsetFor(class SequenceClass, seed uint32, iter uint32, id uint64) Uint128 {
+	return Uint128{hi: (uint64(class) << 56) | (uint64(seed) << 24) | uint64(iter),
+		lo: id}
 }
 
 // Seek seeks to the specified offset, yielding the previous offset. This

@@ -73,6 +73,8 @@ func (w *Weighted) Bits(offset Uint128, density uint64, scale uint64) (out Uint1
 	lz := uint(bits.TrailingZeros64(density))
 	density >>= lz
 	scale >>= lz
+	// generate the same results we would have without this hackery
+	offset.hi += uint64(lz)
 	for scale > 1 {
 		next := w.src.BitsAt(offset)
 		if density&1 != 0 {

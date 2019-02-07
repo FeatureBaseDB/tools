@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-func permutationGeneratorOrBust(period int64, seed int64, expectedErr string, tb testing.TB) *PermutationGenerator {
+func PermutationOrBust(period int64, seed int64, expectedErr string, tb testing.TB) *Permutation {
 	seq := NewSequence(seed)
-	p, err := NewPermutationGenerator(period, 0, seq)
+	p, err := NewPermutation(period, 0, seq)
 	if err != nil {
 		if expectedErr == "" || expectedErr != err.Error() {
 			tb.Fatalf("unexpected error creating permutation generator: %s", err)
@@ -23,7 +23,7 @@ func permutationGeneratorOrBust(period int64, seed int64, expectedErr string, tb
 func Test_PermuteCycle(t *testing.T) {
 	sizes := []int64{8, 23, 64, 10000}
 	for _, size := range sizes {
-		p := permutationGeneratorOrBust(size, 0, "", t)
+		p := PermutationOrBust(size, 0, "", t)
 		seen := make(map[int64]struct{}, size)
 		for i := int64(0); i < size; i++ {
 			n := p.Next()
@@ -44,10 +44,10 @@ func Test_PermuteCycle(t *testing.T) {
 func TestPermuteSeed(t *testing.T) {
 	size := int64(129)
 	seeds := int64(8)
-	p := make([]*PermutationGenerator, seeds)
+	p := make([]*Permutation, seeds)
 	seen := make([]map[int64]struct{}, seeds)
 	for s := int64(0); s < seeds; s++ {
-		p[s] = permutationGeneratorOrBust(size, s, "", t)
+		p[s] = PermutationOrBust(size, s, "", t)
 		seen[s] = make(map[int64]struct{}, size)
 	}
 	matches := int64(0)
@@ -80,12 +80,12 @@ func TestPermuteSeed(t *testing.T) {
 func Test_PermuteNth(t *testing.T) {
 	size := int64(129)
 	seeds := int64(8)
-	p := make([][]*PermutationGenerator, seeds)
+	p := make([][]*Permutation, seeds)
 	seen := make([]map[int64]struct{}, seeds)
 	for s := int64(0); s < seeds; s++ {
-		p[s] = make([]*PermutationGenerator, 2)
-		p[s][0] = permutationGeneratorOrBust(size, s, "", t)
-		p[s][1] = permutationGeneratorOrBust(size, s, "", t)
+		p[s] = make([]*Permutation, 2)
+		p[s][0] = PermutationOrBust(size, s, "", t)
+		p[s][1] = PermutationOrBust(size, s, "", t)
 		seen[s] = make(map[int64]struct{}, size)
 	}
 	matches := int64(0)
@@ -119,7 +119,7 @@ func Benchmark_PermuteCycle(b *testing.B) {
 	sizes := []int64{5, 63, 1000000, (1 << 19)}
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("Pool%d", size), func(b *testing.B) {
-			p := permutationGeneratorOrBust(size, 0, "", b)
+			p := PermutationOrBust(size, 0, "", b)
 			for i := 0; i < b.N; i++ {
 				_ = p.Next()
 			}

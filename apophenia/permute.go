@@ -7,18 +7,18 @@ import (
 
 // PermutationGenerator provides a way to pass integer IDs through a permutation
 // map that is pseudorandom but repeatable. This could be done with rand.Perm,
-// but that would require storing a [Iterations]int64 array, which we want to avoid
-// for large values of Iterations.
+// but that would require storing a slice of [Items]int64, which we want to avoid
+// for large values of Items.
 //
 // Not actually cryptographically secure.
-type PermutationGenerator struct {
-	src     Sequence
-	permRow uint32
-	max     int64
-	counter int64
-	rounds  int
-	bits    Uint128
-	k       []uint64
+type Permutation struct {
+	src      Sequence
+	permSeed uint32
+	max      int64
+	counter  int64
+	rounds   int
+	bits     Uint128
+	k        []uint64
 }
 
 // Design notes:
@@ -44,10 +44,8 @@ type PermutationGenerator struct {
 // in a pair, to ensure that a swap between A and B always uses the same
 // decision bit.)
 //
-// For K values, we set byte 8 of the plain text to 0x01, and use
-// encoding/binary to dump r into the first 8 bytes of the plain text. The
-// value K[r] is then the first 8 bytes of the resulting value, converted to
-// uint64, mod max. This is slightly biased. We don't care.
+// K values are generated using the SequencePermutationK range of offsets,
+// with
 //
 // For F values, we set byte 8 of the plain text to 0x00, and use
 // encoding/binary to dump the slot number into the first 8 bytes. This
@@ -56,24 +54,24 @@ type PermutationGenerator struct {
 // secure, but we're already at 1/2^128 chances by that time and don't care.
 // We could probably trim rounds to 64 or so and not lose much data.
 
-// NewPermutationGenerator creates a PermutationGenerator which will
-// generate values in [0,m), given the provided seed.
+// NewPermutation creates a Permutation which generates values in [0,m),
+// from a given Sequence and seed value.
 //
-// The row parameter selects different shuffles, and is useful if you need
+// The seed parameter selects different shuffles, and is useful if you need
 // to generate multiple distinct shuffles from the same underlying sequence.
-func NewPermutationGenerator(max int64, row uint32, src Sequence) (*PermutationGenerator, error) {
+// Treat it as a secondary seed.
+func NewPermutation(max int64, seed uint32, src Sequence) (*Permutation, error) {
 	if max < 1 {
 		return nil, errors.New("period must be positive")
 	}
-	// number of rounds to get "good" results is roughly 6 log N. but that gets
-	// pretty slow, so we use fewer.
+	// number of rounds to get "good" results is roughly 6 log N.
 	bits := 64 - bits.LeadingZeros64(uint64(max))
-	p := PermutationGenerator{max: max, rounds: 6 * bits, counter: 0}
+	p := Permutation{max: max, rounds: 6 * bits, counter: 0}
 
 	p.src = src
 	p.k = make([]uint64, p.rounds)
-	p.permRow = row
-	offset := OffsetFor(SequencePermutationK, p.permRow, 0, 0)
+	p.permSeed = seed
+	offset := OffsetFor(SequencePermutationK, p.permSeed, 0, 0)
 	for i := uint64(0); i < uint64(p.rounds); i++ {
 		offset.SetLow(i)
 		bits := p.src.BitsAt(offset)
@@ -83,31 +81,36 @@ func NewPermutationGenerator(max int64, row uint32, src Sequence) (*PermutationG
 	return &p, nil
 }
 
-// Next generates the next value from the permutation generator.
-func (p *PermutationGenerator) Next() (ret int64) {
+// Next generates the next value from the permutation.
+func (p *Permutation) Next() (ret int64) {
 	return p.nextValue()
 }
 
-// Nth generates the Nth value from the permutation generator. For instance,
-// given a new permutation generator, calling Next() once produces the same
-// value you'd get from calling Nth(0). Calling Next() twice produces the same
-// value as calling Nth(1). The Nth call changes the location of the permutation
-// generator within its sequence.
-func (p *PermutationGenerator) Nth(n int64) (ret int64) {
+// Nth generates the Nth value from the permutation. For instance,
+// given a new permutation, calling Next once produces the same
+// value you'd get from calling Nth(0). This is a seek which changes
+// the offset that Next will count from; after calling Nth(x), you
+// would get the same result from Next() that you would from Nth(x+1).
+func (p *Permutation) Nth(n int64) (ret int64) {
 	p.counter = n
 	ret = p.nextValue()
 	return ret
 }
 
-func (p *PermutationGenerator) nextValue() int64 {
-	p.counter++
+func (p *Permutation) nextValue() int64 {
 	p.counter = int64(uint64(p.counter) % uint64(p.max))
 	x := uint64(p.counter)
+	p.counter++
 	// a value which can't possibly be the next value we need, so we
 	// always hash on the first pass.
 	prev := uint64(p.max) + 1
-	offset := OffsetFor(SequencePermutationF, p.permRow, 0, 0)
+	offset := OffsetFor(SequencePermutationF, p.permSeed, 0, 0)
 	for i := uint64(0); i < uint64(p.rounds); i++ {
+		if i > 0 && i&127 == 0 {
+			offset.hi++
+			// force regeneration of bits down below
+			prev = uint64(p.max) + 1
+		}
 		xPrime := (p.k[i] + uint64(p.max) - x) % uint64(p.max)
 		xCaret := x
 		if xPrime > xCaret {

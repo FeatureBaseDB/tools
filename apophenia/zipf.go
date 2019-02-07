@@ -1,16 +1,3 @@
-// zipf implements a seekable Zipf distribution.
-//
-// This is based on the same paper used for the golang stdlib Zipf
-// distribution:
-//
-// "Rejection-Inversion to Generate Variates
-// from Monotone Discrete Distributions"
-// W.Hormann, G.Derflinger [1996]
-// http://eeyore.wu-wien.ac.at/papers/96-04-04.wh-der.ps.gz
-//
-// This implementation differs from stdlib's in that it is seekable; you
-// can get the Nth value in a theoretical series of results reliably,
-// without having to generate the whole series linearly.
 package apophenia
 
 import (
@@ -21,8 +8,21 @@ import (
 // It is initialized with values q, v, and max, and produces values
 // in the range [0,max) such that the probability of a value k is
 // proportional to (v+k) ** -q. v must be >= 1, q must be > 1.
+//
+// This is based on the same paper used for the golang stdlib Zipf
+// distribution:
+//
+// "Rejection-Inversion to Generate Variates
+// from Monotone Discrete Distributions"
+// W.Hormann, G.Derflinger [1996]
+// http://eeyore.wu-wien.ac.at/papers/96-04-04.wh-der.ps.gz
+//
+// This implementation differs from stdlib's in that it is seekable; you
+// can get the Nth value in a theoretical series of results in constant
+// time, without having to generate the whole series linearly.
 type Zipf struct {
 	src                  Sequence
+	seed                 uint32
 	q                    float64
 	v                    float64
 	max                  float64
@@ -39,14 +39,16 @@ type Zipf struct {
 // NewZipf returns a new Zipf object with the specified q, v, and
 // max, and with its random source seeded in some way by seed.
 // The sequence of values returned is consistent for a given set
-// of inputs.
-func NewZipf(q float64, v float64, max uint64, src Sequence) (z *Zipf, err error) {
+// of inputs. The seed parameter can select one of multiple sub-sequences
+// of the given sequence.
+func NewZipf(q float64, v float64, max uint64, seed uint32, src Sequence) (z *Zipf, err error) {
 	oneMinusQ := 1 - q
 	oneOverOneMinusQ := 1 / (1 - q)
 	z = &Zipf{
 		q:                q,
 		v:                v,
 		max:              float64(max),
+		seed:             seed,
 		oneMinusQ:        oneMinusQ,
 		oneOverOneMinusQ: oneOverOneMinusQ,
 	}
@@ -72,9 +74,7 @@ func NewZipf(q float64, v float64, max uint64, src Sequence) (z *Zipf, err error
 // and a given index, the same value is returned.
 func (z *Zipf) Nth(index uint64) uint64 {
 	z.idx = index
-	// use index as the low-order 8 bytes of the AES plaintext, then use the
-	// other bytes for generating new data if we need more than one value.
-	offset := OffsetFor(SequenceZipfU, 0, 0, index)
+	offset := OffsetFor(SequenceZipfU, z.seed, 0, index)
 	for {
 		bits := z.src.BitsAt(offset)
 		uInt := bits.lo
@@ -90,12 +90,13 @@ func (z *Zipf) Nth(index uint64) uint64 {
 		}
 		// the low-order 24 bits of the high-order 64-bit word
 		// are the "iteration", which started as zero. Assuming we
-		// don't need more than 64M values, we're good.
+		// don't need more than ~16.7M values, we're good. The expected
+		// average is about 1.1.
 		offset.hi++
 	}
 }
 
-// Next() returns the "next" value -- the one after the last one requested, or
+// Next returns the "next" value -- the one after the last one requested, or
 // value 1 if none have been requested before.
 func (z *Zipf) Next() uint64 {
 	return z.Nth(z.idx + 1)

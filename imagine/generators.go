@@ -231,7 +231,7 @@ func newStrideGenerator(stride, max, total int64) *strideGenerator {
 }
 
 type permutedGenerator struct {
-	permutation    *apophenia.PermutationGenerator
+	permutation    *apophenia.Permutation
 	offset         int64
 	current, total int64
 }
@@ -253,7 +253,7 @@ func newPermutedGenerator(min, max, total int64, row uint32, seed int64) (*permu
 	var err error
 	seq := sequence(seed)
 	pg := &permutedGenerator{offset: min, total: total}
-	pg.permutation, err = apophenia.NewPermutationGenerator(max-min, row, seq)
+	pg.permutation, err = apophenia.NewPermutation(max-min, row, seq)
 	return pg, err
 }
 
@@ -274,7 +274,7 @@ type linearValueGenerator struct {
 
 func newLinearValueGenerator(min, max, seed int64) (*linearValueGenerator, error) {
 	lvg := &linearValueGenerator{offset: min, max: uint64(max - min), seq: sequence(seed)}
-	lvg.bitoffset = apophenia.OffsetFor(apophenia.SequenceLinear, 0, 0, 0)
+	lvg.bitoffset = apophenia.OffsetFor(apophenia.SequenceUser1, 0, 0, 0)
 	return lvg, nil
 }
 
@@ -294,7 +294,7 @@ type zipfValueGenerator struct {
 func newZipfValueGenerator(s, v float64, min, max, seed int64) (*zipfValueGenerator, error) {
 	var err error
 	zvg := zipfValueGenerator{offset: min}
-	zvg.z, err = apophenia.NewZipf(s, v, uint64(max-min), sequence(seed))
+	zvg.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, sequence(seed))
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (zvg *zipfValueGenerator) Nth(n int64) int64 {
 
 type permutedValueGenerator struct {
 	base     valueGenerator
-	permuter *apophenia.PermutationGenerator
+	permuter *apophenia.Permutation
 	offset   int64
 }
 
@@ -317,7 +317,7 @@ func permuteValueGenerator(vg valueGenerator, min, max, seed int64) (*permutedVa
 	seq := sequence(seed)
 	nvg := permutedValueGenerator{base: vg, offset: min}
 	// 2 is an arbitrary magic number; we used 0 and 1 for other permutation sequences.
-	nvg.permuter, err = apophenia.NewPermutationGenerator(max-min, 2, seq)
+	nvg.permuter, err = apophenia.NewPermutation(max-min, 2, seq)
 	return &nvg, err
 }
 
@@ -518,6 +518,8 @@ func (rvg *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 			density = rvg.densityGen.Density(uint64(row))
 		}
 		col, rvg.colDone = rvg.colGen.Next()
+		// use row as the "seed" for Weighted computations, so each row
+		// can have different values.
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(row), 0, uint64(col))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
 		if bit != 0 {
