@@ -31,6 +31,7 @@ type Config struct {
 	CPUProfile    string `help:"record CPU profile to file"`
 	MemProfile    string `help:"record allocation profile to file"`
 	Time          bool   `help:"report on time elapsed for a spec"`
+	Overwrite     bool   `help:"allow writing into existing indexes"`
 }
 
 // Run does validation on the configuration data. Used by
@@ -177,7 +178,7 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) error {
 	}
 	dbIndexes := schema.Indexes()
 	for _, index := range spec.Indexes {
-		if _, ok := dbIndexes[index.FullName]; ok {
+		if _, ok := dbIndexes[index.FullName]; ok && !conf.Overwrite {
 			return fmt.Errorf("index '%s' already exists [%#v]", index.FullName, *dbIndexes[index.FullName])
 		}
 		newIndex := schema.Index(index.FullName)
