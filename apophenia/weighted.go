@@ -45,7 +45,7 @@ func (w *Weighted) Bit(offset Uint128, density uint64, scale uint64) uint64 {
 	// always right-shift its column bits by 7, which reduces the
 	// space of possible results but means that it produces the same
 	// set of bits for any given batch...
-	offset.lo, bit = offset.lo&^127, offset.lo&127
+	offset.Lo, bit = offset.Lo&^127, offset.Lo&127
 	if offset == w.lastOffset && density == w.lastDensity && scale == w.lastScale {
 		return w.lastValue.Bit(bit)
 	}
@@ -62,7 +62,7 @@ const weightedIterationMask = (^uint64(0)) >> 7
 // offsets.
 func (w *Weighted) Bits(offset Uint128, density uint64, scale uint64) (out Uint128) {
 	// magic accommodation for choices made elsewhere.
-	offset.lo >>= 7
+	offset.Lo >>= 7
 	if density == scale {
 		out.Not()
 		return out
@@ -74,7 +74,7 @@ func (w *Weighted) Bits(offset Uint128, density uint64, scale uint64) (out Uint1
 	density >>= lz
 	scale >>= lz
 	// generate the same results we would have without this hackery
-	offset.hi += uint64(lz)
+	offset.Hi += uint64(lz)
 	for scale > 1 {
 		next := w.src.BitsAt(offset)
 		if density&1 != 0 {
@@ -85,7 +85,7 @@ func (w *Weighted) Bits(offset Uint128, density uint64, scale uint64) (out Uint1
 		density >>= 1
 		scale >>= 1
 		// iteration is stashed in the bottom 24-bits of an offset
-		offset.hi++
+		offset.Hi++
 	}
 	return out
 }

@@ -77,7 +77,7 @@ func (z *Zipf) Nth(index uint64) uint64 {
 	offset := OffsetFor(SequenceZipfU, z.seed, 0, index)
 	for {
 		bits := z.src.BitsAt(offset)
-		uInt := bits.lo
+		uInt := bits.Lo
 		u := float64(uInt&(1<<53-1)) / (1 << 53)
 		u = z.hImaxOneHalf + u*z.hX0MinusHImaxOneHalf
 		x := z.hInv(u)
@@ -92,7 +92,7 @@ func (z *Zipf) Nth(index uint64) uint64 {
 		// are the "iteration", which started as zero. Assuming we
 		// don't need more than ~16.7M values, we're good. The expected
 		// average is about 1.1.
-		offset.hi++
+		offset.Hi++
 	}
 }
 

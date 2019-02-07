@@ -73,10 +73,8 @@ func NewPermutation(max int64, seed uint32, src Sequence) (*Permutation, error) 
 	p.permSeed = seed
 	offset := OffsetFor(SequencePermutationK, p.permSeed, 0, 0)
 	for i := uint64(0); i < uint64(p.rounds); i++ {
-		offset.SetLow(i)
-		bits := p.src.BitsAt(offset)
-		crypt := bits.Low()
-		p.k[i] = crypt % uint64(p.max)
+		offset.Lo = i
+		p.k[i] = p.src.BitsAt(offset).Lo % uint64(p.max)
 	}
 	return &p, nil
 }
@@ -107,7 +105,7 @@ func (p *Permutation) nextValue() int64 {
 	offset := OffsetFor(SequencePermutationF, p.permSeed, 0, 0)
 	for i := uint64(0); i < uint64(p.rounds); i++ {
 		if i > 0 && i&127 == 0 {
-			offset.hi++
+			offset.Hi++
 			// force regeneration of bits down below
 			prev = uint64(p.max) + 1
 		}
@@ -117,7 +115,7 @@ func (p *Permutation) nextValue() int64 {
 			xCaret = xPrime
 		}
 		if xCaret != prev {
-			offset.lo = xCaret
+			offset.Lo = xCaret
 			p.bits = p.src.BitsAt(offset)
 			prev = xCaret
 		}

@@ -279,9 +279,8 @@ func newLinearValueGenerator(min, max, seed int64) (*linearValueGenerator, error
 }
 
 func (lvg *linearValueGenerator) Nth(n int64) int64 {
-	lvg.bitoffset.SetLow(uint64(n))
-	val128 := lvg.seq.BitsAt(lvg.bitoffset)
-	val := (val128.Low() % lvg.max)
+	lvg.bitoffset.Lo = uint64(n)
+	val := lvg.seq.BitsAt(lvg.bitoffset).Lo % lvg.max
 	return int64(val) + lvg.offset
 }
 
@@ -455,7 +454,7 @@ func (ivg *incrementColumnValueGenerator) NextBits() {
 		} else {
 			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, ivg.row, 0, ivg.col)
 			bits := ivg.weighted.Bits(offset, ivg.density, ivg.densityScale)
-			ivg.bits, ivg.pendingBits = bits.Low(), bits.High()
+			ivg.bits, ivg.pendingBits = bits.Lo, bits.Hi
 			ivg.hasPendingBits = true
 		}
 		nextBit := bits.TrailingZeros64(ivg.bits)

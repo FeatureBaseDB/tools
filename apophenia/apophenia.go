@@ -63,7 +63,7 @@ func (s *aesSequence128) Int63() int64 {
 func (s *aesSequence128) Uint64() uint64 {
 	out := s.BitsAt(s.offset)
 	s.offset.Inc()
-	return out.lo
+	return out.Lo
 }
 
 // SequenceClass denotes one of the sequence types, which are used to allow
@@ -95,23 +95,23 @@ const (
 
 // OffsetFor determines the Uint128 offset for a given class/seed/iteration/id.
 func OffsetFor(class SequenceClass, seed uint32, iter uint32, id uint64) Uint128 {
-	return Uint128{hi: (uint64(class) << 56) | (uint64(seed) << 24) | uint64(iter),
-		lo: id}
+	return Uint128{Hi: (uint64(class) << 56) | (uint64(seed) << 24) | uint64(iter),
+		Lo: id}
 }
 
 // Seek seeks to the specified offset, yielding the previous offset. This
 // sets the stream to a specific point in its cycle, affecting future calls
 // to Int63 or Uint64.
 func (s *aesSequence128) Seek(offset Uint128) (old Uint128) {
-	s.offset.lo, s.offset.hi, old.lo, old.hi = offset.lo, offset.hi, s.offset.lo, s.offset.hi
+	old, s.offset = s.offset, offset
 	return old
 }
 
 // BitsAt yields the sequence of bits at the provided offset into the stream.
 func (s *aesSequence128) BitsAt(offset Uint128) (out Uint128) {
-	binary.LittleEndian.PutUint64(s.plainText[:8], offset.lo)
-	binary.LittleEndian.PutUint64(s.plainText[8:], offset.hi)
+	binary.LittleEndian.PutUint64(s.plainText[:8], offset.Lo)
+	binary.LittleEndian.PutUint64(s.plainText[8:], offset.Hi)
 	s.cipher.Encrypt(s.cipherText[:], s.plainText[:])
-	out.lo, out.hi = binary.LittleEndian.Uint64(s.cipherText[:8]), binary.LittleEndian.Uint64(s.cipherText[8:])
+	out.Lo, out.Hi = binary.LittleEndian.Uint64(s.cipherText[:8]), binary.LittleEndian.Uint64(s.cipherText[8:])
 	return out
 }
