@@ -31,16 +31,29 @@ type CountingIterator interface {
 
 // NewGenerator makes a generator which will generate the specified field's
 // values.
-func NewGenerator(fs *fieldSpec) (CountingIterator, error) {
+func NewGenerator(fs *fieldSpec) (CountingIterator, []pilosa.ImportOption, error) {
 	if fs == nil {
-		return nil, errors.New("nil field spec is invalid")
+		return nil, nil, errors.New("nil field spec is invalid")
 	}
 	fn := newGenerators[fs.Type]
 	if fn == nil {
-		return nil, fmt.Errorf("field spec: invalid field type %v", fs.Type)
+		return nil, nil, fmt.Errorf("field spec: invalid field type %v", fs.Type)
+	}
+	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(fs.parent.ThreadCount)}
+	if noSortNeeded(fs) {
+		opts = append(opts, pilosa.OptImportSort(false))
 	}
 	iter, err := fn(fs)
-	return iter, err
+	return iter, opts, err
+}
+
+func noSortNeeded(fs *fieldSpec) bool {
+	switch {
+	case fs.ColumnOrder == valueOrderPermute, fs.RowOrder == valueOrderPermute:
+		return false
+	default:
+		return true
+	}
 }
 
 // Three cases:

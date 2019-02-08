@@ -238,6 +238,9 @@ func (is *indexSpec) Cleanup() error {
 		}
 
 	}
+	if is.ThreadCount < 1 {
+		is.ThreadCount = 1
+	}
 	return nil
 }
 

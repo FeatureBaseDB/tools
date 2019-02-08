@@ -244,18 +244,14 @@ func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index 
 func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
 	var imports sync.WaitGroup
 	var errors []*error
-	threadCount := iSpec.ThreadCount
-	if threadCount < 1 {
-		threadCount = 1
-	}
 
-	importField := func(field string, d CountingIterator) {
+	importField := func(field string, d CountingIterator, opts []pilosa.ImportOption) {
 		imports.Add(1)
 		var errPtr = new(error)
 		errors = append(errors, errPtr)
 		go func() {
 			before := time.Now()
-			*errPtr = client.ImportField(index.Field(field), d, pilosa.OptImportThreadCount(threadCount))
+			*errPtr = client.ImportField(index.Field(field), d, opts...)
 			if conf.Time {
 				after := time.Now()
 				fmt.Printf("%s/%s: %v for %d values\n", iSpec.Name, field, after.Sub(before), d.Values())
@@ -266,13 +262,13 @@ func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, inde
 	before := time.Now()
 	fmt.Printf("populating '%s' table, %d columns: %s\n", iSpec.Name, iSpec.Columns, iSpec.Description)
 	for name, fs := range iSpec.Fields {
-		iter, err := NewGenerator(fs)
+		iter, opts, err := NewGenerator(fs)
 		if err != nil {
 			err = fmt.Errorf("%s: %s", name, err.Error())
 			errors = append(errors, &err)
 			continue
 		}
-		importField(name, iter)
+		importField(name, iter, opts)
 	}
 	imports.Wait()
 	if conf.Time {
