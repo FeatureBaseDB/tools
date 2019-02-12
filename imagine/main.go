@@ -27,13 +27,15 @@ type Config struct {
 	DryRun        bool   `help:"dry-run; describe what would be done"`
 	Prefix        string `help:"prefix to use on index names"`
 	defaultPrefix bool
-	Spec          string `help:"filename of .toml spec file"`
 	CPUProfile    string `help:"record CPU profile to file"`
 	MemProfile    string `help:"record allocation profile to file"`
 	Time          bool   `help:"report on time elapsed for a spec"`
 	Overwrite     bool   `help:"allow writing into existing indexes"`
 	ColumnScale   int64  `help:"scale number of columns provided by a spec"`
 	RowScale      int64  `help:"scale number of rows provided by a spec"`
+	flagset       *flag.FlagSet
+	specFiles     []string
+	specs         []*tomlSpec
 }
 
 // Run does validation on the configuration data. Used by
@@ -50,8 +52,9 @@ func (c *Config) Run() error {
 		c.defaultPrefix = true
 		c.Prefix = "imaginary"
 	}
-	if c.Spec == "" {
-		return errors.New("must specify a spec file (--spec)")
+	c.specFiles = c.flagset.Args()
+	if len(c.specFiles) < 1 {
+		return errors.New("must specify one or more spec files")
 	}
 	if c.ColumnScale < 0 || c.ColumnScale > (1<<31) {
 		return fmt.Errorf("column scale [%d] should be between 1 and 2^31", c.ColumnScale)
@@ -67,25 +70,36 @@ func (c *Config) Run() error {
 	return nil
 }
 
-func (c *Config) readSpec() (*tomlSpec, error) {
-	if c.Spec == "" {
-		return nil, errors.New("you must have a spec file [--spec=]")
+func (c *Config) readSpecs() error {
+	c.specs = make([]*tomlSpec, 0, len(c.specFiles))
+	for _, path := range c.specFiles {
+		spec, err := readSpec(path)
+		if err != nil {
+			return fmt.Errorf("couldn't read spec '%s': %v", path, err)
+		}
+		// here is where we put overrides like setting the prefix
+		// from command-line parameters before doing more validation and
+		// populating inferred fields.
+		if c.defaultPrefix == false || spec.Prefix == "" {
+			spec.Prefix = c.Prefix
+		}
+		err = spec.Cleanup(c)
+		if err != nil {
+			return err
+		}
+		c.specs = append(c.specs, spec)
 	}
-	spec, err := readSpec(c.Spec)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't read spec: %s", err)
+	return nil
+}
+
+func (c *Config) IterateSpecs(fn func(*Config, *tomlSpec) error) error {
+	for _, spec := range c.specs {
+		err := fn(c, spec)
+		if err != nil {
+			return err
+		}
 	}
-	// here is where we put overrides like setting the prefix
-	// from command-line parameters before doing more validation and
-	// populating inferred fields.
-	if c.defaultPrefix == false || spec.Prefix == "" {
-		spec.Prefix = c.Prefix
-	}
-	err = spec.Cleanup(c)
-	if err != nil {
-		return nil, err
-	}
-	return spec, nil
+	return nil
 }
 
 func main() {
@@ -94,23 +108,28 @@ func main() {
 	conf := &Config{
 		Host: "localhost",
 		Port: 10101,
-		Spec: "",
 	}
-	flagset := flag.NewFlagSet("", flag.ContinueOnError)
+	conf.flagset = flag.NewFlagSet("", flag.ContinueOnError)
 
-	err := commandeer.RunArgs(flagset, conf, os.Args[1:])
+	err := commandeer.RunArgs(conf.flagset, conf, os.Args[1:])
 	if err != nil {
 		log.Fatalf("parsing arguments: %s", err)
 	}
 
-	spec, err := conf.readSpec()
+	err = conf.readSpecs()
 	if err != nil {
 		log.Fatalf("config/spec error: %v", err)
 	}
 
 	// dry run: just describe the indexes and stop there.
 	if conf.DryRun {
-		describeIndexes(spec)
+		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
+			describeIndexes(spec)
+			return nil
+		})
+		if err != nil {
+			log.Fatalf("error describing specs: %v", err)
+		}
 		os.Exit(0)
 	}
 
@@ -161,16 +180,23 @@ func main() {
 	}
 
 	if conf.Delete {
-		err = deleteIndexes(client, spec)
+		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
+			err := deleteIndexes(client, spec)
+			return err
+		})
 		if err != nil {
-			log.Fatalf("deleting indexes: %s", err.Error())
+			log.Fatalf("deleting indexes: %v", err)
 		}
+
 	}
 
 	if conf.Create {
-		err = createIndexes(client, spec, conf)
+		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
+			err := createIndexes(client, spec, c)
+			return err
+		})
 		if err != nil {
-			log.Fatalf("creating indexes: %s", err.Error())
+			log.Fatalf("creating indexes: %v", err)
 		}
 	}
 }
@@ -192,10 +218,11 @@ func deleteIndexes(client *pilosa.Client, spec *tomlSpec) error {
 	return nil
 }
 
-func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) error {
+func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) (err error) {
 	// yes, we might already have it from deleteIndexes, but it might also
 	// be stale.
-	schema, err := client.Schema()
+	var schema *pilosa.Schema
+	schema, err = client.Schema()
 	if err != nil {
 		return errors.Wrap(err, "retrieving schema")
 	}
@@ -219,6 +246,18 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) error {
 		return err
 	}
 	dbIndexes = schema.Indexes()
+	if conf.Time {
+		before := time.Now()
+		fmt.Printf("beginning import of indexes for spec %s\n", spec.PathName)
+		defer func() {
+			after := time.Now()
+			var completed = "completed"
+			if err != nil {
+				completed = "failed"
+			}
+			fmt.Printf("spec %s %s in %v\n", spec.PathName, completed, after.Sub(before))
+		}()
+	}
 	for _, index := range spec.Indexes {
 		err = populateIndex(client, spec, index, dbIndexes[index.FullName], conf)
 		if err != nil {
@@ -266,12 +305,12 @@ func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index 
 
 func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
 	var imports sync.WaitGroup
-	var errors []*error
+	var populateErrors []*error
 
 	importField := func(field string, d CountingIterator, opts []pilosa.ImportOption) {
 		imports.Add(1)
 		var errPtr = new(error)
-		errors = append(errors, errPtr)
+		populateErrors = append(populateErrors, errPtr)
 		go func() {
 			before := time.Now()
 			*errPtr = client.ImportField(index.Field(field), d, opts...)
@@ -288,7 +327,7 @@ func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, inde
 		iter, opts, err := NewGenerator(fs)
 		if err != nil {
 			err = fmt.Errorf("%s: %s", name, err.Error())
-			errors = append(errors, &err)
+			populateErrors = append(populateErrors, &err)
 			continue
 		}
 		importField(name, iter, opts)
@@ -299,7 +338,7 @@ func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, inde
 		fmt.Printf("%s: %v\n", iSpec.Name, after.Sub(before))
 	}
 	fmt.Printf("done with '%s'.\n", iSpec.Name)
-	for _, ep := range errors {
+	for _, ep := range populateErrors {
 		if *ep != nil {
 			return *ep
 		}

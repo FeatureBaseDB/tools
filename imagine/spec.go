@@ -55,6 +55,7 @@ const (
 )
 
 type tomlSpec struct {
+	PathName     string // don't set in spec, this will be set to the file name
 	Indexes      []*indexSpec
 	Prefix       string // overruled by config setting
 	DensityScale uint64 // scale used for density. scale=8 means density will be 0, 1/8, 2/8, 3/8...
@@ -128,18 +129,19 @@ func (fs *fieldSpec) String() string {
 }
 
 func describeIndexes(spec *tomlSpec) {
+	fmt.Printf("spec %s:\n", spec.PathName)
 	for _, index := range spec.Indexes {
 		describeIndex(index)
 	}
 }
 
 func describeIndex(spec *indexSpec) {
-	fmt.Printf("index %s:\n", spec)
+	fmt.Printf("  index %s:\n", spec)
 	if spec == nil {
 		return
 	}
 	for key, f := range spec.Fields {
-		fmt.Printf("  %s: %s\n", key, f)
+		fmt.Printf("    %s: %s\n", key, f)
 	}
 }
 
@@ -166,6 +168,10 @@ func readSpec(path string) (*tomlSpec, error) {
 		return nil, errors.New("version must be specified as '1.0'")
 
 	}
+	if ts.PathName != "" {
+		return nil, errors.New("path name must not be specified in the spec")
+	}
+	ts.PathName = path
 	return &ts, nil
 }
 
