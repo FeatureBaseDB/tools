@@ -201,13 +201,13 @@ func fixDensityScale(densityScale *uint64) {
 // Cleanup does additional validation and cleanup which may not be possible
 // until the main program's filled in some blanks, such as a possible Prefix
 // override specified on the command line.
-func (ts *tomlSpec) Cleanup() error {
+func (ts *tomlSpec) Cleanup(conf *Config) error {
 	fixDensityScale(&ts.DensityScale)
 	// Copy in column counts; all fields have an innate column count equal
 	// to the index's column count.
 	for _, indexSpec := range ts.Indexes {
 		indexSpec.parent = ts
-		if err := indexSpec.Cleanup(); err != nil {
+		if err := indexSpec.Cleanup(conf); err != nil {
 			return fmt.Errorf("error in spec: %s", err)
 		}
 
@@ -216,7 +216,7 @@ func (ts *tomlSpec) Cleanup() error {
 }
 
 // Cleanup does data validation and cleanup for an indexSpec.
-func (is *indexSpec) Cleanup() error {
+func (is *indexSpec) Cleanup(conf *Config) error {
 	if is.Name == "" {
 		return errors.New("index has no specified name")
 	}
@@ -227,13 +227,16 @@ func (is *indexSpec) Cleanup() error {
 	if is.Seed == nil {
 		is.Seed = &is.parent.Seed
 	}
+	if conf.ColumnScale != 0 {
+		is.Columns *= uint64(conf.ColumnScale)
+	}
 	for name, field := range is.Fields {
 		field.parent = is
 		if field.Name != "" {
 			return fmt.Errorf("field name must not be specified, use the map key [%s/%s]", is.Name, name)
 		}
 		field.Name = name
-		if err := field.Cleanup(); err != nil {
+		if err := field.Cleanup(conf); err != nil {
 			return fmt.Errorf("field %s/%s: %s", is.Name, name, err)
 		}
 
@@ -245,7 +248,7 @@ func (is *indexSpec) Cleanup() error {
 }
 
 // Cleanup does data validation and checking for a fieldSpec.
-func (fs *fieldSpec) Cleanup() error {
+func (fs *fieldSpec) Cleanup(conf *Config) error {
 	if fs.Seed == nil {
 		fs.Seed = fs.parent.Seed
 	}
@@ -280,6 +283,9 @@ func (fs *fieldSpec) Cleanup() error {
 			fs.Columns = &fs.parent.Columns
 		}
 	} else {
+		if conf.ColumnScale != 0 {
+			*fs.Columns *= uint64(conf.ColumnScale)
+		}
 		if *fs.Columns > fs.parent.Columns {
 			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", fs.Name,
 				*fs.Columns, fs.parent.Columns)
@@ -303,6 +309,12 @@ func (fs *fieldSpec) Cleanup() error {
 		if !found {
 			return fmt.Errorf("field %s specifies source index '%s' which does not exist",
 				fs.Name, fs.SourceIndex)
+		}
+	} else {
+		// RowScale does not apply to SourceIndex
+		if conf.RowScale != 0 {
+			fs.Min *= conf.RowScale
+			fs.Max *= conf.RowScale
 		}
 	}
 	if fs.Max < fs.Min {

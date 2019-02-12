@@ -32,6 +32,8 @@ type Config struct {
 	MemProfile    string `help:"record allocation profile to file"`
 	Time          bool   `help:"report on time elapsed for a spec"`
 	Overwrite     bool   `help:"allow writing into existing indexes"`
+	ColumnScale   int64  `help:"scale number of columns provided by a spec"`
+	RowScale      int64  `help:"scale number of rows provided by a spec"`
 }
 
 // Run does validation on the configuration data. Used by
@@ -50,6 +52,12 @@ func (c *Config) Run() error {
 	}
 	if c.Spec == "" {
 		return errors.New("must specify a spec file (--spec)")
+	}
+	if c.ColumnScale < 0 || c.ColumnScale > (1<<31) {
+		return fmt.Errorf("column scale [%d] should be between 1 and 2^31", c.ColumnScale)
+	}
+	if c.RowScale < 0 || c.RowScale > (1<<16) {
+		return fmt.Errorf("row scale [%d] should be between 1 and 2^16", c.RowScale)
 	}
 
 	// If no action is specified, create indexes but don't delete them.
@@ -73,7 +81,7 @@ func (c *Config) readSpec() (*tomlSpec, error) {
 	if c.defaultPrefix == false || spec.Prefix == "" {
 		spec.Prefix = c.Prefix
 	}
-	err = spec.Cleanup()
+	err = spec.Cleanup(c)
 	if err != nil {
 		return nil, err
 	}
