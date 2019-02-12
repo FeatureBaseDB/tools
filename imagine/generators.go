@@ -24,6 +24,10 @@ var newGenerators = map[fieldType]genfunc{
 // thing it's on. But it also has to be able to mess with orders
 // and probabilities.
 
+// CountingIterator represents a pilosa.RecordIterator which additionally
+// reports back how many values it's generated, useful for reporting on
+// what was done and seeing how number of bits (as opposed to number
+// of columns/rows) is affecting performance.
 type CountingIterator interface {
 	pilosa.RecordIterator
 	Values() int64
