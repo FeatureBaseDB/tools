@@ -97,7 +97,7 @@ func main() {
 
 	spec, err := conf.readSpec()
 	if err != nil {
-		log.Fatalf("config/spec error: %s", err)
+		log.Fatalf("config/spec error: %v", err)
 	}
 
 	// dry run: just describe the indexes and stop there.
@@ -108,13 +108,28 @@ func main() {
 
 	uri, err := pilosa.NewURIFromHostPort(conf.Host, uint16(conf.Port))
 	if err != nil {
-		log.Fatalf("could not create Pilosa URI: %s", err)
+		log.Fatalf("could not create Pilosa URI: %v", err)
 	}
 
 	client, err = pilosa.NewClient(uri)
 	if err != nil {
-		log.Fatalf("could not create Pilosa client: %s", err)
+		log.Fatalf("could not create Pilosa client: %v", err)
 	}
+
+	serverInfo, err := client.Info()
+	if err != nil {
+		log.Fatalf("couldn't get server info: %v", err)
+	}
+	serverMemMB := serverInfo.Memory / (1024 * 1024)
+	// this is probably really stupid.
+	serverMemGB := (serverMemMB + 1023) / 1024
+	fmt.Printf("server memory: %dGB [%dMB]\n", serverMemGB, serverMemMB)
+	fmt.Printf("server CPU: %s [%d physical cores, %d logical cores available]\n", serverInfo.CPUType, serverInfo.CPUPhysicalCores, serverInfo.CPUCount)
+	serverStatus, err := client.Status()
+	if err != nil {
+		log.Fatalf("couldn't get cluster status info: %v", err)
+	}
+	fmt.Printf("cluster nodes: %d\n", len(serverStatus.Nodes))
 
 	// start profiling only after all the startup decisions are made
 	if conf.CPUProfile != "" {
