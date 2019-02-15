@@ -151,7 +151,7 @@ func main() {
 	// this is probably really stupid.
 	serverMemGB := (serverMemMB + 1023) / 1024
 	fmt.Printf("server memory: %dGB [%dMB]\n", serverMemGB, serverMemMB)
-	fmt.Printf("server CPU: %s [%d physical cores, %d logical cores available]\n", serverInfo.CPUType, serverInfo.CPUPhysicalCores, serverInfo.CPUCount)
+	fmt.Printf("server CPU: %s [%d physical cores, %d logical cores available]\n", serverInfo.CPUType, serverInfo.CPUPhysicalCores, serverInfo.CPULogicalCores)
 	serverStatus, err := client.Status()
 	if err != nil {
 		log.Fatalf("couldn't get cluster status info: %v", err)
