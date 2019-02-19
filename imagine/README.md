@@ -27,6 +27,34 @@ The following global settings exist:
 
 Indexes are defined in a top-level array, usually written as `[[indexes]]`.
 
+## Redesign Notes
+
+This is not yet implemented, but I have to put the notes down somewhere.
+
+Specs are to be divided into two categories; `data` specs define the types
+and contents of indexes and fields (cache type or size, number of rows, number
+of columns). Then `workload` specs define operations to insert data within
+those fields.
+
+When one or more specs are parsed, they are combined to provide a single
+unified `data` spec (which must be consistent), and a series of `workload`
+specs. Then, `imagine` will:
+
+    * Verify the consistency of the specs (that all workloads specify
+      operations which make sense on the given fields, for instance).
+    * Verify that fields or indexes exist and match the `data` spec. If
+      they don't, it will either abort or create them.
+    * Execute each workload in turn, reporting performance statistics.
+
+Optionally, `imagine` can delete indexes or fields before creating them,
+or after populating them, or just delete them and stop there.
+
+If `imagine` can't continue (for instance, a field already exists but
+doesn't match the spec), it aborts.
+
+Workloads want some kind of nesting functionality to allow a clear
+distinction between parallel and successive operations.
+
 ## Indexes
 
 Each index has settings, plus field entries under the index. Fields are
