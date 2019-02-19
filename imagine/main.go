@@ -1,5 +1,7 @@
 package main
 
+//go:generate enumer -type=verifyType -trimprefix=verifyType -text -transform=kebab -output enums_verifytype.go
+
 import (
 	"fmt"
 	"log"
@@ -18,12 +20,25 @@ var (
 	client *pilosa.Client
 )
 
+type verifyType int
+
+const (
+	verifyTypeError verifyType = iota
+	verifyTypeNone
+	verifyTypePurge
+	verifyTypeUpdate
+	verifyTypeCreate
+)
+
 // Config describes the overall configuration of the tool.
 type Config struct {
 	Host          string `help:"host name for Pilosa server"`
 	Port          int    `help:"host port for Pilosa server"`
-	Create        bool   `help:"create indexes if needed"`
-	Delete        bool   `help:"delete existing indexes with same prefix"`
+	Verify        string `help:"index structure validation: purge/error/update/create"`
+	verifyType    verifyType
+	Generate      bool   `help:"generate data"`
+	Delete        bool   `help:"delete specified fields"`
+	DeleteAll     bool   `help:"delete specified indexes"`
 	DryRun        bool   `help:"dry-run; describe what would be done"`
 	Prefix        string `help:"prefix to use on index names"`
 	defaultPrefix bool
@@ -36,6 +51,9 @@ type Config struct {
 	flagset       *flag.FlagSet
 	specFiles     []string
 	specs         []*tomlSpec
+	indexes       map[string]*indexSpec
+	workloads     []namedWorkload
+	dbSchema      map[string]map[string]*pilosa.Field
 }
 
 // Run does validation on the configuration data. Used by
@@ -52,6 +70,21 @@ func (c *Config) Run() error {
 		c.defaultPrefix = true
 		c.Prefix = "imaginary"
 	}
+	if c.Verify != "" {
+		err := c.verifyType.UnmarshalText([]byte(c.Verify))
+		if err != nil {
+			return fmt.Errorf("unknown verify type '%s'", c.Verify)
+		}
+	} else {
+		// If we're deleting, and not generating, we can skip
+		// verification. Otherwise, default to erroring out if
+		// there's a mismatch.
+		if c.Delete && !c.Generate {
+			c.verifyType = verifyTypeNone
+		} else {
+			c.verifyType = verifyTypeError
+		}
+	}
 	c.specFiles = c.flagset.Args()
 	if len(c.specFiles) < 1 {
 		return errors.New("must specify one or more spec files")
@@ -61,11 +94,6 @@ func (c *Config) Run() error {
 	}
 	if c.RowScale < 0 || c.RowScale > (1<<16) {
 		return fmt.Errorf("row scale [%d] should be between 1 and 2^16", c.RowScale)
-	}
-
-	// If no action is specified, create indexes but don't delete them.
-	if !c.Create && !c.Delete && !c.DryRun {
-		c.Create = true
 	}
 	return nil
 }
@@ -92,16 +120,6 @@ func (c *Config) readSpecs() error {
 	return nil
 }
 
-func (c *Config) IterateSpecs(fn func(*Config, *tomlSpec) error) error {
-	for _, spec := range c.specs {
-		err := fn(c, spec)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func main() {
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
@@ -123,12 +141,8 @@ func main() {
 
 	// dry run: just describe the indexes and stop there.
 	if conf.DryRun {
-		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
+		for _, spec := range conf.specs {
 			describeIndexes(spec)
-			return nil
-		})
-		if err != nil {
-			log.Fatalf("error describing specs: %v", err)
 		}
 		os.Exit(0)
 	}
@@ -179,35 +193,146 @@ func main() {
 		}()
 	}
 
-	if conf.Delete {
-		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
-			err := deleteIndexes(client, spec)
-			return err
-		})
-		if err != nil {
-			log.Fatalf("deleting indexes: %v", err)
+	// do verification.
+	switch conf.verifyType {
+	case verifyTypeNone:
+		// do nothing
+	case verifyTypeError:
+		err = conf.VerifyIndexes(client)
+	case verifyTypePurge:
+		err = conf.DeleteIndexes(client)
+		if err == nil {
+			err = conf.CreateIndexes(client)
 		}
-
+	case verifyTypeUpdate:
+		err = conf.UpdateIndexes(client)
+	case verifyTypeCreate:
+		err = conf.CreateIndexes(client)
+	}
+	if err != nil {
+		log.Fatalf("initial validation: %v", err)
 	}
 
-	if conf.Create {
-		err = conf.IterateSpecs(func(c *Config, spec *tomlSpec) error {
-			err := createIndexes(client, spec, c)
-			return err
-		})
+	if conf.Generate {
+		err := conf.ApplyWorkloads(client)
 		if err != nil {
-			log.Fatalf("creating indexes: %v", err)
+			log.Fatalf("applying workloads: %v", err)
+		}
+	}
+
+	if conf.Delete {
+		err := conf.DeleteIndexes(client)
+		if err != nil {
+			log.Fatalf("deleting indexes: %v", err)
 		}
 	}
 }
 
-func deleteIndexes(client *pilosa.Client, spec *tomlSpec) error {
+// CompareIndexes is the general form of comparing client and server index
+// specs. mayCreate indicates that it's acceptable to create an index if it's
+// missing. mustCreate indicates that it's mandatory to create an index, so
+// it must not have previously existed.
+func (conf *Config) CompareIndexes(client *pilosa.Client, mayCreate, mustCreate bool) error {
+	errs := make([]error, 0)
 	schema, err := client.Schema()
 	if err != nil {
 		return errors.Wrap(err, "retrieving schema")
 	}
 	dbIndexes := schema.Indexes()
-	for _, index := range spec.Indexes {
+	var dbIndex *pilosa.Index
+	changed := false
+	for _, index := range conf.indexes {
+		dbIndex = dbIndexes[index.FullName]
+		if dbIndex == nil {
+			if !mayCreate {
+				errs = append(errs, fmt.Errorf("index '%s' does not exist", index.FullName))
+				continue
+			}
+			changed = true
+			dbIndex = schema.Index(index.FullName)
+		} else {
+			if mustCreate {
+				errs = append(errs, fmt.Errorf("index '%s' already exists", index.FullName))
+				continue
+			}
+		}
+		// if we got here, the index now exists, so we can do the same thing to fields...
+		changedFields, fieldErrs := conf.CompareFields(client, dbIndex, index, mayCreate, mustCreate)
+		if changedFields {
+			changed = true
+		}
+		errs = append(errs, fieldErrs...)
+	}
+	if changed {
+		err = client.SyncSchema(schema)
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return nil
+}
+
+// CompareFields checks the individual fields in an index, following the same
+// logic as CompareIndexes. mayCreate indicates that it's acceptable to create
+// an index if it's missing. mustCreate indicates that it's mandatory to create
+// an index, so it must not have previously existed.
+func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, spec *indexSpec, mayCreate, mustCreate bool) (changed bool, errs []error) {
+	dbFields := dbIndex.Fields()
+	for name, field := range spec.Fields {
+		dbField := dbFields[name]
+		if dbField == nil {
+			if !mayCreate {
+				errs = append(errs, fmt.Errorf("field '%s' does not exist in '%s'", name, spec.FullName))
+				continue
+			}
+		} else {
+			if mustCreate {
+				errs = append(errs, fmt.Errorf("field '%s' already exists in '%s'", name, spec.FullName))
+				continue
+			}
+			// field exists. we don't have a way to check it yet, so we continue.
+			continue
+		}
+		changed = true
+		switch field.Type {
+		case fieldTypeBSI:
+			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
+		case fieldTypeSet:
+			dbIndex.Field(name, pilosa.OptFieldTypeSet("none", 0))
+		case fieldTypeMutex:
+			dbIndex.Field(name, pilosa.OptFieldTypeMutex("none", 0))
+		default:
+			errs = append(errs, fmt.Errorf("unknown field type '%s'", field.Type))
+		}
+	}
+	return changed, errs
+}
+
+// VerifyIndexes verifies that the indexes and fields specified already
+// exist and match.
+func (conf *Config) VerifyIndexes(client *pilosa.Client) error {
+	return conf.CompareIndexes(client, false, false)
+}
+
+// CreateIndexes attempts to create indexes, erroring out if any exist.
+func (conf *Config) CreateIndexes(client *pilosa.Client) error {
+	return conf.CompareIndexes(client, true, true)
+}
+
+// UpdateIndexes attempts to create indexes or fields, accepting existing
+// things as long as they match.
+func (conf *Config) UpdateIndexes(client *pilosa.Client) error {
+	return conf.CompareIndexes(client, true, false)
+}
+
+// DeleteIndexes attempts to delete all specified indexes.
+func (conf *Config) DeleteIndexes(client *pilosa.Client) error {
+	schema, err := client.Schema()
+	if err != nil {
+		return errors.Wrap(err, "retrieving schema")
+	}
+	dbIndexes := schema.Indexes()
+	for _, index := range conf.indexes {
 		if dbIndexes[index.FullName] != nil {
 			err = client.DeleteIndex(dbIndexes[index.FullName])
 			if err != nil {
@@ -218,48 +343,22 @@ func deleteIndexes(client *pilosa.Client, spec *tomlSpec) error {
 	return nil
 }
 
-func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) (err error) {
-	// yes, we might already have it from deleteIndexes, but it might also
-	// be stale.
-	var schema *pilosa.Schema
-	schema, err = client.Schema()
-	if err != nil {
-		return errors.Wrap(err, "retrieving schema")
-	}
-	dbIndexes := schema.Indexes()
-	for _, index := range spec.Indexes {
-		if _, ok := dbIndexes[index.FullName]; ok && !conf.Overwrite {
-			return fmt.Errorf("index '%s' already exists [%#v]", index.FullName, *dbIndexes[index.FullName])
-		}
-		newIndex := schema.Index(index.FullName)
-		err = createIndex(client, spec, index, newIndex, conf)
-		if err != nil {
-			return err
-		}
-	}
-	err = client.SyncSchema(schema)
-	if err != nil {
-		return err
-	}
-	schema, err = client.Schema()
-	if err != nil {
-		return err
-	}
-	dbIndexes = schema.Indexes()
+func (conf *Config) ApplyNamedWorkload(client *pilosa.Client, nwl namedWorkload) (err error) {
 	if conf.Time {
 		before := time.Now()
-		fmt.Printf("beginning import of indexes for spec %s\n", spec.PathName)
+		fmt.Printf("beginning workloads from spec %s\n", nwl.SpecName)
 		defer func() {
 			after := time.Now()
 			var completed = "completed"
 			if err != nil {
 				completed = "failed"
 			}
-			fmt.Printf("spec %s %s in %v\n", spec.PathName, completed, after.Sub(before))
+			fmt.Printf("spec %s %s in %v\n", nwl.SpecName, completed, after.Sub(before))
 		}()
 	}
-	for _, index := range spec.Indexes {
-		err = populateIndex(client, spec, index, dbIndexes[index.FullName], conf)
+	// now apply each workload
+	for _, wl := range nwl.Workloads {
+		err = conf.ApplyWorkload(client, wl)
 		if err != nil {
 			return err
 		}
@@ -267,81 +366,99 @@ func createIndexes(client *pilosa.Client, spec *tomlSpec, conf *Config) (err err
 	return nil
 }
 
-func createIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
-	for name, field := range iSpec.Fields {
-		switch field.Type {
-		case fieldTypeBSI:
-			if field.SourceIndex != "" {
-				var other *indexSpec
-				for _, otherIndex := range spec.Indexes {
-					if otherIndex.Name == field.SourceIndex {
-						other = otherIndex
-					}
-				}
-				if other == nil {
-					return fmt.Errorf("sourceIndex '%s' not defined", field.SourceIndex)
-				}
-
-				field.Min, field.Max = 0, int64(other.Columns)
-				// fmt.Printf("SourceIndex %s: min/max %d/%d\n", field.SourceIndex, field.Min, field.Max)
-				// and stash that back in the map
-				iSpec.Fields[name] = field
+func (conf *Config) ApplyWorkload(client *pilosa.Client, wl *workloadSpec) (err error) {
+	if conf.Time {
+		before := time.Now()
+		fmt.Printf(" beginning workload %s\n", wl.Name)
+		defer func() {
+			after := time.Now()
+			var completed = "completed"
+			if err != nil {
+				completed = "failed"
 			}
-			min, max := field.Min, field.Max
-			if max <= min {
-				return fmt.Errorf("invalid range %d to %d", min, max)
-			}
-			index.Field(name, pilosa.OptFieldTypeInt(int64(min), int64(max)))
-		case fieldTypeSet:
-			index.Field(name, pilosa.OptFieldTypeSet("none", 0))
-		case fieldTypeMutex:
-			index.Field(name, pilosa.OptFieldTypeMutex("none", 0))
-		default:
-			return fmt.Errorf("unknown field type '%s'", field.Type)
+			fmt.Printf(" workload %s %s in %v\n", wl.Name, completed, after.Sub(before))
+		}()
+	}
+	for _, batch := range wl.Batches {
+		err = conf.ApplyBatch(client, batch)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func populateIndex(client *pilosa.Client, spec *tomlSpec, iSpec *indexSpec, index *pilosa.Index, conf *Config) error {
-	var imports sync.WaitGroup
-	var populateErrors []*error
-
-	importField := func(field string, d CountingIterator, opts []pilosa.ImportOption) {
-		imports.Add(1)
-		var errPtr = new(error)
-		populateErrors = append(populateErrors, errPtr)
-		go func() {
-			before := time.Now()
-			*errPtr = client.ImportField(index.Field(field), d, opts...)
-			if conf.Time {
-				after := time.Now()
-				fmt.Printf("%s/%s: %v for %d values\n", iSpec.Name, field, after.Sub(before), d.Values())
+func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err error) {
+	var tasks sync.WaitGroup
+	if conf.Time {
+		before := time.Now()
+		fmt.Printf("  beginning batch %s\n", batch.Description)
+		defer func() {
+			after := time.Now()
+			var completed = "completed"
+			if err != nil {
+				completed = "failed"
 			}
-			imports.Done()
+			fmt.Printf("  workload %s %s in %v\n", batch.Description, completed, after.Sub(before))
 		}()
 	}
-	before := time.Now()
-	fmt.Printf("populating '%s' table, %d columns: %s\n", iSpec.Name, iSpec.Columns, iSpec.Description)
-	for name, fs := range iSpec.Fields {
-		iter, opts, err := NewGenerator(fs)
-		if err != nil {
-			err = fmt.Errorf("%s: %s", name, err.Error())
-			populateErrors = append(populateErrors, &err)
+	// and now, in parallel...
+	errs := make([]error, len(batch.Tasks))
+	for idx, task := range batch.Tasks {
+		field := conf.dbSchema[task.Index][task.Field]
+		if field == nil {
+			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.Index, task.Field)
 			continue
 		}
-		importField(name, iter, opts)
-	}
-	imports.Wait()
-	if conf.Time {
-		after := time.Now()
-		fmt.Printf("%s: %v\n", iSpec.Name, after.Sub(before))
-	}
-	fmt.Printf("done with '%s'.\n", iSpec.Name)
-	for _, ep := range populateErrors {
-		if *ep != nil {
-			return *ep
+		itr, opts, err := NewGenerator(task)
+		if err != nil {
+			errs[idx] = err
+			continue
 		}
+		tasks.Add(1)
+		go func(idx int, itr CountingIterator, opts []pilosa.ImportOption, field *pilosa.Field, indexName, fieldName string) {
+			before := time.Now()
+			errs[idx] = client.ImportField(field, itr, opts...)
+			if conf.Time {
+				after := time.Now()
+				fmt.Printf("   %s/%s: %v for %d values\n", indexName, fieldName, after.Sub(before), itr.Values())
+			}
+			tasks.Done()
+		}(idx, itr, opts, field, task.Index, task.Field)
+	}
+	tasks.Wait()
+	errorCount := 0
+	err = nil
+	for _, e := range errs {
+		if e != nil {
+			errorCount++
+			if err == nil {
+				err = e
+			}
+		}
+	}
+	if errorCount < 2 {
+		return err
+	}
+	return errors.Wrap(err, fmt.Sprintf("%d errors", errorCount))
+
+	return nil
+}
+
+// ApplyWorkloads attempts to process the configured workloads.
+func (conf *Config) ApplyWorkloads(client *pilosa.Client) error {
+	// grab all the schema data for easy lookup
+	schema, err := client.Schema()
+	if err != nil {
+		return err
+	}
+	indexes := schema.Indexes()
+	conf.dbSchema = make(map[string]map[string]*pilosa.Field, len(indexes))
+	for name, index := range indexes {
+		conf.dbSchema[name] = index.Fields()
+	}
+	for _, nwl := range conf.workloads {
+		conf.ApplyNamedWorkload(client, nwl)
 	}
 	return nil
 }

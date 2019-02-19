@@ -55,20 +55,21 @@ const (
 )
 
 type tomlSpec struct {
-	PathName     string // don't set in spec, this will be set to the file name
-	Indexes      []*indexSpec
+	PathName     string `toml:"-"` // don't set in spec, this will be set to the file name
 	Prefix       string // overruled by config setting
 	DensityScale uint64 // scale used for density. scale=8 means density will be 0, 1/8, 2/8, 3/8...
 	Version      string
 	Seed         int64 // default PRNG seed
+	Indexes      map[string]*indexSpec
+	Workloads    []*workloadSpec
 }
 
 type indexSpec struct {
-	parent      *tomlSpec
-	Name        string
-	Description string // for human-friendly descriptions
-	FullName    string // not actually intended to be user-set
-	Columns     uint64 // total columns to create data for
+	Parent      *tomlSpec `toml:"-"`
+	Name        string    `toml:"-"`
+	Description string    // for human-friendly descriptions
+	FullName    string    `toml:"-"` // not actually intended to be user-set
+	Columns     uint64    // total columns to create data for
 	Fields      map[string]*fieldSpec
 	ThreadCount int    `help:"threadCount to use for importers"`
 	Seed        *int64 // default PRNG seed
@@ -84,25 +85,51 @@ func (is *indexSpec) String() string {
 // fieldSpec describes a given field within an index.
 type fieldSpec struct {
 	// internals
-	parent *indexSpec // the indexSpec this field applies to
+	Parent *indexSpec `toml:"-"` // the indexSpec this field applies to
 
 	// common values for all the field types
-	Name                  string
-	Type                  fieldType   // "set", "mutex", "bsi"
-	Columns               *uint64     // total column space (defaults to index's)
-	ColumnOrder, RowOrder valueOrder  // linear or permuted orders (or stride, for columns)
-	ZipfV, ZipfS          float64     // the V/S parameters of a Zipf distribution
-	Seed                  *int64      // PRNG seed to use.
-	Min, Max              int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
-	SourceIndex           string      // SourceIndex's columns are used as value range for this field.
-	Density               float64     // Base density to use in [0,1].
-	ValueRule             densityType // which of several hypothetical density/value algorithms to use.
-	DensityScale          *uint64     // optional density scale
-	Stride                uint64      // stride size when iterating on columns with columnOrder "stride"
+	Name         string      `toml:"-"`
+	Type         fieldType   // "set", "mutex", "bsi"
+	ZipfV, ZipfS float64     // the V/S parameters of a Zipf distribution
+	Min, Max     int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
+	SourceIndex  string      // SourceIndex's columns are used as value range for this field.
+	Density      float64     // Base density to use in [0,1].
+	ValueRule    densityType // which of several hypothetical density/value algorithms to use.
+	DensityScale *uint64     // optional density scale
 
 	// Only useful for set/mutex fields.
-	Cache          cacheType      // "lru" or "none", default is lru for set/mutex
-	DimensionOrder dimensionOrder // row-major/column-major. only meaningful for sets.
+	Cache cacheType // "lru" or "none", default is lru for set/mutex
+}
+
+type namedWorkload struct {
+	SpecName  string
+	Workloads []*workloadSpec
+}
+
+// workloadSpec describes an overall workload consisting of sequential operations
+type workloadSpec struct {
+	Name        string
+	Description string
+	Batches     []*batchSpec
+}
+
+// batchSpec describes a set of tasks to happen in parallel
+type batchSpec struct {
+	Description string
+	Tasks       []*taskSpec
+}
+
+// taskSpec describes a single task, which is populating some kind of data
+// in some kind of field.
+type taskSpec struct {
+	field                 *fieldSpec // once things are built up, this gets pointed to the actual field spec
+	Index                 string
+	Field                 string
+	Seed                  *int64         // PRNG seed to use.
+	Columns               *uint64        // total column space (defaults to index's)
+	ColumnOrder, RowOrder valueOrder     // linear or permuted orders (or stride, for columns)
+	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
+	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
 }
 
 func (fs *fieldSpec) String() string {
@@ -211,36 +238,47 @@ func (ts *tomlSpec) Cleanup(conf *Config) error {
 	fixDensityScale(&ts.DensityScale)
 	// Copy in column counts; all fields have an innate column count equal
 	// to the index's column count.
-	for _, indexSpec := range ts.Indexes {
-		indexSpec.parent = ts
+	for name, indexSpec := range ts.Indexes {
+		indexSpec.Parent = ts
+		indexSpec.Name = name
 		if err := indexSpec.Cleanup(conf); err != nil {
 			return fmt.Errorf("error in spec: %s", err)
 		}
-
+		if conf.indexes[name] != nil {
+			conf.indexes[name] = indexSpec
+			continue
+		}
+		// we have to try to merge a thing
+		err := conf.indexes[name].Merge(indexSpec)
+		if err != nil {
+			return err
+		}
 	}
+	for _, workload := range ts.Workloads {
+		err := workload.Cleanup(conf)
+		if err != nil {
+			return err
+		}
+	}
+	wl := namedWorkload{
+		SpecName:  ts.PathName,
+		Workloads: ts.Workloads,
+	}
+	conf.workloads = append(conf.workloads, wl)
 	return nil
 }
 
 // Cleanup does data validation and cleanup for an indexSpec.
 func (is *indexSpec) Cleanup(conf *Config) error {
-	if is.Name == "" {
-		return errors.New("index has no specified name")
-	}
-	if is.FullName != "" {
-		return fmt.Errorf("index full name must not be specified, it's computed from prefix ['%s']", is.FullName)
-	}
-	is.FullName = is.parent.Prefix + "-" + is.Name
+	is.FullName = is.Parent.Prefix + "-" + is.Name
 	if is.Seed == nil {
-		is.Seed = &is.parent.Seed
+		is.Seed = &is.Parent.Seed
 	}
 	if conf.ColumnScale != 0 {
 		is.Columns *= uint64(conf.ColumnScale)
 	}
 	for name, field := range is.Fields {
-		field.parent = is
-		if field.Name != "" {
-			return fmt.Errorf("field name must not be specified, use the map key [%s/%s]", is.Name, name)
-		}
+		field.Parent = is
 		field.Name = name
 		if err := field.Cleanup(conf); err != nil {
 			return fmt.Errorf("field %s/%s: %s", is.Name, name, err)
@@ -253,57 +291,70 @@ func (is *indexSpec) Cleanup(conf *Config) error {
 	return nil
 }
 
+// Merge tries to merge a new spec into an existing one,
+// adding new fields, combining non-field data, and erroring
+// out on mismatches.
+func (is *indexSpec) Merge(other *indexSpec) error {
+	if is.Name != other.Name {
+		return fmt.Errorf("impossibly, indexes '%s' and '%s' have the same name but have different names.",
+			is.Name, other.Name)
+	}
+	if is.Description != "" {
+		if other.Description != "" && other.Description != is.Description {
+			return fmt.Errorf("conflicting descriptions given for index '%s'", is.Name)
+		}
+	} else {
+		// merge it in
+		is.Description = other.Description
+	}
+	// ignore FullName
+	if is.Columns != 0 {
+		if other.Columns != 0 && other.Columns != is.Columns {
+			return fmt.Errorf("conflicting column counts given for index '%s' [%d vs %d]", is.Name, is.Columns, other.Columns)
+		}
+	} else {
+		is.Columns = other.Columns
+	}
+	if is.ThreadCount != 0 {
+		if other.ThreadCount != 0 && other.ThreadCount != is.ThreadCount {
+			return fmt.Errorf("conflicting thread counts given for index '%s' [%d vs %d]", is.Name, is.ThreadCount, other.ThreadCount)
+		}
+	} else {
+		is.ThreadCount = other.ThreadCount
+	}
+	if is.Seed != nil {
+		if other.Seed != nil && *other.Seed != *is.Seed {
+			return fmt.Errorf("conflicting seeds given for index '%s' [%d vs %d]", is.Name, *is.Seed, *other.Seed)
+		}
+	} else {
+		is.Seed = other.Seed
+	}
+	for name, fs := range other.Fields {
+		if is.Fields[name] != nil {
+			return fmt.Errorf("field '%s' defined twice for index '%s'", name, is.Name)
+		}
+		is.Fields[name] = fs
+	}
+	return nil
+}
+
 // Cleanup does data validation and checking for a fieldSpec.
 func (fs *fieldSpec) Cleanup(conf *Config) error {
-	if fs.Seed == nil {
-		fs.Seed = fs.parent.Seed
-	}
+
 	if fs.DensityScale == nil {
 		// inherit parent's scale
-		fs.DensityScale = &fs.parent.parent.DensityScale
+		fs.DensityScale = &fs.Parent.Parent.DensityScale
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
 
-	if fs.RowOrder == valueOrderStride {
-		return fmt.Errorf("field %s: row order cannot be stride-based", fs.Name)
-	}
-	if fs.ColumnOrder == valueOrderStride && fs.Stride == 0 {
-		return fmt.Errorf("field %s: stride size must be specified", fs.Name)
-	}
-	if fs.ColumnOrder != valueOrderStride && fs.Stride != 0 {
-		return fmt.Errorf("field %s: stride size meaningless when not using stride column order", fs.Name)
-	}
-	// Having griped about Stride being set when inappropriate, we now set it
-	// to 1 in those cases so we can always use the stride to compute
-	// a value. Index N will use `(Stride*N) % range`.
-	if fs.ColumnOrder != valueOrderStride {
-		fs.Stride = 1
-	}
-	if fs.Columns == nil {
-		if fs.ColumnOrder == valueOrderStride {
-			// compute a number of columns from the stride
-			col := fs.parent.Columns / fs.Stride
-			fs.Columns = &col
-		} else {
-			fs.Columns = &fs.parent.Columns
-		}
-	} else {
-		if conf.ColumnScale != 0 {
-			*fs.Columns *= uint64(conf.ColumnScale)
-		}
-		if *fs.Columns > fs.parent.Columns {
-			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", fs.Name,
-				*fs.Columns, fs.parent.Columns)
-		}
-	}
 	if fs.SourceIndex != "" {
 		if fs.Min != 0 || fs.Max != 0 {
 			return fmt.Errorf("field %s specifies both min/max (%d/%d) and source index (%s)",
 				fs.Name, fs.Min, fs.Max, fs.SourceIndex)
 		}
 		found := false
-		for _, is := range fs.parent.parent.Indexes {
+		for _, is := range fs.Parent.Parent.Indexes {
 			if is.Name == fs.SourceIndex {
 				found = true
 				// note, Columns is technically uint64. don't specify > 2^63 columns.
@@ -334,11 +385,74 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 			fs.Cache = cacheTypeNone
 		}
 	}
-	if fs.DimensionOrder != dimensionOrderRow && fs.Type != fieldTypeSet {
-		return fmt.Errorf("field %s: column-major dimension order is only supported for sets", fs.Name)
-	}
+
 	if fs.Type == fieldTypeBSI && fs.Cache != cacheTypeNone {
 		return fmt.Errorf("field %s specifies a cache (%v) for a BSI field", fs.Name, fs.Cache)
+	}
+	return nil
+}
+
+func (ws *workloadSpec) Cleanup(conf *Config) error {
+	for _, batch := range ws.Batches {
+		err := batch.Cleanup(conf)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (bs *batchSpec) Cleanup(conf *Config) error {
+	for _, task := range bs.Tasks {
+		err := task.Cleanup(conf)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ts *taskSpec) Cleanup(conf *Config) error {
+	index, ok := conf.indexes[ts.Index]
+	if !ok {
+		return fmt.Errorf("undefined index '%s' in task", ts.Index)
+	}
+	field, ok := index.Fields[ts.Field]
+	if !ok {
+		return fmt.Errorf("undefined field '%s' in index '%s' in task", ts.Field, ts.Index)
+	}
+	ts.field = field
+	if ts.Seed == nil {
+		ts.Seed = ts.field.Parent.Seed
+	}
+	if ts.RowOrder == valueOrderStride {
+		return fmt.Errorf("field %s: row order cannot be stride-based", ts.field.Name)
+	}
+	if ts.ColumnOrder == valueOrderStride && ts.Stride == 0 {
+		return fmt.Errorf("field %s: stride size must be specified", ts.field.Name)
+	}
+	if ts.ColumnOrder != valueOrderStride && ts.Stride != 0 {
+		return fmt.Errorf("field %s: stride size meaningless when not using stride column order", ts.field.Name)
+	}
+	// Having griped about Stride being set when inappropriate, we now set it
+	// to 1 in those cases so we can always use the stride to compute
+	// a value. Index N will use `(Stride*N) % range`.
+	if ts.ColumnOrder != valueOrderStride {
+		ts.Stride = 1
+	}
+	if ts.Columns == nil {
+		ts.Columns = &ts.field.Parent.Columns
+	} else {
+		if conf.ColumnScale != 0 {
+			*ts.Columns *= uint64(conf.ColumnScale)
+		}
+		if *ts.Columns > ts.field.Parent.Columns {
+			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", ts.field.Name,
+				*ts.Columns, ts.field.Parent.Columns)
+		}
+	}
+	if ts.DimensionOrder != dimensionOrderRow && ts.field.Type != fieldTypeSet {
+		return fmt.Errorf("field %s: column-major dimension order is only supported for sets", ts.field.Name)
 	}
 	return nil
 }

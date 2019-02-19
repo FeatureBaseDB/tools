@@ -11,7 +11,7 @@ import (
 	"github.com/pilosa/tools/apophenia"
 )
 
-type genfunc func(*fieldSpec) (CountingIterator, error)
+type genfunc func(*taskSpec) (CountingIterator, error)
 
 var newGenerators = map[fieldType]genfunc{
 	fieldTypeSet:   newSetGenerator,
@@ -33,27 +33,27 @@ type CountingIterator interface {
 	Values() int64
 }
 
-// NewGenerator makes a generator which will generate the specified field's
-// values.
-func NewGenerator(fs *fieldSpec) (CountingIterator, []pilosa.ImportOption, error) {
-	if fs == nil {
+// NewGenerator makes a generator which will generate the values for the
+// given task.
+func NewGenerator(ts *taskSpec) (CountingIterator, []pilosa.ImportOption, error) {
+	if ts == nil {
 		return nil, nil, errors.New("nil field spec is invalid")
 	}
-	fn := newGenerators[fs.Type]
+	fn := newGenerators[ts.field.Type]
 	if fn == nil {
-		return nil, nil, fmt.Errorf("field spec: invalid field type %v", fs.Type)
+		return nil, nil, fmt.Errorf("field spec: invalid field type %v", ts.field.Type)
 	}
-	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(fs.parent.ThreadCount)}
-	if noSortNeeded(fs) {
+	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(ts.field.Parent.ThreadCount)}
+	if noSortNeeded(ts) {
 		opts = append(opts, pilosa.OptImportSort(false))
 	}
-	iter, err := fn(fs)
+	iter, err := fn(ts)
 	return iter, opts, err
 }
 
-func noSortNeeded(fs *fieldSpec) bool {
+func noSortNeeded(ts *taskSpec) bool {
 	switch {
-	case fs.ColumnOrder == valueOrderPermute, fs.RowOrder == valueOrderPermute:
+	case ts.ColumnOrder == valueOrderPermute, ts.RowOrder == valueOrderPermute:
 		return false
 	default:
 		return true
@@ -65,27 +65,28 @@ func noSortNeeded(fs *fieldSpec) bool {
 // Mutex: Column, one per column.
 // Set: FieldValue, possibly many per column, possibly column-major.
 
-func newSetGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
+func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
+	fs := ts.field
 	dvg := doubleValueGenerator{}
-	dvg.colGen, err = makeColumnGenerator(fs)
+	dvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
-	dvg.rowGen, err = makeRowGenerator(fs)
+	dvg.rowGen, err = makeRowGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
 	dvg.densityGen = makeDensityGenerator(fs)
 	dvg.densityScale = *fs.DensityScale
-	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*fs.Seed))
+	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 
-	switch fs.DimensionOrder {
+	switch ts.DimensionOrder {
 	case dimensionOrderRow:
-		if fs.ColumnOrder == valueOrderLinear {
+		if ts.ColumnOrder == valueOrderLinear {
 			// handle this case better
 			ivg := incrementColumnValueGenerator{
 				rowGen:       dvg.rowGen,
-				maxCol:       *fs.Columns,
+				maxCol:       *ts.Columns,
 				densityGen:   dvg.densityGen,
 				densityScale: dvg.densityScale,
 				weighted:     dvg.weighted,
@@ -103,26 +104,26 @@ func newSetGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
 	return nil, errors.New("unknown dimension order for set")
 }
 
-func newMutexGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
+func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	cvg := columnValueGenerator{}
-	cvg.colGen, err = makeColumnGenerator(fs)
+	cvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
-	cvg.valueGen, err = makeValueGenerator(fs)
+	cvg.valueGen, err = makeValueGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
 	return &cvg, nil
 }
 
-func newBSIGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
+func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	fvg := fieldValueGenerator{}
-	fvg.colGen, err = makeColumnGenerator(fs)
+	fvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
-	fvg.valueGen, err = makeValueGenerator(fs)
+	fvg.valueGen, err = makeValueGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
@@ -130,15 +131,15 @@ func newBSIGenerator(fs *fieldSpec) (iter CountingIterator, err error) {
 }
 
 // makeColumnGenerator builds a generator to iterate over columns of a field
-func makeColumnGenerator(fs *fieldSpec) (sequenceGenerator, error) {
-	switch fs.ColumnOrder {
+func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
+	switch ts.ColumnOrder {
 	case valueOrderStride:
-		return newStrideGenerator(int64(fs.Stride), int64(fs.parent.Columns), int64(*fs.Columns)), nil
+		return newStrideGenerator(int64(ts.Stride), int64(ts.field.Parent.Columns), int64(*ts.Columns)), nil
 	case valueOrderLinear:
-		return newIncrementGenerator(0, int64(*fs.Columns)), nil
+		return newIncrementGenerator(0, int64(*ts.Columns)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
-		gen, err := newPermutedGenerator(0, int64(fs.parent.Columns), int64(*fs.Columns), 0, *fs.Seed)
+		gen, err := newPermutedGenerator(0, int64(ts.field.Parent.Columns), int64(*ts.Columns), 0, *ts.Seed)
 		if err != nil {
 			return nil, err
 		}
@@ -148,15 +149,16 @@ func makeColumnGenerator(fs *fieldSpec) (sequenceGenerator, error) {
 }
 
 // makeRowGenerator builds a generator to iterate over columns of a field
-func makeRowGenerator(fs *fieldSpec) (sequenceGenerator, error) {
-	switch fs.RowOrder {
+func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
+	fs := ts.field
+	switch ts.RowOrder {
 	case valueOrderStride:
-		return newStrideGenerator(int64(fs.Stride), int64(fs.Max), int64(fs.Max)), nil
+		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max)), nil
 	case valueOrderLinear:
 		return newIncrementGenerator(0, int64(fs.Max)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
-		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, 1, *fs.Seed)
+		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, 1, *ts.Seed)
 		if err != nil {
 			return nil, err
 		}
@@ -165,18 +167,18 @@ func makeRowGenerator(fs *fieldSpec) (sequenceGenerator, error) {
 	return nil, errors.New("unknown row generator type")
 }
 
-func makeValueGenerator(fs *fieldSpec) (vg valueGenerator, err error) {
-
+func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
+	fs := ts.field
 	switch fs.ValueRule {
 	case densityTypeLinear:
-		vg, err = newLinearValueGenerator(fs.Min, fs.Max, *fs.Seed)
+		vg, err = newLinearValueGenerator(fs.Min, fs.Max, *ts.Seed)
 	case densityTypeZipf:
-		vg, err = newZipfValueGenerator(fs.ZipfS, fs.ZipfV, fs.Min, fs.Max, *fs.Seed)
+		vg, err = newZipfValueGenerator(fs.ZipfS, fs.ZipfV, fs.Min, fs.Max, *ts.Seed)
 	default:
 		err = errors.New("unknown value generator type")
 	}
-	if fs.RowOrder == valueOrderPermute && err == nil {
-		vg, err = permuteValueGenerator(vg, fs.Min, fs.Max, *fs.Seed)
+	if ts.RowOrder == valueOrderPermute && err == nil {
+		vg, err = permuteValueGenerator(vg, fs.Min, fs.Max, *ts.Seed)
 	}
 	return vg, err
 }
