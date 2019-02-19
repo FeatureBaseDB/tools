@@ -1,16 +1,22 @@
 densityscale = 2097152
 version = "1.0"
-[[indexes]]
-name = "users"
+[indexes.users]
 columns = 100000
 threadCount = 4
-[indexes.fields]
+[indexes.users.fields]
 # age = { type = "BSI", min = 10, max = 120 }
-income = { type = "bsi", min = 0, max = 640000, columns = 10000, columnOrder = "stride", stride = 5 }
+income = { type = "bsi", min = 0, max = 640000, density = 1.0 }
 numbers = { type = "set", max = 100, density = 1.0, valueRule = "zipf", zipfV = 2.0, zipfS = 1.01 }
-
-[[indexes]]
-name = "events"
-columns = 100000
-[indexes.fields]
-user = { type = "bsi", sourceindex = "users", dimensionOrder = "row" }
+[[workloads]]
+name = "sample"
+[[workloads.batches]]
+description = "initial"
+tasks = [
+{ index = "users", field = "income" },
+{ index = "users", field = "numbers" },
+]
+[[workloads.batches]]
+description = "repopulate"
+tasks = [
+{ index = "users", field = "income", columns = 10000, columnOrder = "permute" },
+]

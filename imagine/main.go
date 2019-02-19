@@ -143,7 +143,7 @@ func main() {
 	// dry run: just describe the indexes and stop there.
 	if conf.DryRun {
 		for _, spec := range conf.specs {
-			describeIndexes(spec)
+			describeSpec(spec)
 		}
 		os.Exit(0)
 	}

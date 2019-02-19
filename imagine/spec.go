@@ -156,10 +156,15 @@ func (fs *fieldSpec) String() string {
 	}
 }
 
-func describeIndexes(spec *tomlSpec) {
+func describeSpec(spec *tomlSpec) {
 	fmt.Printf("spec %s:\n", spec.PathName)
+	fmt.Printf(" indexes:\n")
 	for _, index := range spec.Indexes {
 		describeIndex(index)
+	}
+	fmt.Printf(" workloads:\n")
+	for _, workload := range spec.Workloads {
+		describeWorkload(workload)
 	}
 }
 
@@ -171,6 +176,24 @@ func describeIndex(spec *indexSpec) {
 	for key, f := range spec.Fields {
 		fmt.Printf("    %s: %s\n", key, f)
 	}
+}
+
+func describeWorkload(wl *workloadSpec) {
+	if wl == nil {
+		fmt.Printf("  nil workload\n")
+		return
+	}
+	fmt.Printf("  workload %s:\n", wl.Name)
+	for _, b := range wl.Batches {
+		fmt.Printf("   batch [%s]\n", b.Description)
+		for _, t := range b.Tasks {
+			fmt.Printf("    task %v\n", t)
+		}
+	}
+}
+
+func (t *taskSpec) String() string {
+	return fmt.Sprintf("%s/%s: %d columns", t.Index, t.Field, *t.Columns)
 }
 
 func readSpec(path string) (*tomlSpec, error) {
