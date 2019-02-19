@@ -100,6 +100,7 @@ func (c *Config) Run() error {
 
 func (c *Config) readSpecs() error {
 	c.specs = make([]*tomlSpec, 0, len(c.specFiles))
+	c.indexes = make(map[string]*indexSpec, len(c.specFiles))
 	for _, path := range c.specFiles {
 		spec, err := readSpec(path)
 		if err != nil {
@@ -226,6 +227,7 @@ func main() {
 			log.Fatalf("deleting indexes: %v", err)
 		}
 	}
+	fmt.Printf("done.\n")
 }
 
 // CompareIndexes is the general form of comparing client and server index
@@ -264,10 +266,14 @@ func (conf *Config) CompareIndexes(client *pilosa.Client, mayCreate, mustCreate 
 		errs = append(errs, fieldErrs...)
 	}
 	if changed {
+		fmt.Printf("changes made to db, syncing...\n")
 		err = client.SyncSchema(schema)
 		if err != nil {
 			errs = append(errs, err)
 		}
+	}
+	if len(errs) > 0 {
+		return errs[0]
 	}
 	return nil
 }
@@ -405,9 +411,9 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 	// and now, in parallel...
 	errs := make([]error, len(batch.Tasks))
 	for idx, task := range batch.Tasks {
-		field := conf.dbSchema[task.Index][task.Field]
+		field := conf.dbSchema[task.IndexFullName][task.Field]
 		if field == nil {
-			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.Index, task.Field)
+			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.IndexFullName, task.Field)
 			continue
 		}
 		itr, opts, err := NewGenerator(task)
@@ -458,7 +464,10 @@ func (conf *Config) ApplyWorkloads(client *pilosa.Client) error {
 		conf.dbSchema[name] = index.Fields()
 	}
 	for _, nwl := range conf.workloads {
-		conf.ApplyNamedWorkload(client, nwl)
+		err = conf.ApplyNamedWorkload(client, nwl)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -124,6 +124,7 @@ type batchSpec struct {
 type taskSpec struct {
 	field                 *fieldSpec // once things are built up, this gets pointed to the actual field spec
 	Index                 string
+	IndexFullName         string `toml:"-"`
 	Field                 string
 	Seed                  *int64         // PRNG seed to use.
 	Columns               *uint64        // total column space (defaults to index's)
@@ -244,7 +245,7 @@ func (ts *tomlSpec) Cleanup(conf *Config) error {
 		if err := indexSpec.Cleanup(conf); err != nil {
 			return fmt.Errorf("error in spec: %s", err)
 		}
-		if conf.indexes[name] != nil {
+		if conf.indexes[name] == nil {
 			conf.indexes[name] = indexSpec
 			continue
 		}
@@ -417,6 +418,7 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	if !ok {
 		return fmt.Errorf("undefined index '%s' in task", ts.Index)
 	}
+	ts.IndexFullName = index.FullName
 	field, ok := index.Fields[ts.Field]
 	if !ok {
 		return fmt.Errorf("undefined field '%s' in index '%s' in task", ts.Field, ts.Index)
