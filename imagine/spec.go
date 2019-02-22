@@ -71,7 +71,6 @@ type indexSpec struct {
 	FullName    string    `toml:"-"` // not actually intended to be user-set
 	Columns     uint64    // total columns to create data for
 	Fields      map[string]*fieldSpec
-	ThreadCount int    `help:"threadCount to use for importers"`
 	Seed        *int64 // default PRNG seed
 }
 
@@ -111,18 +110,22 @@ type workloadSpec struct {
 	Name        string
 	Description string
 	Batches     []*batchSpec
+	ThreadCount int // threads to use for each importer
 }
 
 // batchSpec describes a set of tasks to happen in parallel
 type batchSpec struct {
+	Parent      *workloadSpec `toml:"-"`
 	Description string
 	Tasks       []*taskSpec
+	ThreadCount *int // override workload threadcount
 }
 
 // taskSpec describes a single task, which is populating some kind of data
 // in some kind of field.
 type taskSpec struct {
-	field                 *fieldSpec // once things are built up, this gets pointed to the actual field spec
+	Parent                *batchSpec `toml:"-"`
+	FieldSpec             *fieldSpec `toml:"-"` // once things are built up, this gets pointed to the actual field spec
 	Index                 string
 	IndexFullName         string `toml:"-"`
 	Field                 string
@@ -309,9 +312,6 @@ func (is *indexSpec) Cleanup(conf *Config) error {
 		}
 
 	}
-	if is.ThreadCount < 1 {
-		is.ThreadCount = 1
-	}
 	return nil
 }
 
@@ -338,13 +338,6 @@ func (is *indexSpec) Merge(other *indexSpec) error {
 		}
 	} else {
 		is.Columns = other.Columns
-	}
-	if is.ThreadCount != 0 {
-		if other.ThreadCount != 0 && other.ThreadCount != is.ThreadCount {
-			return fmt.Errorf("conflicting thread counts given for index '%s' [%d vs %d]", is.Name, is.ThreadCount, other.ThreadCount)
-		}
-	} else {
-		is.ThreadCount = other.ThreadCount
 	}
 	if is.Seed != nil {
 		if other.Seed != nil && *other.Seed != *is.Seed {
@@ -417,7 +410,11 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 }
 
 func (ws *workloadSpec) Cleanup(conf *Config) error {
+	if ws.ThreadCount < 1 {
+		ws.ThreadCount = 1
+	}
 	for _, batch := range ws.Batches {
+		batch.Parent = ws
 		err := batch.Cleanup(conf)
 		if err != nil {
 			return err
@@ -427,7 +424,11 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 }
 
 func (bs *batchSpec) Cleanup(conf *Config) error {
+	if bs.ThreadCount == nil {
+		bs.ThreadCount = &bs.Parent.ThreadCount
+	}
 	for _, task := range bs.Tasks {
+		task.Parent = bs
 		err := task.Cleanup(conf)
 		if err != nil {
 			return err
@@ -446,18 +447,18 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	if !ok {
 		return fmt.Errorf("undefined field '%s' in index '%s' in task", ts.Field, ts.Index)
 	}
-	ts.field = field
+	ts.FieldSpec = field
 	if ts.Seed == nil {
-		ts.Seed = ts.field.Parent.Seed
+		ts.Seed = ts.FieldSpec.Parent.Seed
 	}
 	if ts.RowOrder == valueOrderStride {
-		return fmt.Errorf("field %s: row order cannot be stride-based", ts.field.Name)
+		return fmt.Errorf("field %s: row order cannot be stride-based", ts.Field)
 	}
 	if ts.ColumnOrder == valueOrderStride && ts.Stride == 0 {
-		return fmt.Errorf("field %s: stride size must be specified", ts.field.Name)
+		return fmt.Errorf("field %s: stride size must be specified", ts.Field)
 	}
 	if ts.ColumnOrder != valueOrderStride && ts.Stride != 0 {
-		return fmt.Errorf("field %s: stride size meaningless when not using stride column order", ts.field.Name)
+		return fmt.Errorf("field %s: stride size meaningless when not using stride column order", ts.Field)
 	}
 	// Having griped about Stride being set when inappropriate, we now set it
 	// to 1 in those cases so we can always use the stride to compute
@@ -466,18 +467,18 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		ts.Stride = 1
 	}
 	if ts.Columns == nil {
-		ts.Columns = &ts.field.Parent.Columns
+		ts.Columns = &ts.FieldSpec.Parent.Columns
 	} else {
 		if conf.ColumnScale != 0 {
 			*ts.Columns *= uint64(conf.ColumnScale)
 		}
-		if *ts.Columns > ts.field.Parent.Columns {
-			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", ts.field.Name,
-				*ts.Columns, ts.field.Parent.Columns)
+		if *ts.Columns > ts.FieldSpec.Parent.Columns {
+			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", ts.Field,
+				*ts.Columns, ts.FieldSpec.Parent.Columns)
 		}
 	}
-	if ts.DimensionOrder != dimensionOrderRow && ts.field.Type != fieldTypeSet {
-		return fmt.Errorf("field %s: column-major dimension order is only supported for sets", ts.field.Name)
+	if ts.DimensionOrder != dimensionOrderRow && ts.FieldSpec.Type != fieldTypeSet {
+		return fmt.Errorf("field %s: column-major dimension order is only supported for sets", ts.Field)
 	}
 	return nil
 }

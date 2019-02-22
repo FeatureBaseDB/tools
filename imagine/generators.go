@@ -39,11 +39,12 @@ func NewGenerator(ts *taskSpec) (CountingIterator, []pilosa.ImportOption, error)
 	if ts == nil {
 		return nil, nil, errors.New("nil field spec is invalid")
 	}
-	fn := newGenerators[ts.field.Type]
+	fn := newGenerators[ts.FieldSpec.Type]
 	if fn == nil {
-		return nil, nil, fmt.Errorf("field spec: invalid field type %v", ts.field.Type)
+		return nil, nil, fmt.Errorf("field spec: invalid field type %v", ts.FieldSpec.Type)
 	}
-	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(ts.field.Parent.ThreadCount)}
+	fmt.Printf("new generator: thread count %d\n", *ts.Parent.ThreadCount)
+	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(*ts.Parent.ThreadCount)}
 	if noSortNeeded(ts) {
 		opts = append(opts, pilosa.OptImportSort(false))
 	}
@@ -66,7 +67,7 @@ func noSortNeeded(ts *taskSpec) bool {
 // Set: FieldValue, possibly many per column, possibly column-major.
 
 func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
-	fs := ts.field
+	fs := ts.FieldSpec
 	dvg := doubleValueGenerator{}
 	dvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
@@ -134,12 +135,12 @@ func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	switch ts.ColumnOrder {
 	case valueOrderStride:
-		return newStrideGenerator(int64(ts.Stride), int64(ts.field.Parent.Columns), int64(*ts.Columns)), nil
+		return newStrideGenerator(int64(ts.Stride), int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns)), nil
 	case valueOrderLinear:
 		return newIncrementGenerator(0, int64(*ts.Columns)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
-		gen, err := newPermutedGenerator(0, int64(ts.field.Parent.Columns), int64(*ts.Columns), 0, *ts.Seed)
+		gen, err := newPermutedGenerator(0, int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns), 0, *ts.Seed)
 		if err != nil {
 			return nil, err
 		}
@@ -150,7 +151,7 @@ func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 
 // makeRowGenerator builds a generator to iterate over columns of a field
 func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
-	fs := ts.field
+	fs := ts.FieldSpec
 	switch ts.RowOrder {
 	case valueOrderStride:
 		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max)), nil
@@ -168,7 +169,7 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 }
 
 func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
-	fs := ts.field
+	fs := ts.FieldSpec
 	switch fs.ValueRule {
 	case densityTypeLinear:
 		vg, err = newLinearValueGenerator(fs.Min, fs.Max, *ts.Seed)
