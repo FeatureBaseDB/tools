@@ -36,18 +36,18 @@ type Config struct {
 	Port          int    `help:"host port for Pilosa server"`
 	Verify        string `help:"index structure validation: purge/error/update/create"`
 	verifyType    verifyType
-	Generate      bool   `help:"generate data"`
-	Delete        bool   `help:"delete specified fields"`
-	DeleteAll     bool   `help:"delete specified indexes"`
-	DryRun        bool   `help:"dry-run; describe what would be done"`
+	Generate      bool `help:"generate data as specified by workloads"`
+	Delete        bool `help:"delete specified indexes"`
+	DryRun        bool `help:"dry-run; describe what would be done"`
+	Describe      bool `help:"describe the data sets and workloads"`
+	onlyDescribe  bool
 	Prefix        string `help:"prefix to use on index names"`
 	defaultPrefix bool
 	CPUProfile    string `help:"record CPU profile to file"`
 	MemProfile    string `help:"record allocation profile to file"`
-	Time          bool   `help:"report on time elapsed for a spec"`
-	Overwrite     bool   `help:"allow writing into existing indexes"`
-	ColumnScale   int64  `help:"scale number of columns provided by a spec"`
-	RowScale      int64  `help:"scale number of rows provided by a spec"`
+	Time          bool   `help:"report on time elapsed for operations"`
+	ColumnScale   int64  `help:"scale number of columns provided by specs"`
+	RowScale      int64  `help:"scale number of rows provided by specs"`
 	flagset       *flag.FlagSet
 	specFiles     []string
 	specs         []*tomlSpec
@@ -69,6 +69,11 @@ func (c *Config) Run() error {
 	if c.Prefix == "" {
 		c.defaultPrefix = true
 		c.Prefix = "imaginary"
+	}
+	// if not given other instructions, just describe the specs
+	if !c.Generate && !c.Delete && c.Verify == "" {
+		c.Describe = true
+		c.onlyDescribe = true
 	}
 	if c.Verify != "" {
 		err := c.verifyType.UnmarshalText([]byte(c.Verify))
@@ -141,11 +146,14 @@ func main() {
 	}
 
 	// dry run: just describe the indexes and stop there.
-	if conf.DryRun {
+	if conf.Describe {
 		for _, spec := range conf.specs {
 			describeSpec(spec)
 		}
-		os.Exit(0)
+		// if we weren't asked to do anything else, stop here.
+		if conf.onlyDescribe {
+			os.Exit(0)
+		}
 	}
 
 	uri, err := pilosa.NewURIFromHostPort(conf.Host, uint16(conf.Port))

@@ -5,112 +5,116 @@ predictable contents in a reasonably efficient fashion, without needing
 enormous static data files. Indexes and fields within them can be specified
 in a TOML file.
 
-## Global settings
+## Invocation
 
-The following global settings exist:
+The `imagine` utility takes command line options, followed by one or more
+spec files, which are TOML files containing specs.
 
-    * densityscale: A density scale factor used to determine the precision
-      used for density computations. Density scale should be a power of two.
-      Higher density scales will take longer to compute and process. (The
-      operation is O(log2(N)).)
-    * prefix: A preferred prefix to use for index names. If absent,
-      `imaginary` is used. The `--prefix` command line option overrides
-      this.
-    * version: The string "1.0". The intent is that future versions of the
-      tool will attempt to ensure that a given spec produces identical results.
-      If a later version would change the results from a spec, it should do so
-      only when a different string is specified here. However, *this
-      guarantee is not yet in force*. The software is still in an immature
-      state, and may change output significantly during development.
-    * seed: A default PRNG seed, used for indexes/fields that don't specify
-      their own.
+What `imagine` does with the spec files is controlled by the following behavior options:
 
-Indexes are defined in a top-level array, usually written as `[[indexes]]`.
+*  `--describe`             describe the specs
+*  `--verify string`        index structure validation: create/error/purge/update/none
+*  `--generate`             generate data as specified by workloads
+*  `--delete`               delete specified fields
 
-## Redesign Notes
+Invoked without behavior options, or with only `--describe`, `imagine` will describe the indexes and workloads from its spec files, and terminate. If one or more of verify, generate, or delete is provided, it will do those in order.
 
-This is not yet implemented, but I have to put the notes down somewhere.
+The following verification options exist:
 
-Specs are to be divided into two categories; `data` specs define the types
-and contents of indexes and fields (cache type or size, number of rows, number
-of columns). Then `workload` specs define operations to insert data within
-those fields.
+* `create`: Attempts to create all specified indexes and fields, errors out
+  if any already existed.
+* `error`: Verify that indexes and fields exist, error out if they don't.
+* `purge`: Delete all existing indexes and fields, then try to create them. Error out if either part of this fails.
+* `update`: Try to create any missing indexes or fields. Error out if this fails.
+* `none`: Do no verification. (Workloads will still check for index/field existence.)
 
-When one or more specs are parsed, they are combined to provide a single
-unified `data` spec (which must be consistent), and a series of `workload`
-specs. Then, `imagine` will:
+The default for `--verify` is determined by other parameters; if `--delete` is present, and `--generate` is not, the default verification is "none" (there's no point in verifying that things exist right before deleting them), otherwise the default verification is "error".
 
-    * Verify the consistency of the specs (that all workloads specify
-      operations which make sense on the given fields, for instance).
-    * Verify that fields or indexes exist and match the `data` spec. If
-      they don't, it will either abort or create them.
-    * Execute each workload in turn, reporting performance statistics.
+The following options change how `imagine` goes about its work:
 
-Optionally, `imagine` can delete indexes or fields before creating them,
-or after populating them, or just delete them and stop there.
+*  `--column-scale int`     scale number of columns provided by specs
+*  `--cpu-profile string`   record CPU profile to file
+*  `--dry-run`              dry-run; describe what would be done
+*  `--host string`          host name for Pilosa server (default "localhost")
+*  `--mem-profile string`   record allocation profile to file
+*  `--port int`             host port for Pilosa server (default 10101)
+*  `--prefix string`        prefix to use on index names
+*  `--row-scale int`        scale number of rows provided by specs
+*  `--time`                 report on time elapsed for operations
 
-If `imagine` can't continue (for instance, a field already exists but
-doesn't match the spec), it aborts.
+## Spec files
 
-Workloads want some kind of nesting functionality to allow a clear
-distinction between parallel and successive operations.
+The following global settings exist for each spec:
 
-## Indexes
+* densityscale: A density scale factor used to determine the precision
+  used for density computations. Density scale should be a power of two.
+  Higher density scales will take longer to compute and process. (The
+  operation is O(log2(N)).)
+* prefix: A preferred prefix to use for index names. If absent,
+  `imaginary` is used. The `--prefix` command line option overrides
+  this.
+* version: The string "1.0". The intent is that future versions of the
+  tool will attempt to ensure that a given spec produces identical results.
+  If a later version would change the results from a spec, it should do so
+  only when a different string is specified here. However, *this
+  guarantee is not yet in force*. The software is still in an immature
+  state, and may change output significantly during development.
+* seed: A default PRNG seed, used for indexes/fields that don't specify
+  their own.
 
-Each index has settings, plus field entries under the index. Fields are
-a mapping of names to field specifications.
+A spec can specify two other kinds of things, indexes and workloads.
+Indexes describe the data that will go in a Pilosa index, such as the index's
+name, size (in columns), and number of fields. Workloads describe specific
+patterns of creating and inserting data in fields.
 
-    * name: The index's name. (This will be prefixed later.)
-    * description: A longer description of the index's purpose within a set.
-    * columns: The number of columns.
-    * seed: A default PRNG seed to use for fields that don't specify their own.
-    * threadCount: Number of importer threads. (Experimental feature for
-      internal benchmarking work.)
+When multiple specs are provided, they are combined. Indexes and fields are merged; any conflicts between them are an error, and `imagine` will report
+such errors and then stop. Workloads are concatenated, with specs processed
+in command-line order.
+
+### Indexes
+
+Indexes are defined in a top-level map, using the index name as the key. Each
+index would typically be written as `[indexes.indexname]`. Each index has
+settings, plus field entries under the index. Fields are a mapping of names
+to field specifications.
+
+* name: The index's name. (This will be prefixed later.)
+* description: A longer description of the index's purpose within a set.
+* columns: The number of columns.
+* seed: A default PRNG seed to use for fields that don't specify their own.
 
 ### Fields
 
 Fields can take several kinds, specified as "type". Defined types:
-    * "set" => The default "set" field type, where rows correspond to specific
-      values.
-    * "mutex" => The "mutex" field type, which is like a set, only it enforces
-      that only one row is set per column.
-    * "bsi" => The binary-representation field type, usable for range queries.
+* `set`: The default "set" field type, where rows correspond to specific
+  values.
+* `mutex`: The "mutex" field type, which is like a set, only it enforces
+  that only one row is set per column.
+* `bsi`: The binary-representation field type, usable for range queries.
 
 All fields share some common parameters:
 
-    * columns: the number of columns to populate. default: populate the
-      entire field, using the index's columns. Must not be higher than
-      the index's number of columns.
-    * columnOrder: "linear", "stride" or "permute" (default linear). Indicates
-      whether column values should be generated sequentially or in permuted
-      order.
-    * stride: The stride to use with a columnOrder of "stride".
-    * zipfV, zipfS: the V/S values used for a Zipf distribution of values.
-    * seed: The PRNG seed to use for this field. Defaults to the index's
-      seed.
-    * min, max: Minimum and maximum values. For BSI fields, this is the value
-      range; for set/mutex fields, it's the range of rows that will be
-      potentially generated.
-    * sourceIndex: An index to use for values; the value range will be the
-      source index's column range. If source index has 100,000 columns, this
-      is equivalent to "min: 0, max: 99999".
-    * density: The field's base density of bits set. For a set, this density
-      applies to each row independently; for a mutex or BSI field, it
-      determines how many columns should have a value set. (If a stride is
-      also specified, only the columns determined by the stride are checked,
-      but density is also checked to decide which ones to set.)
-    * valueRule: "linear" or "zipf". Exact interpretation varies by field type,
-      but "linear" indicates that all rows should have the same density of
-      values, while "zipf" indicates that they should follow a Zipf distribution.
-    * rowOrder: "linear" or "permute" (default linear). Determines the order
-      in which row values are computed, for set fields, or whether to permute
-      generated values, for mutex or BSI fields.
+* `zipfV`, `zipfS`: the V/S values used for a Zipf distribution of values.
+* `min`, `max`: Minimum and maximum values. For BSI fields, this is the value
+  range; for set/mutex fields, it's the range of rows that will be
+  potentially generated.
+* `sourceIndex`: An index to use for values; the value range will be the
+  source index's column range. If source index has 100,000 columns, this
+  is equivalent to "min: 0, max: 99999".
+* `density`: The field's base density of bits set. For a set, this density
+  applies to each row independently; for a mutex or BSI field, it
+  determines how many columns should have a value set. (If a stride is
+  also specified, only the columns determined by the stride are checked,
+  but density is also checked to decide which ones to set.)
+* `valueRule`: "linear" or "zipf". Exact interpretation varies by field type,
+  but "linear" indicates that all rows should have the same density of
+  values, while "zipf" indicates that they should follow a Zipf distribution.
 
 #### Set/Mutex Fields
 
 Set and mutex fields can also configure a cache type:
 
-    * cache: Cache type, one of "lru" or "none".
+* `cache`: Cache type, one of "lru" or "none".
 
 ##### Set Fields
 
@@ -118,7 +122,7 @@ Set fields can be generated either in row-major order (generate one row at
 a time for all columns) or column-major order (generate all rows for each
 column).
 
-    * dimensionOrder: string, one of "row" or "column". default is "row".
+* `dimensionOrder`: string, one of "row" or "column". default is "row".
 
 Zipf parameters: The first row will have bits set based on the base density
 provided. Following rows will follow the Zipf distribution's probabilities.
@@ -145,6 +149,53 @@ Zipf parameters: This follows the behavior of the Zipf generator in `math/rand`,
 with an offset of the minimum value. For instance, a field with min/max of
 10/20 behaves exactly like a field with a min/max of 0/10, with 10 added to
 each value.
+
+
+### Workloads
+
+A workload describes a named series of steps, which apply to indexes
+and fields previously described. Workloads don't have to be in the same
+spec files as the indexes and fields they refer to. Workloads are defined
+in a top-level array, usually using `[[workloads]]` to refer to them.
+Workloads are sequential. They have the following attributes:
+
+* `name`: The name of the workload.
+* `description`: A description of the workload.
+* `threadCount`: Number of importer threads to use in imports.
+
+Each workload also has one or more "batches", which are sets of tasks.
+Batches are executed sequentially in order within each workload. They
+are introduced using `[[workloads.batches]]`.
+
+#### Batches
+
+Each batch has optional configuration fields, plus an array of tasks.
+
+* `description`: A description of the workload.
+* `threadCount`: Number of importer threads to use in imports.
+
+The `threadCount` value for a batch overrides the parent workload's default,
+and is used for each task within the batch. Additionally, the tasks within a batch are all executed in parallel.
+
+#### Tasks
+
+Each task outlines a specific set of data to populate in a given field.
+
+* `index`, `field`: the index and field names to identify the field to be
+  populated. The index name should match the name in the spec, not including
+  any prefixes.
+* `seed`: the random number seed to use when populating this field. Defaults
+  to the seed for the field's parent index.
+* `columns`: the number of columns to populate. default: populate the
+  entire field, using the index's columns. Must not be higher than
+  the index's number of columns.
+* `columnOrder`: "linear", "stride" or "permute" (default linear). Indicates
+  whether column values should be generated sequentially or in permuted
+  order.
+* `stride`: The stride to use with a columnOrder of "stride".
+* `rowOrder`: "linear" or "permute" (default linear). Determines the order
+  in which row values are computed, for set fields, or whether to permute
+  generated values, for mutex or BSI fields.
 
 ## Data Generation
 
