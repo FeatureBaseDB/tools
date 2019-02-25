@@ -29,7 +29,7 @@ var newGenerators = map[fieldType]genfunc{
 // of columns/rows) is affecting performance.
 type CountingIterator interface {
 	pilosa.RecordIterator
-	Values() int64
+	Values() (int64, int64)
 }
 
 // NewGenerator makes a generator which will generate the values for the
@@ -341,11 +341,12 @@ type singleValueGenerator struct {
 	colGen    sequenceGenerator
 	valueGen  valueGenerator
 	values    int64
+	tries     int64
 	completed bool
 }
 
-func (svg *singleValueGenerator) Values() int64 {
-	return svg.values
+func (svg *singleValueGenerator) Values() (int64, int64) {
+	return svg.values, svg.tries
 }
 
 // Iterate loops over columns, producing a value for each column.
@@ -367,6 +368,7 @@ func (fvg *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
 		return nil, io.EOF
 	}
 	col, val, _ := fvg.Iterate()
+	fvg.tries++
 	fvg.values++
 	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
 }
@@ -382,6 +384,7 @@ func (cvg *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 		return nil, io.EOF
 	}
 	col, val, _ := cvg.Iterate()
+	cvg.tries++
 	cvg.values++
 	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val)}, nil
 }
@@ -463,9 +466,8 @@ func baseDensityGenerator(fs *fieldSpec) densityGenerator {
 func makeDensityGenerator(fs *fieldSpec, seed int64) (densityGenerator, bool) {
 	if *fs.Chance != 1.0 {
 		return newMaybeDensityGenerator(fs, seed+1), true
-	} else {
-		return baseDensityGenerator(fs), false
 	}
+	return baseDensityGenerator(fs), false
 }
 
 // for sets, we have to iterate over columns and then rows, or rows and
@@ -481,10 +483,13 @@ type doubleValueGenerator struct {
 	weighted         *apophenia.Weighted
 	row, col         int64
 	values           int64
+	tries            int64
 }
 
-func (dvg *doubleValueGenerator) Values() int64 {
-	return dvg.values
+// Values yields the number of values generated, and also the number of
+// positions evaluated.
+func (dvg *doubleValueGenerator) Values() (int64, int64) {
+	return dvg.values, dvg.tries
 }
 
 type rowMajorValueGenerator struct {
@@ -493,22 +498,22 @@ type rowMajorValueGenerator struct {
 
 // NextRecord() finds the next record, probably.
 func (rvg *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	var density uint64
 	for !rvg.colDone || !rvg.rowDone {
 		if rvg.colDone {
 			rvg.row, rvg.rowDone = rvg.rowGen.Next()
 			if !rvg.densityPerCol {
-				density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+				rvg.density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
 			}
 		}
 		rvg.col, rvg.colDone = rvg.colGen.Next()
 		if rvg.densityPerCol {
-			density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+			rvg.density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
 		}
 		// use row as the "seed" for Weighted computations, so each row
 		// can have different values.
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
-		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
+		bit := rvg.weighted.Bit(offset, rvg.density, rvg.densityScale)
+		rvg.tries++
 		if bit != 0 {
 			rvg.values++
 			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil
@@ -530,6 +535,7 @@ func (rvg *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
 		density := rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
+		rvg.tries++
 		if bit != 0 {
 			rvg.values++
 			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil

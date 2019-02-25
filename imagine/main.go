@@ -435,7 +435,8 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 			errs[idx] = client.ImportField(field, itr, opts...)
 			if conf.Time {
 				after := time.Now()
-				fmt.Printf("   %s/%s: %v for %d values\n", indexName, fieldName, after.Sub(before), itr.Values())
+				v, t := itr.Values()
+				fmt.Printf("   %s/%s: %v for %d/%d values\n", indexName, fieldName, after.Sub(before), v, t)
 			}
 			tasks.Done()
 		}(idx, itr, opts, field, task.Index, task.Field)
