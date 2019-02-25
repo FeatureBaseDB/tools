@@ -220,11 +220,16 @@ func (ig *strideGenerator) Next() (value int64, done bool) {
 	value = ig.current
 	ig.current += ig.stride
 	if ig.current >= ig.max {
-		ig.current -= ig.max
+		// drop all multiples of ig.stride
+		ig.current %= ig.stride
+		// do a different batch. if ig.current becomes equal to ig.stride,
+		// we'll be done -- but that should be caught by the emitted count anyway.
+		ig.current++
 	}
 	ig.emitted++
 	if ig.emitted >= ig.total {
 		ig.emitted = 0
+		ig.current = 0
 		done = true
 	}
 	return value, done
