@@ -292,7 +292,7 @@ func (conf *Config) CompareIndexes(client *pilosa.Client, mayCreate, mustCreate 
 // an index, so it must not have previously existed.
 func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, spec *indexSpec, mayCreate, mustCreate bool) (changed bool, errs []error) {
 	dbFields := dbIndex.Fields()
-	for name, field := range spec.Fields {
+	for name, field := range spec.FieldsByName {
 		dbField := dbFields[name]
 		if dbField == nil {
 			if !mayCreate {

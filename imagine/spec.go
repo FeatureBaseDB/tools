@@ -65,13 +65,14 @@ type tomlSpec struct {
 }
 
 type indexSpec struct {
-	Parent      *tomlSpec `toml:"-"`
-	Name        string    `toml:"-"`
-	Description string    // for human-friendly descriptions
-	FullName    string    `toml:"-"` // not actually intended to be user-set
-	Columns     uint64    // total columns to create data for
-	Fields      map[string]*fieldSpec
-	Seed        *int64 // default PRNG seed
+	Parent       *tomlSpec             `toml:"-"`
+	Name         string                `toml:"-"`
+	Description  string                // for human-friendly descriptions
+	FullName     string                `toml:"-"` // not actually intended to be user-set
+	Columns      uint64                // total columns to create data for
+	FieldsByName map[string]*fieldSpec `toml:"-"`
+	Fields       []*fieldSpec
+	Seed         *int64 // default PRNG seed
 }
 
 func (is *indexSpec) String() string {
@@ -87,7 +88,7 @@ type fieldSpec struct {
 	Parent *indexSpec `toml:"-"` // the indexSpec this field applies to
 
 	// common values for all the field types
-	Name         string      `toml:"-"`
+	Name         string
 	Type         fieldType   // "set", "mutex", "bsi"
 	ZipfV, ZipfS float64     // the V/S parameters of a Zipf distribution
 	Min, Max     int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
@@ -95,6 +96,8 @@ type fieldSpec struct {
 	Density      float64     // Base density to use in [0,1].
 	ValueRule    densityType // which of several hypothetical density/value algorithms to use.
 	DensityScale *uint64     // optional density scale
+	Chance       *float64    // probability of using this fieldSpec for a given column
+	Next         *fieldSpec  `toml:"-"` // next fieldspec to try
 
 	// Only useful for set/mutex fields.
 	Cache cacheType // "lru" or "none", default is lru for set/mutex
@@ -179,9 +182,22 @@ func describeIndex(spec *indexSpec) {
 	if spec == nil {
 		return
 	}
-	for key, f := range spec.Fields {
-		fmt.Printf("    %s: %s\n", key, f)
+	for _, f := range spec.FieldsByName {
+		describeField(f, true)
+		for f.Next != nil {
+			f = f.Next
+			describeField(f, false)
+		}
 	}
+}
+
+func describeField(spec *fieldSpec, showName bool) {
+	if showName {
+		fmt.Printf("    %s: ", spec.Name)
+	} else {
+		fmt.Printf("    %*s: ", len(spec.Name), "")
+	}
+	fmt.Printf(" [%.2f] %s\n", *spec.Chance, spec)
 }
 
 func describeWorkload(wl *workloadSpec) {
@@ -301,19 +317,36 @@ func (ts *tomlSpec) Cleanup(conf *Config) error {
 // Cleanup does data validation and cleanup for an indexSpec.
 func (is *indexSpec) Cleanup(conf *Config) error {
 	is.FullName = is.Parent.Prefix + "-" + is.Name
+	if is.FieldsByName == nil {
+		is.FieldsByName = make(map[string]*fieldSpec, len(is.Fields))
+	}
 	if is.Seed == nil {
 		is.Seed = &is.Parent.Seed
 	}
 	if conf.ColumnScale != 0 {
 		is.Columns *= uint64(conf.ColumnScale)
 	}
-	for name, field := range is.Fields {
+	for _, field := range is.Fields {
 		field.Parent = is
-		field.Name = name
-		if err := field.Cleanup(conf); err != nil {
-			return fmt.Errorf("field %s/%s: %s", is.Name, name, err)
+		if is.FieldsByName[field.Name] != nil {
+			if is.FieldsByName[field.Name].Type != field.Type {
+				return fmt.Errorf("field %s/%s: incompatible type specifiers %v and %v\n", is.Name, field.Name,
+					is.FieldsByName[field.Name].Type, field.Type)
+			}
+			if is.FieldsByName[field.Name].Max != field.Max {
+				if field.Max != 0 {
+					return fmt.Errorf("field %s/%s: incompatible max specifiers %d and %d\n", is.Name, field.Name,
+						is.FieldsByName[field.Name].Max, field.Max)
+				}
+				field.Max = is.FieldsByName[field.Name].Max
+			}
+			// push this in front of the previous one
+			field.Next = is.FieldsByName[field.Name]
 		}
-
+		is.FieldsByName[field.Name] = field
+		if err := field.Cleanup(conf); err != nil {
+			return fmt.Errorf("field %s/%s: %s", is.Name, field.Name, err)
+		}
 	}
 	return nil
 }
@@ -349,25 +382,36 @@ func (is *indexSpec) Merge(other *indexSpec) error {
 	} else {
 		is.Seed = other.Seed
 	}
-	for name, fs := range other.Fields {
-		if is.Fields[name] != nil {
-			return fmt.Errorf("field '%s' defined twice for index '%s'", name, is.Name)
+	for name, fs := range other.FieldsByName {
+		// prepend the new spec to the existing one
+		if is.FieldsByName[name] != nil {
+			for fs.Next != nil {
+				fs = fs.Next
+			}
+			fs.Next = is.FieldsByName[name]
 		}
-		is.Fields[name] = fs
+		is.FieldsByName[name] = fs
 	}
 	return nil
 }
 
 // Cleanup does data validation and checking for a fieldSpec.
 func (fs *fieldSpec) Cleanup(conf *Config) error {
-
 	if fs.DensityScale == nil {
 		// inherit parent's scale
 		fs.DensityScale = &fs.Parent.Parent.DensityScale
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
-
+	// no specified chance = 1.0
+	if fs.Chance == nil {
+		f := float64(1.0)
+		fs.Chance = &f
+	} else {
+		if *fs.Chance < 0 || *fs.Chance > 1.0 {
+			return fmt.Errorf("invalid chance %f (must be in [0,1])", *fs.Chance)
+		}
+	}
 	if fs.SourceIndex != "" {
 		if fs.Min != 0 || fs.Max != 0 {
 			return fmt.Errorf("field %s specifies both min/max (%d/%d) and source index (%s)",
@@ -451,7 +495,7 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		return fmt.Errorf("undefined index '%s' in task", ts.Index)
 	}
 	ts.IndexFullName = index.FullName
-	field, ok := index.Fields[ts.Field]
+	field, ok := index.FieldsByName[ts.Field]
 	if !ok {
 		return fmt.Errorf("undefined field '%s' in index '%s' in task", ts.Field, ts.Index)
 	}

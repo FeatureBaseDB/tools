@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/bits"
 
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/apophenia"
@@ -82,25 +81,12 @@ func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	if err != nil {
 		return nil, err
 	}
-	dvg.densityGen = makeDensityGenerator(fs)
+	dvg.densityGen, dvg.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
 	dvg.densityScale = *fs.DensityScale
 	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 
 	switch ts.DimensionOrder {
 	case dimensionOrderRow:
-		if ts.ColumnOrder == valueOrderLinear {
-			// handle this case better
-			ivg := incrementColumnValueGenerator{
-				rowGen:       dvg.rowGen,
-				maxCol:       *ts.Columns,
-				densityGen:   dvg.densityGen,
-				densityScale: dvg.densityScale,
-				weighted:     dvg.weighted,
-			}
-			// start the first row
-			ivg.NextRow()
-			return &ivg, nil
-		}
 		dvg.colDone = true
 		return &rowMajorValueGenerator{doubleValueGenerator: dvg}, nil
 	case dimensionOrderColumn:
@@ -396,12 +382,12 @@ func (cvg *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 }
 
 type densityGenerator interface {
-	Density(row uint64) uint64
+	Density(col, row uint64) uint64
 }
 
 type fixedDensityGenerator uint64
 
-func (f *fixedDensityGenerator) Density(row uint64) uint64 {
+func (f *fixedDensityGenerator) Density(col, row uint64) uint64 {
 	return uint64(*f)
 }
 
@@ -409,7 +395,7 @@ type zipfDensityGenerator struct {
 	base, zipfV, zipfS, scale float64
 }
 
-func (z *zipfDensityGenerator) Density(row uint64) uint64 {
+func (z *zipfDensityGenerator) Density(col, row uint64) uint64 {
 	// from the README as of when I wrote this:
 	// For instance, with v=2, s=2, the k=0 probability is proportional to
 	// `(2+0)**(-2)` (1/4), and the k=1 probability is proportional to
@@ -419,7 +405,46 @@ func (z *zipfDensityGenerator) Density(row uint64) uint64 {
 	return uint64(z.base * proportion * z.scale)
 }
 
-func makeDensityGenerator(fs *fieldSpec) densityGenerator {
+// maybeDensityGenerator tries itself or the next density generator in line to
+// produce a value.
+type maybeDensityGenerator struct {
+	chance, scale   uint64
+	generator, next densityGenerator
+	weighted        *apophenia.Weighted
+}
+
+func newMaybeDensityGenerator(fs *fieldSpec, seed int64) *maybeDensityGenerator {
+	var err error
+	m := maybeDensityGenerator{chance: uint64(float64(*fs.DensityScale) * *fs.Chance), scale: *fs.DensityScale}
+	m.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(seed))
+	if err != nil {
+		return nil
+	}
+	if fs.Next != nil {
+		m.next, _ = makeDensityGenerator(fs.Next, seed)
+	}
+	m.generator = baseDensityGenerator(fs)
+	return &m
+}
+
+func (m *maybeDensityGenerator) Density(col, row uint64) uint64 {
+	if m == nil {
+		return 0
+	}
+	// we ignore row here, because we want to get the same selection of density
+	// for a given column every time.
+	offset := apophenia.OffsetFor(apophenia.SequenceWeighted, 0, 0, uint64(col))
+	bit := m.weighted.Bit(offset, m.chance, m.scale)
+	if bit == 1 {
+		return m.generator.Density(col, row)
+	}
+	if m.next != nil {
+		return m.next.Density(col, row)
+	}
+	return 0
+}
+
+func baseDensityGenerator(fs *fieldSpec) densityGenerator {
 	switch fs.ValueRule {
 	case densityTypeLinear:
 		fdg := fixedDensityGenerator(float64(*fs.DensityScale) * fs.Density)
@@ -430,105 +455,26 @@ func makeDensityGenerator(fs *fieldSpec) densityGenerator {
 	return nil
 }
 
+func makeDensityGenerator(fs *fieldSpec, seed int64) (densityGenerator, bool) {
+	if *fs.Chance != 1.0 {
+		return newMaybeDensityGenerator(fs, seed+1), true
+	} else {
+		return baseDensityGenerator(fs), false
+	}
+}
+
 // for sets, we have to iterate over columns and then rows, or rows and
 // then columns.
-
-// the special case: incrementing over columns, which means we can grab
-// bits in batches...
-type incrementColumnValueGenerator struct {
-	rowGen            sequenceGenerator
-	rowDone           bool
-	done              bool
-	row               uint32
-	col               uint64
-	maxCol            uint64
-	bits, pendingBits uint64
-	bit               uint64
-	hasPendingBits    bool
-	density           uint64
-	densityGen        densityGenerator
-	densityScale      uint64
-	weighted          *apophenia.Weighted
-	values            int64
-}
-
-func (ivg *incrementColumnValueGenerator) NextRow() {
-	if ivg.rowDone {
-		ivg.done = true
-		return
-	}
-	var row int64
-	row, ivg.rowDone = ivg.rowGen.Next()
-	ivg.row = uint32(row)
-	ivg.density = ivg.densityGen.Density(uint64(ivg.row))
-	if ivg.density == 0 {
-		ivg.done = true
-		return
-	}
-	ivg.col = 0
-	ivg.bit = 0
-	ivg.hasPendingBits = false
-}
-
-func (ivg *incrementColumnValueGenerator) Values() int64 {
-	return ivg.values
-}
-
-// NextBits grabs the next set of bits, and tries to find a 1 bit; it will
-// keep grabbing bits until it finds a 1 or gets past maxCol.
-func (ivg *incrementColumnValueGenerator) NextBits() {
-	for ivg.bit == 0 && ivg.col <= ivg.maxCol {
-		if ivg.hasPendingBits {
-			ivg.bits = ivg.pendingBits
-			ivg.hasPendingBits = false
-		} else {
-			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, ivg.row, 0, ivg.col)
-			bits := ivg.weighted.Bits(offset, ivg.density, ivg.densityScale)
-			ivg.bits, ivg.pendingBits = bits.Lo, bits.Hi
-			ivg.hasPendingBits = true
-		}
-		nextBit := bits.TrailingZeros64(ivg.bits)
-		// skip any zeros
-		ivg.col += uint64(nextBit)
-		ivg.bit = 1 << uint(nextBit)
-	}
-}
-
-// NextRecord() finds the next record, probably.
-func (ivg *incrementColumnValueGenerator) NextRecord() (pilosa.Record, error) {
-	for !ivg.done {
-		if ivg.col >= ivg.maxCol {
-			if ivg.rowDone {
-				ivg.done = true
-				return nil, io.EOF
-			}
-			ivg.NextRow()
-			continue
-		}
-		for ivg.bit != 0 && ivg.col < ivg.maxCol {
-			if ivg.bit&ivg.bits != 0 {
-				ret := pilosa.Column{ColumnID: uint64(ivg.col), RowID: uint64(ivg.row)}
-				ivg.bit <<= 1
-				ivg.col++
-				ivg.values++
-				return ret, nil
-			}
-			ivg.col++
-			ivg.bit <<= 1
-		}
-		// ran out of bits in current word, grab next word
-		ivg.NextBits()
-	}
-	return nil, io.EOF
-}
 
 type doubleValueGenerator struct {
 	colGen, rowGen   sequenceGenerator
 	colDone, rowDone bool
 	densityGen       densityGenerator
 	densityScale     uint64
+	densityPerCol    bool
+	density          uint64
 	weighted         *apophenia.Weighted
-	coord            int64
+	row, col         int64
 	values           int64
 }
 
@@ -542,24 +488,25 @@ type rowMajorValueGenerator struct {
 
 // NextRecord() finds the next record, probably.
 func (rvg *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	var col, row int64
 	var density uint64
-	row = rvg.coord
-	density = rvg.densityGen.Density(uint64(row))
 	for !rvg.colDone || !rvg.rowDone {
 		if rvg.colDone {
-			row, rvg.rowDone = rvg.rowGen.Next()
-			rvg.coord = row
-			density = rvg.densityGen.Density(uint64(row))
+			rvg.row, rvg.rowDone = rvg.rowGen.Next()
+			if !rvg.densityPerCol {
+				density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+			}
 		}
-		col, rvg.colDone = rvg.colGen.Next()
+		rvg.col, rvg.colDone = rvg.colGen.Next()
+		if rvg.densityPerCol {
+			density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+		}
 		// use row as the "seed" for Weighted computations, so each row
 		// can have different values.
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(row), 0, uint64(col))
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
 		if bit != 0 {
 			rvg.values++
-			return pilosa.Column{ColumnID: uint64(col), RowID: uint64(row)}, nil
+			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil
 		}
 	}
 	return nil, io.EOF
@@ -570,20 +517,17 @@ type columnMajorValueGenerator struct {
 }
 
 func (rvg *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	var col, row int64
-	col = rvg.coord
 	for !rvg.colDone || !rvg.rowDone {
 		if rvg.rowDone {
-			col, rvg.colDone = rvg.colGen.Next()
-			rvg.coord = col
+			rvg.col, rvg.colDone = rvg.colGen.Next()
 		}
-		row, rvg.rowDone = rvg.rowGen.Next()
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(row), 0, uint64(col))
-		density := rvg.densityGen.Density(uint64(row))
+		rvg.row, rvg.rowDone = rvg.rowGen.Next()
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
+		density := rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
 		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
 		if bit != 0 {
 			rvg.values++
-			return pilosa.Column{ColumnID: uint64(col), RowID: uint64(row)}, nil
+			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil
 		}
 	}
 	return nil, io.EOF
