@@ -110,7 +110,8 @@ type workloadSpec struct {
 	Name        string
 	Description string
 	Batches     []*batchSpec
-	ThreadCount int // threads to use for each importer
+	ThreadCount *int // threads to use for each importer
+	BatchSize   *int
 }
 
 // batchSpec describes a set of tasks to happen in parallel
@@ -119,6 +120,7 @@ type batchSpec struct {
 	Description string
 	Tasks       []*taskSpec
 	ThreadCount *int // override workload threadcount
+	BatchSize   *int // override workload batchsize
 }
 
 // taskSpec describes a single task, which is populating some kind of data
@@ -134,6 +136,7 @@ type taskSpec struct {
 	ColumnOrder, RowOrder valueOrder     // linear or permuted orders (or stride, for columns)
 	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
 	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
+	BatchSize             *int           // override batch batchsize
 }
 
 func (fs *fieldSpec) String() string {
@@ -410,8 +413,10 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 }
 
 func (ws *workloadSpec) Cleanup(conf *Config) error {
-	if ws.ThreadCount < 1 {
-		ws.ThreadCount = 1
+	if ws.ThreadCount != nil {
+		if *ws.ThreadCount < 1 {
+			return fmt.Errorf("invalid thread count %d [must be a positive number]", *ws.ThreadCount)
+		}
 	}
 	for _, batch := range ws.Batches {
 		batch.Parent = ws
@@ -425,7 +430,10 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 
 func (bs *batchSpec) Cleanup(conf *Config) error {
 	if bs.ThreadCount == nil {
-		bs.ThreadCount = &bs.Parent.ThreadCount
+		bs.ThreadCount = bs.Parent.ThreadCount
+	}
+	if bs.BatchSize == nil {
+		bs.BatchSize = bs.Parent.BatchSize
 	}
 	for _, task := range bs.Tasks {
 		task.Parent = bs
@@ -479,6 +487,9 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	}
 	if ts.DimensionOrder != dimensionOrderRow && ts.FieldSpec.Type != fieldTypeSet {
 		return fmt.Errorf("field %s: column-major dimension order is only supported for sets", ts.Field)
+	}
+	if ts.BatchSize == nil {
+		ts.BatchSize = ts.Parent.BatchSize
 	}
 	return nil
 }

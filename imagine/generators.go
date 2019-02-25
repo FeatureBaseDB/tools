@@ -43,8 +43,13 @@ func NewGenerator(ts *taskSpec) (CountingIterator, []pilosa.ImportOption, error)
 	if fn == nil {
 		return nil, nil, fmt.Errorf("field spec: invalid field type %v", ts.FieldSpec.Type)
 	}
-	fmt.Printf("new generator: thread count %d\n", *ts.Parent.ThreadCount)
-	opts := []pilosa.ImportOption{pilosa.OptImportThreadCount(*ts.Parent.ThreadCount)}
+	opts := make([]pilosa.ImportOption, 0, 8)
+	if ts.BatchSize != nil {
+		opts = append(opts, pilosa.OptImportBatchSize(*ts.BatchSize))
+	}
+	if ts.Parent.ThreadCount != nil {
+		opts = append(opts, pilosa.OptImportThreadCount(*ts.Parent.ThreadCount))
+	}
 	if noSortNeeded(ts) {
 		opts = append(opts, pilosa.OptImportSort(false))
 	}
