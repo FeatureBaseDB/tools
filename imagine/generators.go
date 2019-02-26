@@ -10,7 +10,7 @@ import (
 	"github.com/pilosa/tools/apophenia"
 )
 
-type genfunc func(*taskSpec) (CountingIterator, error)
+type genfunc func(*taskSpec, chan taskUpdate, string) (CountingIterator, error)
 
 var newGenerators = map[fieldType]genfunc{
 	fieldTypeSet:   newSetGenerator,
@@ -34,7 +34,7 @@ type CountingIterator interface {
 
 // NewGenerator makes a generator which will generate the values for the
 // given task.
-func NewGenerator(ts *taskSpec) (CountingIterator, []pilosa.ImportOption, error) {
+func NewGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, []pilosa.ImportOption, error) {
 	if ts == nil {
 		return nil, nil, errors.New("nil field spec is invalid")
 	}
@@ -52,7 +52,7 @@ func NewGenerator(ts *taskSpec) (CountingIterator, []pilosa.ImportOption, error)
 	if noSortNeeded(ts) {
 		opts = append(opts, pilosa.OptImportSort(false))
 	}
-	iter, err := fn(ts)
+	iter, err := fn(ts, updateChan, updateID)
 	return iter, opts, err
 }
 
@@ -70,7 +70,7 @@ func noSortNeeded(ts *taskSpec) bool {
 // Mutex: Column, one per column.
 // Set: FieldValue, possibly many per column, possibly column-major.
 
-func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
+func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
 	dvg := doubleValueGenerator{}
 	dvg.colGen, err = makeColumnGenerator(ts)
@@ -84,6 +84,8 @@ func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	dvg.densityGen, dvg.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
 	dvg.densityScale = *fs.DensityScale
 	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
+	dvg.updateChan = updateChan
+	dvg.updateID = updateID
 
 	switch ts.DimensionOrder {
 	case dimensionOrderRow:
@@ -98,7 +100,7 @@ func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 
 // newSingleValueGenerator handles the column/value/weighted parts of
 // generation that are shared between column/field generators.
-func newSingleValueGenerator(ts *taskSpec) (svg singleValueGenerator, err error) {
+func newSingleValueGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (svg singleValueGenerator, err error) {
 	svg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return svg, err
@@ -112,14 +114,16 @@ func newSingleValueGenerator(ts *taskSpec) (svg singleValueGenerator, err error)
 		svg.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
 		svg.scale = *ts.FieldSpec.DensityScale
 	}
+	svg.updateChan = updateChan
+	svg.updateID = updateID
 	return svg, err
 }
 
 // newMutexGenerator builds a mutex generator, which is a generator
 // that computes a single value for a column, then returns it as a
 // pilosa.Column.
-func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
-	svg, err := newSingleValueGenerator(ts)
+func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	svg, err := newSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
 		return nil, err
 	}
@@ -130,8 +134,8 @@ func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 // newBSIGenerator builds a value generator, which is a generator
 // that computes a single value for a column, then returns it as a
 // pilosa.FieldValue.
-func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
-	svg, err := newSingleValueGenerator(ts)
+func newBSIGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	svg, err := newSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,22 +210,29 @@ func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
 // [...]
 type sequenceGenerator interface {
 	Next() (value int64, done bool)
+	Status() (produced, total int64)
 }
 
 // incrementGenerator counts from min to max by 1.
 type incrementGenerator struct {
-	current, min, max int64
+	produced, current, min, max int64
 }
 
 // Next returns the next value in a sequence.
 func (g *incrementGenerator) Next() (value int64, done bool) {
 	value = g.current
 	g.current++
+	g.produced++
 	if g.current >= g.max {
 		g.current = g.min
 		done = true
 	}
 	return value, done
+}
+
+// Status reports on the state of the generator.
+func (g *incrementGenerator) Status() (produced, total int64) {
+	return g.produced, g.max
 }
 
 // newIncrementGenerator creates an incrementGenerator.
@@ -257,6 +268,11 @@ func (g *strideGenerator) Next() (value int64, done bool) {
 	return value, done
 }
 
+// Status reports on the state of the generator.
+func (g *strideGenerator) Status() (produced, total int64) {
+	return g.emitted, g.total
+}
+
 // newStrideGenerator produces a stride generator.
 func newStrideGenerator(stride, max, total int64) *strideGenerator {
 	return &strideGenerator{current: 0, stride: stride, max: max, total: total}
@@ -280,6 +296,11 @@ func (g *permutedGenerator) Next() (value int64, done bool) {
 	// permute value, and coerce it back to range
 	value = g.permutation.Nth(value) + g.offset
 	return value, done
+}
+
+// Status reports on the state of the generator.
+func (g *permutedGenerator) Status() (produced, total int64) {
+	return g.current, g.total
 }
 
 // newPermutedGenerator creates a permutedGenerator.
@@ -371,6 +392,8 @@ type singleValueGenerator struct {
 	density, scale uint64
 	weighted       *apophenia.Weighted
 	completed      bool
+	updateChan     chan taskUpdate
+	updateID       string
 }
 
 func (g *singleValueGenerator) Values() (int64, int64) {
@@ -384,6 +407,10 @@ func (g *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok 
 		col, done = g.colGen.Next()
 		value = g.valueGen.Nth(col)
 		g.tries++
+		if g.updateChan != nil && (g.tries%10000) == 0 {
+			cols, _ := g.colGen.Status()
+			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: 0, done: g.completed}
+		}
 		if g.weighted == nil {
 			g.completed = done
 			return col, value, done, true
@@ -406,8 +433,9 @@ type fieldValueGenerator struct {
 
 // NextRecord returns the next value pair from the fieldValueGenerator,
 // as a pilosa.FieldValue.
-func (g *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
+func (g *fieldValueGenerator) NextRecord() (rec pilosa.Record, err error) {
 	if g.completed {
+		g.updateChan <- taskUpdate{id: g.updateID, colCount: g.tries, rowCount: 0, done: true}
 		return nil, io.EOF
 	}
 	col, val, _, ok := g.Iterate()
@@ -531,6 +559,8 @@ type doubleValueGenerator struct {
 	row, col         int64
 	values           int64
 	tries            int64
+	updateChan       chan taskUpdate
+	updateID         string
 }
 
 // Values yields the number of values generated, and also the number of
@@ -564,10 +594,21 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
 		bit := g.weighted.Bit(offset, g.density, g.densityScale)
 		g.tries++
+		if g.updateChan != nil && g.tries%10000 == 0 {
+			cols, _ := g.colGen.Status()
+			rows, _ := g.rowGen.Status()
+			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
+		}
 		if bit != 0 {
 			g.values++
 			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
 		}
+
+	}
+	if g.updateChan != nil {
+		cols, _ := g.colGen.Status()
+		rows, _ := g.rowGen.Status()
+		g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: true}
 	}
 	return nil, io.EOF
 }
@@ -589,10 +630,20 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
 		bit := g.weighted.Bit(offset, density, g.densityScale)
 		g.tries++
+		if g.updateChan != nil && g.tries%10000 == 0 {
+			cols, _ := g.colGen.Status()
+			rows, _ := g.rowGen.Status()
+			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
+		}
 		if bit != 0 {
 			g.values++
 			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
 		}
+	}
+	if g.updateChan != nil {
+		cols, _ := g.colGen.Status()
+		rows, _ := g.rowGen.Status()
+		g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: true}
 	}
 	return nil, io.EOF
 }

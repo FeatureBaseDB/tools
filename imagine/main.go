@@ -408,6 +408,13 @@ func (conf *Config) ApplyWorkload(client *pilosa.Client, wl *workloadSpec) (err 
 	return nil
 }
 
+type taskUpdate struct {
+	id       string
+	colCount int64
+	rowCount int64
+	done     bool
+}
+
 func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err error) {
 	var tasks sync.WaitGroup
 	if conf.Time {
@@ -424,13 +431,14 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 	}
 	// and now, in parallel...
 	errs := make([]error, len(batch.Tasks))
+	updateChan := make(chan taskUpdate, len(batch.Tasks))
 	for idx, task := range batch.Tasks {
 		field := conf.dbSchema[task.IndexFullName][task.Field]
 		if field == nil {
 			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.IndexFullName, task.Field)
 			continue
 		}
-		itr, opts, err := NewGenerator(task)
+		itr, opts, err := NewGenerator(task, updateChan, task.Index+"/"+task.Field)
 		if err != nil {
 			errs[idx] = err
 			continue
@@ -447,7 +455,17 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 			tasks.Done()
 		}(idx, itr, opts, field, task.Index, task.Field)
 	}
-	tasks.Wait()
+	go func() {
+		tasks.Wait()
+		close(updateChan)
+	}()
+	for u := range updateChan {
+		if u.rowCount != 0 {
+			fmt.Printf("    %s %10d/%-10d\r", u.id, u.colCount, u.rowCount)
+		} else {
+			fmt.Printf("    %s %-10d\r", u.id, u.colCount)
+		}
+	}
 	errorCount := 0
 	err = nil
 	for _, e := range errs {
@@ -462,8 +480,6 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 		return err
 	}
 	return errors.Wrap(err, fmt.Sprintf("%d errors", errorCount))
-
-	return nil
 }
 
 // ApplyWorkloads attempts to process the configured workloads.
