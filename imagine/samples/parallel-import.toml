@@ -1,0 +1,9 @@
+version = "1.0"
+[[workloads]]
+name = "initial import"
+[[workloads.batches]]
+description = "initial import"
+tasks = [
+{ index = "users", field = "long-tail" },
+{ index = "users", field = "small-mutex", seed = 1 },
+]
