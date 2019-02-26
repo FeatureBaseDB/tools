@@ -96,29 +96,38 @@ func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	return nil, errors.New("unknown dimension order for set")
 }
 
+func newSingleValueGenerator(ts *taskSpec) (svg singleValueGenerator, err error) {
+	svg.colGen, err = makeColumnGenerator(ts)
+	if err != nil {
+		return svg, err
+	}
+	svg.valueGen, err = makeValueGenerator(ts)
+	if err != nil {
+		return svg, err
+	}
+	if ts.FieldSpec.Density != 1.0 {
+		svg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
+		svg.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
+		svg.scale = *ts.FieldSpec.DensityScale
+	}
+	return svg, err
+}
+
 func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
-	cvg := columnValueGenerator{}
-	cvg.colGen, err = makeColumnGenerator(ts)
+	svg, err := newSingleValueGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
-	cvg.valueGen, err = makeValueGenerator(ts)
-	if err != nil {
-		return nil, err
-	}
+	cvg := columnValueGenerator{singleValueGenerator: svg}
 	return &cvg, nil
 }
 
 func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
-	fvg := fieldValueGenerator{}
-	fvg.colGen, err = makeColumnGenerator(ts)
+	svg, err := newSingleValueGenerator(ts)
 	if err != nil {
 		return nil, err
 	}
-	fvg.valueGen, err = makeValueGenerator(ts)
-	if err != nil {
-		return nil, err
-	}
+	fvg := fieldValueGenerator{singleValueGenerator: svg}
 	return &fvg, nil
 }
 
@@ -338,23 +347,40 @@ func (pvg *permutedValueGenerator) Nth(n int64) int64 {
 }
 
 type singleValueGenerator struct {
-	colGen    sequenceGenerator
-	valueGen  valueGenerator
-	values    int64
-	tries     int64
-	completed bool
+	colGen         sequenceGenerator
+	valueGen       valueGenerator
+	values         int64
+	tries          int64
+	density, scale uint64
+	weighted       *apophenia.Weighted
+	completed      bool
 }
 
 func (svg *singleValueGenerator) Values() (int64, int64) {
 	return svg.values, svg.tries
 }
 
-// Iterate loops over columns, producing a value for each column.
-func (svg *singleValueGenerator) Iterate() (column int64, value int64, done bool) {
-	column, done = svg.colGen.Next()
-	value = svg.valueGen.Nth(column)
-	svg.completed = done
-	return column, value, done
+// Iterate loops over columns, producing a value for each column. If a density
+// was specified, it returns only some of these values.
+func (svg *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok bool) {
+	for {
+		col, done = svg.colGen.Next()
+		value = svg.valueGen.Nth(col)
+		svg.tries++
+		if svg.weighted == nil {
+			svg.completed = done
+			return col, value, done, true
+		}
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, 0, 0, uint64(col))
+		bit := svg.weighted.Bit(offset, svg.density, svg.scale)
+		if bit == 1 {
+			svg.completed = done
+			return col, value, done, true
+		}
+		if done {
+			return col, value, done, false
+		}
+	}
 }
 
 type fieldValueGenerator struct {
@@ -367,8 +393,10 @@ func (fvg *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
 	if fvg.completed {
 		return nil, io.EOF
 	}
-	col, val, _ := fvg.Iterate()
-	fvg.tries++
+	col, val, _, ok := fvg.Iterate()
+	if !ok {
+		return nil, io.EOF
+	}
 	fvg.values++
 	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
 }
@@ -383,8 +411,10 @@ func (cvg *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 	if cvg.completed {
 		return nil, io.EOF
 	}
-	col, val, _ := cvg.Iterate()
-	cvg.tries++
+	col, val, _, ok := cvg.Iterate()
+	if !ok {
+		return nil, io.EOF
+	}
 	cvg.values++
 	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val)}, nil
 }
