@@ -46,6 +46,7 @@ type Config struct {
 	CPUProfile    string `help:"record CPU profile to file"`
 	MemProfile    string `help:"record allocation profile to file"`
 	Time          bool   `help:"report on time elapsed for operations"`
+	Status        bool   `help:"show status updates while processing"`
 	ColumnScale   int64  `help:"scale number of columns provided by specs"`
 	RowScale      int64  `help:"scale number of rows provided by specs"`
 	flagset       *flag.FlagSet
@@ -432,13 +433,17 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 	// and now, in parallel...
 	errs := make([]error, len(batch.Tasks))
 	updateChan := make(chan taskUpdate, len(batch.Tasks))
+	generatorUpdateChan := updateChan
+	if !conf.Status {
+		generatorUpdateChan = nil
+	}
 	for idx, task := range batch.Tasks {
 		field := conf.dbSchema[task.IndexFullName][task.Field]
 		if field == nil {
 			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.IndexFullName, task.Field)
 			continue
 		}
-		itr, opts, err := NewGenerator(task, updateChan, task.Index+"/"+task.Field)
+		itr, opts, err := NewGenerator(task, generatorUpdateChan, task.Index+"/"+task.Field)
 		if err != nil {
 			errs[idx] = err
 			continue
