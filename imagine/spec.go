@@ -277,10 +277,10 @@ func fixDensityScale(densityScale *uint64) {
 	}
 }
 
-// Cleanup does additional validation and cleanup which may not be possible
-// until the main program's filled in some blanks, such as a possible Prefix
-// override specified on the command line.
-func (ts *tomlSpec) Cleanup(conf *Config) error {
+// CleanupIndexes does additional validation and cleanup which may not be
+// possible until the main program's filled in some blanks, such as a possible
+// Prefix override specified on the command line.
+func (ts *tomlSpec) CleanupIndexes(conf *Config) error {
 	fixDensityScale(&ts.DensityScale)
 	// Copy in column counts; all fields have an innate column count equal
 	// to the index's column count.
@@ -300,6 +300,13 @@ func (ts *tomlSpec) Cleanup(conf *Config) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// CleanupWorkloads does workload cleanup. This has to be done in a
+// separate pass if you want workloads to be able to refer to indexes
+// in files not yet read.
+func (ts *tomlSpec) CleanupWorkloads(conf *Config) error {
 	for _, workload := range ts.Workloads {
 		err := workload.Cleanup(conf)
 		if err != nil {

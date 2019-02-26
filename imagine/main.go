@@ -117,11 +117,17 @@ func (c *Config) readSpecs() error {
 		if c.defaultPrefix == false || spec.Prefix == "" {
 			spec.Prefix = c.Prefix
 		}
-		err = spec.Cleanup(c)
+		err = spec.CleanupIndexes(c)
 		if err != nil {
 			return err
 		}
 		c.specs = append(c.specs, spec)
+	}
+	for _, spec := range c.specs {
+		err := spec.CleanupWorkloads(c)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
