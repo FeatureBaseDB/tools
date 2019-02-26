@@ -59,7 +59,7 @@ func Test_Generators(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	testValueGenerator(lin, -3, 5, 9)
-	perm, err := permuteValueGenerator(lin, -3, 5, 9)
+	perm, err := newPermutedValueGenerator(lin, -3, 5, 9)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

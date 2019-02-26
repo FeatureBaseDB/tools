@@ -96,6 +96,8 @@ func newSetGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	return nil, errors.New("unknown dimension order for set")
 }
 
+// newSingleValueGenerator handles the column/value/weighted parts of
+// generation that are shared between column/field generators.
 func newSingleValueGenerator(ts *taskSpec) (svg singleValueGenerator, err error) {
 	svg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
@@ -113,6 +115,9 @@ func newSingleValueGenerator(ts *taskSpec) (svg singleValueGenerator, err error)
 	return svg, err
 }
 
+// newMutexGenerator builds a mutex generator, which is a generator
+// that computes a single value for a column, then returns it as a
+// pilosa.Column.
 func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	svg, err := newSingleValueGenerator(ts)
 	if err != nil {
@@ -122,6 +127,9 @@ func newMutexGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	return &cvg, nil
 }
 
+// newBSIGenerator builds a value generator, which is a generator
+// that computes a single value for a column, then returns it as a
+// pilosa.FieldValue.
 func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	svg, err := newSingleValueGenerator(ts)
 	if err != nil {
@@ -131,7 +139,7 @@ func newBSIGenerator(ts *taskSpec) (iter CountingIterator, err error) {
 	return &fvg, nil
 }
 
-// makeColumnGenerator builds a generator to iterate over columns of a field
+// makeColumnGenerator builds a generator to iterate over columns of a field.
 func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	switch ts.ColumnOrder {
 	case valueOrderStride:
@@ -149,7 +157,7 @@ func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	return nil, errors.New("unknown column generator type")
 }
 
-// makeRowGenerator builds a generator to iterate over columns of a field
+// makeRowGenerator builds a generator to iterate over rows of a field.
 func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	fs := ts.FieldSpec
 	switch ts.RowOrder {
@@ -168,6 +176,8 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	return nil, errors.New("unknown row generator type")
 }
 
+// makeValueGenerator makes a generator which generates values for fields which
+// can only have one value per column, such as mutex/BSI fields.
 func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
 	fs := ts.FieldSpec
 	switch fs.ValueRule {
@@ -179,7 +189,7 @@ func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
 		err = errors.New("unknown value generator type")
 	}
 	if ts.RowOrder == valueOrderPermute && err == nil {
-		vg, err = permuteValueGenerator(vg, fs.Min, fs.Max, *ts.Seed)
+		vg, err = newPermutedValueGenerator(vg, fs.Min, fs.Max, *ts.Seed)
 	}
 	return vg, err
 }
@@ -198,56 +208,61 @@ type sequenceGenerator interface {
 	Next() (value int64, done bool)
 }
 
-// incrementGenerator counts from min to max repeatedly.
+// incrementGenerator counts from min to max by 1.
 type incrementGenerator struct {
 	current, min, max int64
 }
 
 // Next returns the next value in a sequence.
-func (ig *incrementGenerator) Next() (value int64, done bool) {
-	value = ig.current
-	ig.current++
-	if ig.current >= ig.max {
-		ig.current = ig.min
+func (g *incrementGenerator) Next() (value int64, done bool) {
+	value = g.current
+	g.current++
+	if g.current >= g.max {
+		g.current = g.min
 		done = true
 	}
 	return value, done
 }
 
+// newIncrementGenerator creates an incrementGenerator.
 func newIncrementGenerator(min, max int64) *incrementGenerator {
 	return &incrementGenerator{current: min, min: min, max: max}
 }
 
-// incrementGenerator counts from min to max repeatedly.
+// strideGenerator counts from min to max by multiples of stride, then
+// from min+1 to (max+1-stride), and so on, until it has covered the whole
+// range.
 type strideGenerator struct {
 	current, stride, max int64
 	emitted, total       int64
 }
 
 // Next returns the next value in a sequence.
-func (ig *strideGenerator) Next() (value int64, done bool) {
-	value = ig.current
-	ig.current += ig.stride
-	if ig.current >= ig.max {
+func (g *strideGenerator) Next() (value int64, done bool) {
+	value = g.current
+	g.current += g.stride
+	if g.current >= g.max {
 		// drop all multiples of ig.stride
-		ig.current %= ig.stride
+		g.current %= g.stride
 		// do a different batch. if ig.current becomes equal to ig.stride,
 		// we'll be done -- but that should be caught by the emitted count anyway.
-		ig.current++
+		g.current++
 	}
-	ig.emitted++
-	if ig.emitted >= ig.total {
-		ig.emitted = 0
-		ig.current = 0
+	g.emitted++
+	if g.emitted >= g.total {
+		g.emitted = 0
+		g.current = 0
 		done = true
 	}
 	return value, done
 }
 
+// newStrideGenerator produces a stride generator.
 func newStrideGenerator(stride, max, total int64) *strideGenerator {
 	return &strideGenerator{current: 0, stride: stride, max: max, total: total}
 }
 
+// permutedGenerator generates things in a range in an arbitrary order.
 type permutedGenerator struct {
 	permutation    *apophenia.Permutation
 	offset         int64
@@ -255,24 +270,25 @@ type permutedGenerator struct {
 }
 
 // Next generates a new value from an underlying sequence.
-func (pg *permutedGenerator) Next() (value int64, done bool) {
-	value = pg.current
-	pg.current++
-	if pg.current >= pg.total {
-		pg.current = 0
+func (g *permutedGenerator) Next() (value int64, done bool) {
+	value = g.current
+	g.current++
+	if g.current >= g.total {
+		g.current = 0
 		done = true
 	}
 	// permute value, and coerce it back to range
-	value = pg.permutation.Nth(value) + pg.offset
+	value = g.permutation.Nth(value) + g.offset
 	return value, done
 }
 
+// newPermutedGenerator creates a permutedGenerator.
 func newPermutedGenerator(min, max, total int64, row uint32, seed int64) (*permutedGenerator, error) {
 	var err error
 	seq := apophenia.NewSequence(seed)
-	pg := &permutedGenerator{offset: min, total: total}
-	pg.permutation, err = apophenia.NewPermutation(max-min, row, seq)
-	return pg, err
+	g := &permutedGenerator{offset: min, total: total}
+	g.permutation, err = apophenia.NewPermutation(max-min, row, seq)
+	return g, err
 }
 
 // valueGenerator represents a thing which generates predictable values
@@ -290,16 +306,17 @@ type linearValueGenerator struct {
 	max       uint64
 }
 
+// newLinearValueGenerator creates a new linearValueGenerator.
 func newLinearValueGenerator(min, max, seed int64) (*linearValueGenerator, error) {
-	lvg := &linearValueGenerator{offset: min, max: uint64(max - min), seq: apophenia.NewSequence(seed)}
-	lvg.bitoffset = apophenia.OffsetFor(apophenia.SequenceUser1, 0, 0, 0)
-	return lvg, nil
+	g := &linearValueGenerator{offset: min, max: uint64(max - min), seq: apophenia.NewSequence(seed)}
+	g.bitoffset = apophenia.OffsetFor(apophenia.SequenceUser1, 0, 0, 0)
+	return g, nil
 }
 
-func (lvg *linearValueGenerator) Nth(n int64) int64 {
-	lvg.bitoffset.Lo = uint64(n)
-	val := lvg.seq.BitsAt(lvg.bitoffset).Lo % lvg.max
-	return int64(val) + lvg.offset
+func (g *linearValueGenerator) Nth(n int64) int64 {
+	g.bitoffset.Lo = uint64(n)
+	val := g.seq.BitsAt(g.bitoffset).Lo % g.max
+	return int64(val) + g.offset
 }
 
 // zipfValueGenerator generator generates values with a Zipf distribution.
@@ -310,17 +327,17 @@ type zipfValueGenerator struct {
 
 func newZipfValueGenerator(s, v float64, min, max, seed int64) (*zipfValueGenerator, error) {
 	var err error
-	zvg := zipfValueGenerator{offset: min}
-	zvg.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, apophenia.NewSequence(seed))
+	g := zipfValueGenerator{offset: min}
+	g.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, apophenia.NewSequence(seed))
 	if err != nil {
 		return nil, err
 	}
-	return &zvg, nil
+	return &g, nil
 }
 
-func (zvg *zipfValueGenerator) Nth(n int64) int64 {
-	val := zvg.z.Nth(uint64(n))
-	return int64(val) + zvg.offset
+func (g *zipfValueGenerator) Nth(n int64) int64 {
+	val := g.z.Nth(uint64(n))
+	return int64(val) + g.offset
 }
 
 type permutedValueGenerator struct {
@@ -329,20 +346,20 @@ type permutedValueGenerator struct {
 	offset   int64
 }
 
-func permuteValueGenerator(vg valueGenerator, min, max, seed int64) (*permutedValueGenerator, error) {
+func newPermutedValueGenerator(base valueGenerator, min, max, seed int64) (*permutedValueGenerator, error) {
 	var err error
 	seq := apophenia.NewSequence(seed)
-	nvg := permutedValueGenerator{base: vg, offset: min}
+	g := permutedValueGenerator{base: base, offset: min}
 	// 2 is an arbitrary magic number; we used 0 and 1 for other permutation sequences.
-	nvg.permuter, err = apophenia.NewPermutation(max-min, 2, seq)
-	return &nvg, err
+	g.permuter, err = apophenia.NewPermutation(max-min, 2, seq)
+	return &g, err
 }
 
-func (pvg *permutedValueGenerator) Nth(n int64) int64 {
-	val := pvg.base.Nth(n)
-	val -= pvg.offset
-	val = pvg.permuter.Nth(val)
-	val += pvg.offset
+func (g *permutedValueGenerator) Nth(n int64) int64 {
+	val := g.base.Nth(n)
+	val -= g.offset
+	val = g.permuter.Nth(val)
+	val += g.offset
 	return val
 }
 
@@ -356,25 +373,25 @@ type singleValueGenerator struct {
 	completed      bool
 }
 
-func (svg *singleValueGenerator) Values() (int64, int64) {
-	return svg.values, svg.tries
+func (g *singleValueGenerator) Values() (int64, int64) {
+	return g.values, g.tries
 }
 
 // Iterate loops over columns, producing a value for each column. If a density
 // was specified, it returns only some of these values.
-func (svg *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok bool) {
+func (g *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok bool) {
 	for {
-		col, done = svg.colGen.Next()
-		value = svg.valueGen.Nth(col)
-		svg.tries++
-		if svg.weighted == nil {
-			svg.completed = done
+		col, done = g.colGen.Next()
+		value = g.valueGen.Nth(col)
+		g.tries++
+		if g.weighted == nil {
+			g.completed = done
 			return col, value, done, true
 		}
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, 0, 0, uint64(col))
-		bit := svg.weighted.Bit(offset, svg.density, svg.scale)
+		bit := g.weighted.Bit(offset, g.density, g.scale)
 		if bit == 1 {
-			svg.completed = done
+			g.completed = done
 			return col, value, done, true
 		}
 		if done {
@@ -389,15 +406,15 @@ type fieldValueGenerator struct {
 
 // NextRecord returns the next value pair from the fieldValueGenerator,
 // as a pilosa.FieldValue.
-func (fvg *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
-	if fvg.completed {
+func (g *fieldValueGenerator) NextRecord() (pilosa.Record, error) {
+	if g.completed {
 		return nil, io.EOF
 	}
-	col, val, _, ok := fvg.Iterate()
+	col, val, _, ok := g.Iterate()
 	if !ok {
 		return nil, io.EOF
 	}
-	fvg.values++
+	g.values++
 	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
 }
 
@@ -407,15 +424,15 @@ type columnValueGenerator struct {
 
 // NextRecord returns the next value pair from the columnValueGenerator,
 // as a pilosa.Column.
-func (cvg *columnValueGenerator) NextRecord() (pilosa.Record, error) {
-	if cvg.completed {
+func (g *columnValueGenerator) NextRecord() (pilosa.Record, error) {
+	if g.completed {
 		return nil, io.EOF
 	}
-	col, val, _, ok := cvg.Iterate()
+	col, val, _, ok := g.Iterate()
 	if !ok {
 		return nil, io.EOF
 	}
-	cvg.values++
+	g.values++
 	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val)}, nil
 }
 
@@ -433,14 +450,14 @@ type zipfDensityGenerator struct {
 	base, zipfV, zipfS, scale float64
 }
 
-func (z *zipfDensityGenerator) Density(col, row uint64) uint64 {
+func (g *zipfDensityGenerator) Density(col, row uint64) uint64 {
 	// from the README as of when I wrote this:
 	// For instance, with v=2, s=2, the k=0 probability is proportional to
 	// `(2+0)**(-2)` (1/4), and the k=1 probability is proportional to
 	// `(2+1)**(-2)` (1/9). Thus, the probability of a bit being set in the k=1 row is
 	// 4/9 the base density.
-	proportion := math.Pow(float64(row)+z.zipfV, -z.zipfS)
-	return uint64(z.base * proportion * z.scale)
+	proportion := math.Pow(float64(row)+g.zipfV, -g.zipfS)
+	return uint64(g.base * proportion * g.scale)
 }
 
 // maybeDensityGenerator tries itself or the next density generator in line to
@@ -453,31 +470,31 @@ type maybeDensityGenerator struct {
 
 func newMaybeDensityGenerator(fs *fieldSpec, seed int64) *maybeDensityGenerator {
 	var err error
-	m := maybeDensityGenerator{chance: uint64(float64(*fs.DensityScale) * *fs.Chance), scale: *fs.DensityScale}
-	m.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(seed))
+	g := maybeDensityGenerator{chance: uint64(float64(*fs.DensityScale) * *fs.Chance), scale: *fs.DensityScale}
+	g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(seed))
 	if err != nil {
 		return nil
 	}
 	if fs.Next != nil {
-		m.next, _ = makeDensityGenerator(fs.Next, seed)
+		g.next, _ = makeDensityGenerator(fs.Next, seed)
 	}
-	m.generator = baseDensityGenerator(fs)
-	return &m
+	g.generator = baseDensityGenerator(fs)
+	return &g
 }
 
-func (m *maybeDensityGenerator) Density(col, row uint64) uint64 {
-	if m == nil {
+func (g *maybeDensityGenerator) Density(col, row uint64) uint64 {
+	if g == nil {
 		return 0
 	}
 	// we ignore row here, because we want to get the same selection of density
 	// for a given column every time.
 	offset := apophenia.OffsetFor(apophenia.SequenceWeighted, 0, 0, uint64(col))
-	bit := m.weighted.Bit(offset, m.chance, m.scale)
+	bit := g.weighted.Bit(offset, g.chance, g.scale)
 	if bit == 1 {
-		return m.generator.Density(col, row)
+		return g.generator.Density(col, row)
 	}
-	if m.next != nil {
-		return m.next.Density(col, row)
+	if g.next != nil {
+		return g.next.Density(col, row)
 	}
 	return 0
 }
@@ -485,8 +502,8 @@ func (m *maybeDensityGenerator) Density(col, row uint64) uint64 {
 func baseDensityGenerator(fs *fieldSpec) densityGenerator {
 	switch fs.ValueRule {
 	case densityTypeLinear:
-		fdg := fixedDensityGenerator(float64(*fs.DensityScale) * fs.Density)
-		return &fdg
+		g := fixedDensityGenerator(float64(*fs.DensityScale) * fs.Density)
+		return &g
 	case densityTypeZipf:
 		return &zipfDensityGenerator{base: fs.Density / math.Pow(fs.ZipfV, -fs.ZipfS), zipfV: fs.ZipfV, zipfS: fs.ZipfS, scale: float64(*fs.DensityScale)}
 	}
@@ -518,57 +535,63 @@ type doubleValueGenerator struct {
 
 // Values yields the number of values generated, and also the number of
 // positions evaluated.
-func (dvg *doubleValueGenerator) Values() (int64, int64) {
-	return dvg.values, dvg.tries
+func (g *doubleValueGenerator) Values() (int64, int64) {
+	return g.values, g.tries
 }
 
+// rowMajorValueGenerator is a generator which generates values for every
+// column for each row in turn. This is usually dramatically faster with
+// Pilosa's server.
 type rowMajorValueGenerator struct {
 	doubleValueGenerator
 }
 
-// NextRecord() finds the next record, probably.
-func (rvg *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	for !rvg.colDone || !rvg.rowDone {
-		if rvg.colDone {
-			rvg.row, rvg.rowDone = rvg.rowGen.Next()
-			if !rvg.densityPerCol {
-				rvg.density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+// NextRecord finds the next record, if one is available.
+func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
+	for !g.colDone || !g.rowDone {
+		if g.colDone {
+			g.row, g.rowDone = g.rowGen.Next()
+			if !g.densityPerCol {
+				g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
 			}
 		}
-		rvg.col, rvg.colDone = rvg.colGen.Next()
-		if rvg.densityPerCol {
-			rvg.density = rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
+		g.col, g.colDone = g.colGen.Next()
+		if g.densityPerCol {
+			g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
 		}
 		// use row as the "seed" for Weighted computations, so each row
 		// can have different values.
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
-		bit := rvg.weighted.Bit(offset, rvg.density, rvg.densityScale)
-		rvg.tries++
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+		bit := g.weighted.Bit(offset, g.density, g.densityScale)
+		g.tries++
 		if bit != 0 {
-			rvg.values++
-			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil
+			g.values++
+			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
 		}
 	}
 	return nil, io.EOF
 }
 
+// columnMajorValueGenerator is a generator which generates every row value
+// for each column in turn.
 type columnMajorValueGenerator struct {
 	doubleValueGenerator
 }
 
-func (rvg *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	for !rvg.colDone || !rvg.rowDone {
-		if rvg.rowDone {
-			rvg.col, rvg.colDone = rvg.colGen.Next()
+// NextRecord returns the next record, if one is available.
+func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
+	for !g.colDone || !g.rowDone {
+		if g.rowDone {
+			g.col, g.colDone = g.colGen.Next()
 		}
-		rvg.row, rvg.rowDone = rvg.rowGen.Next()
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(rvg.row), 0, uint64(rvg.col))
-		density := rvg.densityGen.Density(uint64(rvg.col), uint64(rvg.row))
-		bit := rvg.weighted.Bit(offset, density, rvg.densityScale)
-		rvg.tries++
+		g.row, g.rowDone = g.rowGen.Next()
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
+		bit := g.weighted.Bit(offset, density, g.densityScale)
+		g.tries++
 		if bit != 0 {
-			rvg.values++
-			return pilosa.Column{ColumnID: uint64(rvg.col), RowID: uint64(rvg.row)}, nil
+			g.values++
+			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
 		}
 	}
 	return nil, io.EOF
