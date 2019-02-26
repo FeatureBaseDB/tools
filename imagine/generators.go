@@ -308,7 +308,7 @@ type linearValueGenerator struct {
 
 // newLinearValueGenerator creates a new linearValueGenerator.
 func newLinearValueGenerator(min, max, seed int64) (*linearValueGenerator, error) {
-	g := &linearValueGenerator{offset: min, max: uint64(max - min), seq: apophenia.NewSequence(seed)}
+	g := &linearValueGenerator{offset: min, max: uint64(max) - uint64(min), seq: apophenia.NewSequence(seed)}
 	g.bitoffset = apophenia.OffsetFor(apophenia.SequenceUser1, 0, 0, 0)
 	return g, nil
 }
@@ -328,7 +328,7 @@ type zipfValueGenerator struct {
 func newZipfValueGenerator(s, v float64, min, max, seed int64) (*zipfValueGenerator, error) {
 	var err error
 	g := zipfValueGenerator{offset: min}
-	g.z, err = apophenia.NewZipf(s, v, uint64(max-min), 0, apophenia.NewSequence(seed))
+	g.z, err = apophenia.NewZipf(s, v, uint64(max)-uint64(min), 0, apophenia.NewSequence(seed))
 	if err != nil {
 		return nil, err
 	}
