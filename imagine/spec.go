@@ -5,12 +5,15 @@ package main
 //go:generate enumer -type=dimensionOrder -trimprefix=dimensionOrder -text -transform=kebab -output enums_dimensionorder.go
 //go:generate enumer -type=valueOrder -trimprefix=valueOrder -text -transform=kebab -output enums_valueorder.go
 //go:generate enumer -type=cacheType -trimprefix=cacheType -text -transform=kebab -output enums_cachetype.go
+//go:generate enumer -type=stampType -trimprefix=stampType -text -transform=kebab -output enums_stamptype.go
 
 import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -54,6 +57,30 @@ const (
 	cacheTypeLRU
 )
 
+type stampType int
+
+const (
+	stampTypeNone stampType = iota
+	stampTypeIncrement
+	stampTypeRandom
+)
+
+type columnOffset int64
+
+func (c *columnOffset) UnmarshalText(input []byte) error {
+	in := string(input)
+	if in == "append" {
+		*c = -1
+		return nil
+	}
+	val, err := strconv.ParseInt(in, 10, 64)
+	if err != nil {
+		return err
+	}
+	*c = columnOffset(val)
+	return nil
+}
+
 type tomlSpec struct {
 	PathName     string `toml:"-"` // don't set in spec, this will be set to the file name
 	Prefix       string // overruled by config setting
@@ -88,16 +115,17 @@ type fieldSpec struct {
 	Parent *indexSpec `toml:"-"` // the indexSpec this field applies to
 
 	// common values for all the field types
-	Name         string
-	Type         fieldType   // "set", "mutex", "bsi"
-	ZipfV, ZipfS float64     // the V/S parameters of a Zipf distribution
-	Min, Max     int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
-	SourceIndex  string      // SourceIndex's columns are used as value range for this field.
-	Density      float64     // Base density to use in [0,1].
-	ValueRule    densityType // which of several hypothetical density/value algorithms to use.
-	DensityScale *uint64     // optional density scale
-	Chance       *float64    // probability of using this fieldSpec for a given column
-	Next         *fieldSpec  `toml:"-"` // next fieldspec to try
+	Name          string
+	Type          fieldType   // "set", "mutex", "bsi"
+	ZipfV, ZipfS  float64     // the V/S parameters of a Zipf distribution
+	Min, Max      int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
+	SourceIndex   string      // SourceIndex's columns are used as value range for this field.
+	Density       float64     // Base density to use in [0,1].
+	ValueRule     densityType // which of several hypothetical density/value algorithms to use.
+	DensityScale  *uint64     // optional density scale
+	Chance        *float64    // probability of using this fieldSpec for a given column
+	Next          *fieldSpec  `toml:"-"` // next fieldspec to try
+	HighestColumn uint64      `toml:"-"` // highest column we've generated for this field
 
 	// Only useful for set/mutex fields.
 	Cache cacheType // "lru" or "none", default is lru for set/mutex
@@ -137,6 +165,10 @@ type taskSpec struct {
 	Seed                  *int64         // PRNG seed to use.
 	Columns               *uint64        // total column space (defaults to index's)
 	ColumnOrder, RowOrder valueOrder     // linear or permuted orders (or stride, for columns)
+	ColumnOffset          columnOffset   // starting column or "append"
+	Stamp                 stampType      // what timestamps if any to use
+	StampRange            time.Duration  // interval to space stamps over
+	StampStart            time.Time      // starting point for stamps
 	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
 	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
 	BatchSize             *int           // override batch batchsize
@@ -215,13 +247,18 @@ func describeWorkload(wl *workloadSpec) {
 }
 
 func (t *taskSpec) String() string {
-	return fmt.Sprintf("%s/%s: %d columns", t.Index, t.Field, *t.Columns)
+	offset := ""
+	if t.ColumnOffset != 0 {
+		offset = fmt.Sprintf(" starting at %d", t.ColumnOffset)
+	}
+	return fmt.Sprintf("%s/%s: %d columns%s", t.Index, t.Field, *t.Columns, offset)
 }
 
 func readSpec(path string) (*tomlSpec, error) {
 	var ts tomlSpec
 	md, err := toml.DecodeFile(path, &ts)
 	if err != nil {
+		fmt.Printf("this err\n")
 		return nil, err
 	}
 	// don't allow keys we haven't heard of

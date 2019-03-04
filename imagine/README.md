@@ -150,7 +150,6 @@ with an offset of the minimum value. For instance, a field with min/max of
 10/20 behaves exactly like a field with a min/max of 0/10, with 10 added to
 each value.
 
-
 ### Workloads
 
 A workload describes a named series of steps, which apply to indexes
@@ -193,6 +192,9 @@ Each task outlines a specific set of data to populate in a given field.
 * `columns`: the number of columns to populate. default: populate the
   entire field, using the index's columns. Must not be higher than
   the index's number of columns.
+* `columnOffset`: column to start with. The special value "append" means
+  to create new columns starting immediately after the highest column
+  previously created.
 * `columnOrder`: "linear", "stride" or "permute" (default linear). Indicates
   whether column values should be generated sequentially or in permuted
   order.
@@ -202,6 +204,11 @@ Each task outlines a specific set of data to populate in a given field.
   generated values, for mutex or BSI fields.
 * `batchSize`: Size of import batches (overrides, but defaults to,
   batch's batchSize).
+* `stamp`: Controls timestamp behavior. One of "none", "random", "increasing".
+* `stampRange`: A duration over which to spread timestamps when generating
+  them.
+* `stampStart`: A specific time to start timestamps at. Defaults to current
+  time minus stamp range.
 
 ## Data Generation
 

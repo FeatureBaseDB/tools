@@ -73,6 +73,7 @@ func noSortNeeded(ts *taskSpec) bool {
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
 	dvg := doubleValueGenerator{}
+	dvg.Generating(ts)
 	dvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
@@ -109,6 +110,7 @@ func newSingleValueGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID 
 	if err != nil {
 		return svg, err
 	}
+	svg.Generating(ts)
 	if ts.FieldSpec.Density != 1.0 {
 		svg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 		svg.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
@@ -385,6 +387,7 @@ func (g *permutedValueGenerator) Nth(n int64) int64 {
 }
 
 type singleValueGenerator struct {
+	genericGenerator
 	colGen         sequenceGenerator
 	valueGen       valueGenerator
 	values         int64
@@ -443,7 +446,8 @@ func (g *fieldValueGenerator) NextRecord() (rec pilosa.Record, err error) {
 		return nil, io.EOF
 	}
 	g.values++
-	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
+	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
+	return pilosa.FieldValue{ColumnID: uint64(col + g.ColumnOffset), Value: val}, nil
 }
 
 type columnValueGenerator struct {
@@ -461,7 +465,8 @@ func (g *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 		return nil, io.EOF
 	}
 	g.values++
-	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val)}, nil
+	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
+	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val)}, nil
 }
 
 type densityGenerator interface {
@@ -549,6 +554,7 @@ func makeDensityGenerator(fs *fieldSpec, seed int64) (densityGenerator, bool) {
 // then columns.
 
 type doubleValueGenerator struct {
+	genericGenerator
 	colGen, rowGen   sequenceGenerator
 	colDone, rowDone bool
 	densityGen       densityGenerator
@@ -601,7 +607,8 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		}
 		if bit != 0 {
 			g.values++
-			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
+			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
+			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row)}, nil
 		}
 
 	}
@@ -637,7 +644,8 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		}
 		if bit != 0 {
 			g.values++
-			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
+			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
+			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row)}, nil
 		}
 	}
 	if g.updateChan != nil {
@@ -646,4 +654,26 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: true}
 	}
 	return nil, io.EOF
+}
+
+type genericGenerator struct {
+	FieldSpec    *fieldSpec
+	ColumnOffset int64
+}
+
+func (g *genericGenerator) Generating(ts *taskSpec) {
+	g.FieldSpec = ts.FieldSpec
+	if ts.ColumnOffset == -1 {
+		g.ColumnOffset = int64(ts.FieldSpec.HighestColumn + 1)
+	} else {
+		g.ColumnOffset = int64(ts.ColumnOffset)
+	}
+}
+
+func (g *genericGenerator) Generated(col, row uint64) {
+	if g.FieldSpec != nil {
+		if g.FieldSpec.HighestColumn < col {
+			g.FieldSpec.HighestColumn = col
+		}
+	}
 }
