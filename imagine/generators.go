@@ -14,6 +14,7 @@ type genfunc func(*taskSpec, chan taskUpdate, string) (CountingIterator, error)
 
 var newGenerators = map[fieldType]genfunc{
 	fieldTypeSet:   newSetGenerator,
+	fieldTypeTime:  newSetGenerator,
 	fieldTypeMutex: newMutexGenerator,
 	fieldTypeBSI:   newBSIGenerator,
 }
@@ -73,7 +74,6 @@ func noSortNeeded(ts *taskSpec) bool {
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
 	dvg := doubleValueGenerator{}
-	dvg.Generating(ts)
 	dvg.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
@@ -82,6 +82,9 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	if err != nil {
 		return nil, err
 	}
+	_, cols := dvg.colGen.Status()
+	_, rows := dvg.rowGen.Status()
+	dvg.Generating(ts, cols, rows)
 	dvg.densityGen, dvg.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
 	dvg.densityScale = *fs.DensityScale
 	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
@@ -106,11 +109,12 @@ func newSingleValueGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID 
 	if err != nil {
 		return svg, err
 	}
+	_, cols := svg.colGen.Status()
 	svg.valueGen, err = makeValueGenerator(ts)
 	if err != nil {
 		return svg, err
 	}
-	svg.Generating(ts)
+	svg.Generating(ts, cols, 1)
 	if ts.FieldSpec.Density != 1.0 {
 		svg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 		svg.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
@@ -466,7 +470,7 @@ func (g *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 	}
 	g.values++
 	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
-	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val)}, nil
+	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val), Timestamp: g.LastTimestamp}, nil
 }
 
 type densityGenerator interface {
@@ -608,7 +612,7 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		if bit != 0 {
 			g.values++
 			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
-			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row)}, nil
+			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row), Timestamp: g.LastTimestamp}, nil
 		}
 
 	}
@@ -657,16 +661,32 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 }
 
 type genericGenerator struct {
-	FieldSpec    *fieldSpec
-	ColumnOffset int64
+	FieldSpec     *fieldSpec
+	ColumnOffset  int64
+	LastTimestamp int64
+	StampStep     int64
 }
 
-func (g *genericGenerator) Generating(ts *taskSpec) {
+// Generating indicates that we're about to try to use a generator for a given
+// taskSpec, and does bookkeeping, like handling "append" mode offsets, or
+// creating a timestamp generator.
+func (g *genericGenerator) Generating(ts *taskSpec, cols, rows int64) {
 	g.FieldSpec = ts.FieldSpec
 	if ts.ColumnOffset == -1 {
 		g.ColumnOffset = int64(ts.FieldSpec.HighestColumn + 1)
 	} else {
 		g.ColumnOffset = int64(ts.ColumnOffset)
+	}
+	// TODO: Add timestamp generation.
+	if ts.Stamp != stampTypeNone {
+		g.LastTimestamp = ts.StampStart.UnixNano()
+		values := cols * rows
+		if values > int64(*ts.StampRange) {
+			fmt.Printf("warning: %d values in a range of %v, more than 1/ns", values, *ts.StampRange)
+			g.StampStep = 1
+		} else {
+			g.StampStep = values / int64(*ts.StampRange)
+		}
 	}
 }
 
@@ -675,5 +695,8 @@ func (g *genericGenerator) Generated(col, row uint64) {
 		if g.FieldSpec.HighestColumn < col {
 			g.FieldSpec.HighestColumn = col
 		}
+	}
+	if g.LastTimestamp != 0 {
+		g.LastTimestamp += g.StampStep
 	}
 }

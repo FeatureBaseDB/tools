@@ -91,6 +91,8 @@ Fields can take several kinds, specified as "type". Defined types:
 * `mutex`: The "mutex" field type, which is like a set, only it enforces
   that only one row is set per column.
 * `bsi`: The binary-representation field type, usable for range queries.
+* `time`: The "time" field type, which is a set with additional optional
+  timestamp information.
 
 All fields share some common parameters:
 
@@ -116,13 +118,15 @@ Set and mutex fields can also configure a cache type:
 
 * `cache`: Cache type, one of "lru" or "none".
 
-##### Set Fields
+##### Set/Time Fields
 
-Set fields can be generated either in row-major order (generate one row at
-a time for all columns) or column-major order (generate all rows for each
-column).
+Set (and time) fields can be generated either in row-major order (generate
+one row at a time for all columns) or column-major order (generate all rows for
+each column).
 
 * `dimensionOrder`: string, one of "row" or "column". default is "row".
+* `quantum`: string, one of "Y", "YM", "YMD", or "YMDH". Valid only for
+  time fields. Default is "YMDH".
 
 Zipf parameters: The first row will have bits set based on the base density
 provided. Following rows will follow the Zipf distribution's probabilities.

@@ -6,6 +6,7 @@ package main
 //go:generate enumer -type=valueOrder -trimprefix=valueOrder -text -transform=kebab -output enums_valueorder.go
 //go:generate enumer -type=cacheType -trimprefix=cacheType -text -transform=kebab -output enums_cachetype.go
 //go:generate enumer -type=stampType -trimprefix=stampType -text -transform=kebab -output enums_stamptype.go
+//go:generate enumer -type=timeQuantum -trimprefix=timeQuantum -text -transform=caps -output enums_timequantum.go
 
 import (
 	"errors"
@@ -25,6 +26,7 @@ const (
 	fieldTypeBSI
 	fieldTypeSet
 	fieldTypeMutex
+	fieldTypeTime
 )
 
 type densityType int
@@ -61,8 +63,17 @@ type stampType int
 
 const (
 	stampTypeNone stampType = iota
-	stampTypeIncrement
+	stampTypeIncreasing
 	stampTypeRandom
+)
+
+type timeQuantum int
+
+const (
+	timeQuantumY timeQuantum = iota
+	timeQuantumYM
+	timeQuantumYMD
+	timeQuantumYMDH
 )
 
 type columnOffset int64
@@ -116,16 +127,17 @@ type fieldSpec struct {
 
 	// common values for all the field types
 	Name          string
-	Type          fieldType   // "set", "mutex", "bsi"
-	ZipfV, ZipfS  float64     // the V/S parameters of a Zipf distribution
-	Min, Max      int64       // Allowable value range for a BSI field. Row range for set/mutex fields.
-	SourceIndex   string      // SourceIndex's columns are used as value range for this field.
-	Density       float64     // Base density to use in [0,1].
-	ValueRule     densityType // which of several hypothetical density/value algorithms to use.
-	DensityScale  *uint64     // optional density scale
-	Chance        *float64    // probability of using this fieldSpec for a given column
-	Next          *fieldSpec  `toml:"-"` // next fieldspec to try
-	HighestColumn uint64      `toml:"-"` // highest column we've generated for this field
+	Type          fieldType    // "set", "mutex", "bsi"
+	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
+	Min, Max      int64        // Allowable value range for a BSI field. Row range for set/mutex fields.
+	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
+	Density       float64      // Base density to use in [0,1].
+	ValueRule     densityType  // which of several hypothetical density/value algorithms to use.
+	DensityScale  *uint64      // optional density scale
+	Chance        *float64     // probability of using this fieldSpec for a given column
+	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
+	HighestColumn uint64       `toml:"-"` // highest column we've generated for this field
+	Quantum       *timeQuantum // time quantum, useful only forr time fields
 
 	// Only useful for set/mutex fields.
 	Cache cacheType // "lru" or "none", default is lru for set/mutex
@@ -167,8 +179,8 @@ type taskSpec struct {
 	ColumnOrder, RowOrder valueOrder     // linear or permuted orders (or stride, for columns)
 	ColumnOffset          columnOffset   // starting column or "append"
 	Stamp                 stampType      // what timestamps if any to use
-	StampRange            time.Duration  // interval to space stamps over
-	StampStart            time.Time      // starting point for stamps
+	StampRange            *time.Duration // interval to space stamps over
+	StampStart            *time.Time     // starting point for stamps
 	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
 	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
 	BatchSize             *int           // override batch batchsize
@@ -493,13 +505,24 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 			fs.Cache = cacheTypeNone
 		}
 	}
-
 	if fs.Type == fieldTypeBSI && fs.Cache != cacheTypeNone {
 		return fmt.Errorf("field %s specifies a cache (%v) for a BSI field", fs.Name, fs.Cache)
+	}
+	if fs.Type == fieldTypeTime {
+		if fs.Quantum == nil {
+			q := timeQuantumYMDH
+			fs.Quantum = &q
+		}
+	} else {
+		if fs.Quantum != nil {
+			return fmt.Errorf("field %s specifies a time quantum but is not a time field", fs.Name)
+		}
 	}
 	return nil
 }
 
+// Cleanup performs bookkeeping tasks and error-checking, and calls the
+// Cleanup method of associated batches.
 func (ws *workloadSpec) Cleanup(conf *Config) error {
 	if ws.ThreadCount != nil {
 		if *ws.ThreadCount < 1 {
@@ -516,6 +539,8 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 	return nil
 }
 
+// Cleanup performs bookkeeping tasks, and error-checking, and calls the
+// Cleanup method of associated tasks.
 func (bs *batchSpec) Cleanup(conf *Config) error {
 	if bs.ThreadCount == nil {
 		bs.ThreadCount = bs.Parent.ThreadCount
@@ -533,6 +558,9 @@ func (bs *batchSpec) Cleanup(conf *Config) error {
 	return nil
 }
 
+// Cleanup performs bookkeeping tasks, associates a taskSpec with the
+// corresponding fieldSpec, propagates values for parameters with default
+// values, and checks for spec errors.
 func (ts *taskSpec) Cleanup(conf *Config) error {
 	index, ok := conf.indexes[ts.Index]
 	if !ok {
@@ -578,6 +606,24 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	}
 	if ts.BatchSize == nil {
 		ts.BatchSize = ts.Parent.BatchSize
+	}
+	// handle timestamp behavior, if requested.
+	if ts.Stamp == stampTypeNone {
+		return nil
+	}
+	// We can't do timestamps with FieldValue returns.
+	if ts.FieldSpec.Type == fieldTypeBSI {
+		return fmt.Errorf("field %s: BSI fields don't support timestamps", ts.Field)
+	}
+	// default to one week
+	if ts.StampRange == nil {
+		week := time.Hour * 7 * 24
+		ts.StampRange = &week
+	}
+	// default to range from now to StampRange ago
+	if ts.StampStart == nil {
+		start := time.Now().Add(-1 * *ts.StampRange)
+		ts.StampStart = &start
 	}
 	return nil
 }

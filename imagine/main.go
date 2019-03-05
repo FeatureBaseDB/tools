@@ -322,6 +322,8 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 			dbIndex.Field(name, pilosa.OptFieldTypeSet("none", 0))
 		case fieldTypeMutex:
 			dbIndex.Field(name, pilosa.OptFieldTypeMutex("none", 0))
+		case fieldTypeTime:
+			dbIndex.Field(name, pilosa.OptFieldTypeTime(pilosa.TimeQuantum(field.Quantum.String())))
 		default:
 			errs = append(errs, fmt.Errorf("unknown field type '%s'", field.Type))
 		}

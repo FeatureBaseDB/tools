@@ -6,9 +6,9 @@ import (
 	"fmt"
 )
 
-const _fieldTypeName = "undefbsisetmutex"
+const _fieldTypeName = "undefbsisetmutextime"
 
-var _fieldTypeIndex = [...]uint8{0, 5, 8, 11, 16}
+var _fieldTypeIndex = [...]uint8{0, 5, 8, 11, 16, 20}
 
 func (i fieldType) String() string {
 	if i < 0 || i >= fieldType(len(_fieldTypeIndex)-1) {
@@ -17,13 +17,14 @@ func (i fieldType) String() string {
 	return _fieldTypeName[_fieldTypeIndex[i]:_fieldTypeIndex[i+1]]
 }
 
-var _fieldTypeValues = []fieldType{0, 1, 2, 3}
+var _fieldTypeValues = []fieldType{0, 1, 2, 3, 4}
 
 var _fieldTypeNameToValueMap = map[string]fieldType{
 	_fieldTypeName[0:5]:   0,
 	_fieldTypeName[5:8]:   1,
 	_fieldTypeName[8:11]:  2,
 	_fieldTypeName[11:16]: 3,
+	_fieldTypeName[16:20]: 4,
 }
 
 // fieldTypeString retrieves an enum value from the enum constants string name.
