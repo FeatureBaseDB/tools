@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sync"
 
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/apophenia"
@@ -73,80 +74,86 @@ func noSortNeeded(ts *taskSpec) bool {
 
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
-	dvg := doubleValueGenerator{}
-	dvg.colGen, err = makeColumnGenerator(ts)
-	if err != nil {
-		return nil, err
-	}
-	dvg.rowGen, err = makeRowGenerator(ts)
-	if err != nil {
-		return nil, err
-	}
-	_, cols := dvg.colGen.Status()
-	_, rows := dvg.rowGen.Status()
-	dvg.Generating(ts, cols, rows)
-	dvg.densityGen, dvg.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
-	dvg.densityScale = *fs.DensityScale
-	dvg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
-	dvg.updateChan = updateChan
-	dvg.updateID = updateID
-
+	var g *doubleValueGenerator
 	switch ts.DimensionOrder {
 	case dimensionOrderRow:
-		dvg.colDone = true
-		return &rowMajorValueGenerator{doubleValueGenerator: dvg}, nil
+		x := rowMajorValueGenerator{}
+		g = &x.doubleValueGenerator
+		iter = &x
+		g.colDone = true
 	case dimensionOrderColumn:
-		dvg.rowDone = true
-		return &columnMajorValueGenerator{doubleValueGenerator: dvg}, nil
+		x := columnMajorValueGenerator{}
+		g = &x.doubleValueGenerator
+		iter = &x
+		g.rowDone = true
+	default:
+		return nil, errors.New("unknown dimension order for set")
 	}
-	return nil, errors.New("unknown dimension order for set")
+	g.colGen, err = makeColumnGenerator(ts)
+	if err != nil {
+		return nil, err
+	}
+	g.rowGen, err = makeRowGenerator(ts)
+	if err != nil {
+		return nil, err
+	}
+	_, cols := g.colGen.Status()
+	_, rows := g.rowGen.Status()
+	g.Prepare(ts, cols, rows)
+	g.densityGen, g.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
+	g.densityScale = *fs.DensityScale
+	g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
+	g.updateChan = updateChan
+	g.updateID = updateID
+
+	return iter, nil
 }
 
-// newSingleValueGenerator handles the column/value/weighted parts of
-// generation that are shared between column/field generators.
-func newSingleValueGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (svg singleValueGenerator, err error) {
-	svg.colGen, err = makeColumnGenerator(ts)
+// prepareSingleValueGenerator populates the shared singleValueGenerator
+// parts of a column or field value generator.
+func (g *singleValueGenerator) prepareSingleValueGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (err error) {
+	g.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
-		return svg, err
+		return err
 	}
-	_, cols := svg.colGen.Status()
-	svg.valueGen, err = makeValueGenerator(ts)
+	_, cols := g.colGen.Status()
+	g.valueGen, err = makeValueGenerator(ts)
 	if err != nil {
-		return svg, err
+		return err
 	}
-	svg.Generating(ts, cols, 1)
+	g.Prepare(ts, cols, 1)
 	if ts.FieldSpec.Density != 1.0 {
-		svg.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
-		svg.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
-		svg.scale = *ts.FieldSpec.DensityScale
+		g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
+		g.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
+		g.scale = *ts.FieldSpec.DensityScale
 	}
-	svg.updateChan = updateChan
-	svg.updateID = updateID
-	return svg, err
+	g.updateChan = updateChan
+	g.updateID = updateID
+	return nil
 }
 
 // newMutexGenerator builds a mutex generator, which is a generator
 // that computes a single value for a column, then returns it as a
 // pilosa.Column.
 func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
-	svg, err := newSingleValueGenerator(ts, updateChan, updateID)
+	g := columnValueGenerator{}
+	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
 		return nil, err
 	}
-	cvg := columnValueGenerator{singleValueGenerator: svg}
-	return &cvg, nil
+	return &g, nil
 }
 
 // newBSIGenerator builds a value generator, which is a generator
 // that computes a single value for a column, then returns it as a
 // pilosa.FieldValue.
 func newBSIGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
-	svg, err := newSingleValueGenerator(ts, updateChan, updateID)
+	g := fieldValueGenerator{}
+	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
 		return nil, err
 	}
-	fvg := fieldValueGenerator{singleValueGenerator: svg}
-	return &fvg, nil
+	return &g, nil
 }
 
 // makeColumnGenerator builds a generator to iterate over columns of a field.
@@ -394,17 +401,11 @@ type singleValueGenerator struct {
 	genericGenerator
 	colGen         sequenceGenerator
 	valueGen       valueGenerator
-	values         int64
-	tries          int64
 	density, scale uint64
 	weighted       *apophenia.Weighted
 	completed      bool
 	updateChan     chan taskUpdate
 	updateID       string
-}
-
-func (g *singleValueGenerator) Values() (int64, int64) {
-	return g.values, g.tries
 }
 
 // Iterate loops over columns, producing a value for each column. If a density
@@ -449,7 +450,6 @@ func (g *fieldValueGenerator) NextRecord() (rec pilosa.Record, err error) {
 	if !ok {
 		return nil, io.EOF
 	}
-	g.values++
 	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
 	return pilosa.FieldValue{ColumnID: uint64(col + g.ColumnOffset), Value: val}, nil
 }
@@ -468,9 +468,8 @@ func (g *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 	if !ok {
 		return nil, io.EOF
 	}
-	g.values++
 	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
-	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val), Timestamp: g.LastTimestamp}, nil
+	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val), Timestamp: g.LatestStamp}, nil
 }
 
 type densityGenerator interface {
@@ -567,16 +566,8 @@ type doubleValueGenerator struct {
 	density          uint64
 	weighted         *apophenia.Weighted
 	row, col         int64
-	values           int64
-	tries            int64
 	updateChan       chan taskUpdate
 	updateID         string
-}
-
-// Values yields the number of values generated, and also the number of
-// positions evaluated.
-func (g *doubleValueGenerator) Values() (int64, int64) {
-	return g.values, g.tries
 }
 
 // rowMajorValueGenerator is a generator which generates values for every
@@ -610,9 +601,8 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
 		}
 		if bit != 0 {
-			g.values++
 			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
-			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row), Timestamp: g.LastTimestamp}, nil
+			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row), Timestamp: g.LatestStamp}, nil
 		}
 
 	}
@@ -647,7 +637,6 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
 		}
 		if bit != 0 {
-			g.values++
 			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
 			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row)}, nil
 		}
@@ -660,43 +649,65 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 	return nil, io.EOF
 }
 
+// genericGenerator handles shared things, like updating highest-column counts
+// for fields, or generating timestamps.
 type genericGenerator struct {
-	FieldSpec     *fieldSpec
-	ColumnOffset  int64
-	LastTimestamp int64
-	StampStep     int64
+	FieldSpec    *fieldSpec
+	ColumnOffset int64
+	Stamping     bool
+	FirstStamp   int64
+	LatestStamp  int64
+	StampStep    int64
+	values       int64
+	tries        int64
+	expected     int64
+	overran      sync.Once
 }
 
-// Generating indicates that we're about to try to use a generator for a given
-// taskSpec, and does bookkeeping, like handling "append" mode offsets, or
-// creating a timestamp generator.
-func (g *genericGenerator) Generating(ts *taskSpec, cols, rows int64) {
+// Prepare initializes a generator, doing bookkeeping like finding the right
+// offsets for append operations, or figuring out timestamp values.
+func (g *genericGenerator) Prepare(ts *taskSpec, cols, rows int64) {
 	g.FieldSpec = ts.FieldSpec
 	if ts.ColumnOffset == -1 {
-		g.ColumnOffset = int64(ts.FieldSpec.HighestColumn + 1)
+		g.ColumnOffset = ts.FieldSpec.HighestColumn + 1
 	} else {
 		g.ColumnOffset = int64(ts.ColumnOffset)
 	}
-	// TODO: Add timestamp generation.
+	if g.FieldSpec != nil {
+		// bump the "highest column" to the highest one we expect
+		// to generate.
+		if g.FieldSpec.HighestColumn < g.ColumnOffset+cols {
+			g.FieldSpec.HighestColumn = g.ColumnOffset + cols
+		}
+	}
 	if ts.Stamp != stampTypeNone {
-		g.LastTimestamp = ts.StampStart.UnixNano()
-		values := cols * rows
-		if values > int64(*ts.StampRange) {
-			fmt.Printf("warning: %d values in a range of %v, more than 1/ns", values, *ts.StampRange)
+		g.Stamping = true
+		g.FirstStamp = ts.StampStart.UnixNano()
+		g.expected = cols * rows
+		if g.expected > int64(*ts.StampRange) {
+			fmt.Printf("warning: %d values in a range of %v, more than 1/ns", g.expected, *ts.StampRange)
 			g.StampStep = 1
 		} else {
-			g.StampStep = values / int64(*ts.StampRange)
+			g.StampStep = int64(*ts.StampRange) / g.expected
 		}
 	}
 }
 
+// Generated reports that a row/column value has been set. It also generates
+// suitable timestamps.
 func (g *genericGenerator) Generated(col, row uint64) {
-	if g.FieldSpec != nil {
-		if g.FieldSpec.HighestColumn < col {
-			g.FieldSpec.HighestColumn = col
+	g.values++
+	if g.Stamping {
+		if g.tries > g.expected {
+			g.overran.Do(func() {
+				fmt.Printf("unexpected: total tries %d, expected tries %d\n", g.tries, g.expected)
+			})
 		}
+		// put row at slightly different offsets
+		g.LatestStamp = (g.FirstStamp + (g.StampStep * g.tries)) + int64(row)
 	}
-	if g.LastTimestamp != 0 {
-		g.LastTimestamp += g.StampStep
-	}
+}
+
+func (g *genericGenerator) Values() (int64, int64) {
+	return g.values, g.tries
 }

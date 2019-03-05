@@ -136,7 +136,7 @@ type fieldSpec struct {
 	DensityScale  *uint64      // optional density scale
 	Chance        *float64     // probability of using this fieldSpec for a given column
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
-	HighestColumn uint64       `toml:"-"` // highest column we've generated for this field
+	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only forr time fields
 
 	// Only useful for set/mutex fields.
