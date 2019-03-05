@@ -92,6 +92,17 @@ func (c *columnOffset) UnmarshalText(input []byte) error {
 	return nil
 }
 
+type duration time.Duration
+
+func (d *duration) UnmarshalText(input []byte) error {
+	dur, err := time.ParseDuration(string(input))
+	if err != nil {
+		return err
+	}
+	*d = duration(dur)
+	return nil
+}
+
 type tomlSpec struct {
 	PathName     string `toml:"-"` // don't set in spec, this will be set to the file name
 	Prefix       string // overruled by config setting
@@ -179,7 +190,7 @@ type taskSpec struct {
 	ColumnOrder, RowOrder valueOrder     // linear or permuted orders (or stride, for columns)
 	ColumnOffset          columnOffset   // starting column or "append"
 	Stamp                 stampType      // what timestamps if any to use
-	StampRange            *time.Duration // interval to space stamps over
+	StampRange            *duration      // interval to space stamps over
 	StampStart            *time.Time     // starting point for stamps
 	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
 	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
@@ -617,12 +628,12 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	}
 	// default to one week
 	if ts.StampRange == nil {
-		week := time.Hour * 7 * 24
+		week := duration(time.Hour * 7 * 24)
 		ts.StampRange = &week
 	}
 	// default to range from now to StampRange ago
 	if ts.StampStart == nil {
-		start := time.Now().Add(-1 * *ts.StampRange)
+		start := time.Now().Add(-1 * time.Duration(*ts.StampRange))
 		ts.StampStart = &start
 	}
 	return nil

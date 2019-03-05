@@ -473,6 +473,11 @@ func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err err
 			fmt.Printf("    %s %-10d\r", u.id, u.colCount)
 		}
 	}
+	if !conf.Time {
+		// without the trailing time update, the later "done" overwrites
+		// part of the status line.
+		fmt.Println("")
+	}
 	errorCount := 0
 	err = nil
 	for _, e := range errs {
