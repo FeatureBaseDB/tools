@@ -643,7 +643,7 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		ts.BatchSize = ts.Parent.BatchSize
 	}
 	if ts.UseRoaring == nil {
-		ts.UseRoaring = bs.Parent.UseRoaring
+		ts.UseRoaring = ts.Parent.UseRoaring
 	}
 	// handle timestamp behavior, if requested.
 	if ts.Stamp == stampTypeNone {
