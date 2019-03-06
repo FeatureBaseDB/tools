@@ -149,7 +149,7 @@ type fieldSpec struct {
 	Chance        *float64     // probability of using this fieldSpec for a given column
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
-	Quantum       *timeQuantum // time quantum, useful only forr time fields
+	Quantum       *timeQuantum // time quantum, useful only for time fields
 
 	// Only useful for set/mutex fields.
 	Cache cacheType // "lru" or "none", default is lru for set/mutex
