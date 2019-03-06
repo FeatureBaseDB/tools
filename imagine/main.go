@@ -230,10 +230,12 @@ func main() {
 	}
 
 	if conf.Generate {
+		genStart := time.Now()
 		err := conf.ApplyWorkloads(client)
 		if err != nil {
 			log.Fatalf("applying workloads: %v", err)
 		}
+		fmt.Printf("generation duration: %s\n", time.Since(genStart))
 	}
 
 	if conf.Delete {
@@ -242,6 +244,7 @@ func main() {
 			log.Fatalf("deleting indexes: %v", err)
 		}
 	}
+
 	fmt.Printf("done.\n")
 }
 
