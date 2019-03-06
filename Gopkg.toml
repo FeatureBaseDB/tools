@@ -1,3 +1,4 @@
 [[constraint]]
     name = "github.com/pilosa/go-pilosa"
-    branch = "master"
+    branch = "imagine"
+    source = "github.com/seebs/go-pilosa"
