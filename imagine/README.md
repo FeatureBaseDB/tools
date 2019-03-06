@@ -105,9 +105,7 @@ All fields share some common parameters:
   is equivalent to "min: 0, max: 99999".
 * `density`: The field's base density of bits set. For a set, this density
   applies to each row independently; for a mutex or BSI field, it
-  determines how many columns should have a value set. (If a stride is
-  also specified, only the columns determined by the stride are checked,
-  but density is also checked to decide which ones to set.)
+  determines how many columns should have a value set.
 * `valueRule`: "linear" or "zipf". Exact interpretation varies by field type,
   but "linear" indicates that all rows should have the same density of
   values, while "zipf" indicates that they should follow a Zipf distribution.
