@@ -6,9 +6,9 @@ import (
 	"fmt"
 )
 
-const _valueOrderName = "linearstridepermute"
+const _valueOrderName = "linearstridepermutezipf"
 
-var _valueOrderIndex = [...]uint8{0, 6, 12, 19}
+var _valueOrderIndex = [...]uint8{0, 6, 12, 19, 23}
 
 func (i valueOrder) String() string {
 	if i < 0 || i >= valueOrder(len(_valueOrderIndex)-1) {
@@ -17,12 +17,13 @@ func (i valueOrder) String() string {
 	return _valueOrderName[_valueOrderIndex[i]:_valueOrderIndex[i+1]]
 }
 
-var _valueOrderValues = []valueOrder{0, 1, 2}
+var _valueOrderValues = []valueOrder{0, 1, 2, 3}
 
 var _valueOrderNameToValueMap = map[string]valueOrder{
 	_valueOrderName[0:6]:   0,
 	_valueOrderName[6:12]:  1,
 	_valueOrderName[12:19]: 2,
+	_valueOrderName[19:23]: 3,
 }
 
 // valueOrderString retrieves an enum value from the enum constants string name.

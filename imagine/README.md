@@ -192,14 +192,12 @@ Each task outlines a specific set of data to populate in a given field.
 * `seed`: the random number seed to use when populating this field. Defaults
   to the seed for the field's parent index.
 * `columns`: the number of columns to populate. default: populate the
-  entire field, using the index's columns. Must not be higher than
-  the index's number of columns.
+  entire field, using the index's columns.
 * `columnOffset`: column to start with. The special value "append" means
   to create new columns starting immediately after the highest column
   previously created.
-* `columnOrder`: "linear", "stride" or "permute" (default linear). Indicates
-  whether column values should be generated sequentially or in permuted
-  order.
+* `columnOrder`: "linear", "stride", "zipf", or "permute" (default linear).
+  Indicates order in which to generate column values.
 * `stride`: The stride to use with a columnOrder of "stride".
 * `rowOrder`: "linear" or "permute" (default linear). Determines the order
   in which row values are computed, for set fields, or whether to permute
@@ -211,6 +209,22 @@ Each task outlines a specific set of data to populate in a given field.
   them.
 * `stampStart`: A specific time to start timestamps at. Defaults to current
   time minus stamp range.
+* `zipfV`, `zipfS`: V and S values for a zipf distribution of columns.
+* `zipfRange`: The range to use for the zipf distribution (defaults to
+  `columns`).
+
+As a special case, when `columnOffset` is "append" and `columnOrder` is "zipf",
+values are randomly generated using a zipf distribution over [0,`zipfRange`).
+These values are then subtracted from the *next* column number -- the lowest
+column number not currently known to `imagine`, to produce a range which might
+indicate updates to existing columns, or might indicate a new column. A value
+is generated for each column. Note that this will pick values the same way
+mutex or BSI fields do, rather than generating all the values for each column,
+and the same column may be generated more than once. This behavior attempts
+to simulate likely behavior for event streams.
+
+The "zipf" `columnOrder` is not supported except with `columnOffset` of
+"append", and the Zipf parameters are not defined for any other column order.
 
 ## Data Generation
 

@@ -49,6 +49,7 @@ const (
 	valueOrderLinear valueOrder = iota
 	valueOrderStride
 	valueOrderPermute
+	valueOrderZipf
 )
 
 type cacheType int
@@ -195,6 +196,8 @@ type taskSpec struct {
 	DimensionOrder        dimensionOrder // row-major/column-major. only meaningful for sets.
 	Stride                uint64         // stride size when iterating on columns with columnOrder "stride"
 	BatchSize             *int           // override batch batchsize
+	ZipfV, ZipfS          float64
+	ZipfRange             *uint64
 }
 
 func (fs *fieldSpec) String() string {
@@ -595,6 +598,10 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	if ts.ColumnOrder != valueOrderStride && ts.Stride != 0 {
 		return fmt.Errorf("field %s: stride size meaningless when not using stride column order", ts.Field)
 	}
+	if ts.RowOrder == valueOrderZipf {
+		return fmt.Errorf("field %s: zipf is only valid as a column order for append operations", ts.Field)
+	}
+
 	// Having griped about Stride being set when inappropriate, we now set it
 	// to 1 in those cases so we can always use the stride to compute
 	// a value. Index N will use `(Stride*N) % range`.
@@ -607,9 +614,20 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		if conf.ColumnScale != 0 {
 			*ts.Columns *= uint64(conf.ColumnScale)
 		}
-		if *ts.Columns > ts.FieldSpec.Parent.Columns {
-			return fmt.Errorf("field %s has %d columns specified, larger than index's %d", ts.Field,
-				*ts.Columns, ts.FieldSpec.Parent.Columns)
+	}
+	if ts.ColumnOrder != valueOrderZipf {
+		if ts.ZipfV != 0 || ts.ZipfS != 0 || ts.ZipfRange != nil {
+			return fmt.Errorf("field %s: zipf values only available with zipf column order (only available with append)", ts.Field)
+		}
+	} else {
+		if ts.ColumnOffset != -1 {
+			return fmt.Errorf("field %s: zipf column order only available for append operations", ts.Field)
+		}
+		if ts.ZipfV < 1.0 || ts.ZipfS <= 1.0 {
+			return fmt.Errorf("field %s: zipf column order requires V >= 1, S > 1", ts.Field)
+		}
+		if ts.ZipfRange == nil {
+			ts.ZipfRange = ts.Columns
 		}
 	}
 	if ts.DimensionOrder != dimensionOrderRow && ts.FieldSpec.Type != fieldTypeSet {

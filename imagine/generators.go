@@ -73,6 +73,11 @@ func noSortNeeded(ts *taskSpec) bool {
 // Set: FieldValue, possibly many per column, possibly column-major.
 
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
+	// of individual values rather than populating every field
+	if ts.ColumnOrder == valueOrderZipf {
+		return newMutexGenerator(ts, updateChan, updateID)
+	}
 	fs := ts.FieldSpec
 	var g *doubleValueGenerator
 	switch ts.DimensionOrder {
@@ -122,6 +127,10 @@ func (g *singleValueGenerator) prepareSingleValueGenerator(ts *taskSpec, updateC
 		return err
 	}
 	g.Prepare(ts, cols, 1)
+	// ugly hack: the zipfColumnGenerator handles this column offset itself.
+	if ts.ColumnOrder == valueOrderZipf {
+		g.ColumnOffset = 0
+	}
 	if ts.FieldSpec.Density != 1.0 {
 		g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 		g.density = uint64(ts.FieldSpec.Density * float64(*ts.FieldSpec.DensityScale))
@@ -166,6 +175,14 @@ func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
 		gen, err := newPermutedGenerator(0, int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns), 0, *ts.Seed)
+		if err != nil {
+			return nil, err
+		}
+		return gen, nil
+	case valueOrderZipf:
+		// We want to generate a series of new values, based on ZipfRange, and use them to constantly
+		// bump our generator.
+		gen, err := newZipfColumnGenerator(ts)
 		if err != nil {
 			return nil, err
 		}
@@ -323,6 +340,51 @@ func newPermutedGenerator(min, max, total int64, row uint32, seed int64) (*permu
 	g := &permutedGenerator{offset: min, total: total}
 	g.permutation, err = apophenia.NewPermutation(max-min, row, seq)
 	return g, err
+}
+
+// zipfColumnGenerator generator generates values with a Zipf distribution that
+// can be column values -- specifically, if it generates a 0, that's a new
+// column.
+type zipfColumnGenerator struct {
+	current, total int64
+	field          *fieldSpec
+	z              *apophenia.Zipf
+}
+
+func newZipfColumnGenerator(ts *taskSpec) (*zipfColumnGenerator, error) {
+	var err error
+	g := zipfColumnGenerator{field: ts.FieldSpec, total: int64(*ts.Columns)}
+	// we grab a different subset of the random space than would be used for
+	// a ZipfValueGenerator, by using 1 here.
+	g.z, err = apophenia.NewZipf(ts.ZipfS, ts.ZipfV, *ts.ZipfRange, 1, apophenia.NewSequence(*ts.Seed))
+	if err != nil {
+		return nil, err
+	}
+	return &g, nil
+}
+
+func (g *zipfColumnGenerator) Next() (value int64, done bool) {
+	value = g.current
+	g.current++
+	if g.current >= g.total {
+		g.current = 0
+		done = true
+	}
+	// generate the Nth value from our Zipf sequence
+	value = int64(g.z.Nth(uint64(value)))
+	// if it'd be off the bottom end of the field, instead make a new
+	// value
+	if value > g.field.HighestColumn || value == 0 {
+		value = g.field.HighestColumn + 1
+		g.field.HighestColumn = value
+		return value, done
+	}
+	value = g.field.HighestColumn + 1 - value
+	return value, done
+}
+
+func (g *zipfColumnGenerator) Status() (int64, int64) {
+	return g.current, g.total
 }
 
 // valueGenerator represents a thing which generates predictable values
@@ -673,7 +735,7 @@ func (g *genericGenerator) Prepare(ts *taskSpec, cols, rows int64) {
 	} else {
 		g.ColumnOffset = int64(ts.ColumnOffset)
 	}
-	if g.FieldSpec != nil {
+	if g.FieldSpec != nil && ts.ColumnOrder != valueOrderZipf {
 		// bump the "highest column" to the highest one we expect
 		// to generate.
 		if g.FieldSpec.HighestColumn < g.ColumnOffset+cols {
