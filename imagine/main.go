@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/jaffee/commandeer"
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pkg/errors"
@@ -134,6 +137,10 @@ func (c *Config) readSpecs() error {
 }
 
 func main() {
+	go func() {
+		fmt.Printf("failed to start pprof server on 6060: %v\n", http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
 	conf := &Config{
