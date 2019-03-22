@@ -17,18 +17,25 @@ What `imagine` does with the spec files is controlled by the following behavior 
 *  `--generate`             generate data as specified by workloads
 *  `--delete`               delete specified fields
 
-Invoked without behavior options, or with only `--describe`, `imagine` will describe the indexes and workloads from its spec files, and terminate. If one or more of verify, generate, or delete is provided, it will do those in order.
+Invoked without behavior options, or with only `--describe`, `imagine` will
+describe the indexes and workloads from its spec files, and terminate. If one
+or more of verify, generate, or delete is provided, it will do those in order.
 
 The following verification options exist:
 
 * `create`: Attempts to create all specified indexes and fields, errors out
   if any already existed.
 * `error`: Verify that indexes and fields exist, error out if they don't.
-* `purge`: Delete all existing indexes and fields, then try to create them. Error out if either part of this fails.
+* `purge`: Delete all existing indexes and fields, then try to create them.
+  Error out if either part of this fails.
 * `update`: Try to create any missing indexes or fields. Error out if this fails.
-* `none`: Do no verification. (Workloads will still check for index/field existence.)
+* `none`: Do no verification. (Workloads will still check for index/field
+  existence.)
 
-The default for `--verify` is determined by other parameters; if `--delete` is present, and `--generate` is not, the default verification is "none" (there's no point in verifying that things exist right before deleting them), otherwise the default verification is "error".
+The default for `--verify` is determined by other parameters; if `--delete` is
+present, and `--generate` is not, the default verification is "none" (there's
+no point in verifying that things exist right before deleting them), otherwise
+the default verification is "error".
 
 The following options change how `imagine` goes about its work:
 
@@ -67,7 +74,8 @@ Indexes describe the data that will go in a Pilosa index, such as the index's
 name, size (in columns), and number of fields. Workloads describe specific
 patterns of creating and inserting data in fields.
 
-When multiple specs are provided, they are combined. Indexes and fields are merged; any conflicts between them are an error, and `imagine` will report
+When multiple specs are provided, they are combined. Indexes and fields are
+merged; any conflicts between them are an error, and `imagine` will report
 such errors and then stop. Workloads are concatenated, with specs processed
 in command-line order.
 
@@ -180,7 +188,8 @@ Each batch has optional configuration fields, plus an array of tasks.
   workload's batchSize).
 
 The `threadCount` value for a batch overrides the parent workload's default,
-and is used for each task within the batch. Additionally, the tasks within a batch are all executed in parallel.
+and is used for each task within the batch. Additionally, the tasks within a
+batch are all executed in parallel.
 
 #### Tasks
 
