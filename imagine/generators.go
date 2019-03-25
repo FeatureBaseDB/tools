@@ -716,10 +716,11 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 type genericGenerator struct {
 	FieldSpec    *fieldSpec
 	ColumnOffset int64
-	Stamping     bool
+	Stamp        stampType
 	FirstStamp   int64
 	LatestStamp  int64
 	StampStep    int64
+	stampGen     apophenia.Sequence
 	values       int64
 	tries        int64
 	expected     int64
@@ -742,8 +743,8 @@ func (g *genericGenerator) Prepare(ts *taskSpec, cols, rows int64) {
 			g.FieldSpec.HighestColumn = g.ColumnOffset + cols
 		}
 	}
-	if ts.Stamp != stampTypeNone {
-		g.Stamping = true
+	g.Stamp = ts.Stamp
+	if g.Stamp != stampTypeNone {
 		g.FirstStamp = ts.StampStart.UnixNano()
 		g.expected = cols * rows
 		if g.expected > int64(*ts.StampRange) {
@@ -752,6 +753,10 @@ func (g *genericGenerator) Prepare(ts *taskSpec, cols, rows int64) {
 		} else {
 			g.StampStep = int64(*ts.StampRange) / g.expected
 		}
+		if g.Stamp == stampTypeRandom {
+			g.stampGen = apophenia.NewSequence(*ts.Seed)
+			g.stampGen.Seek(apophenia.OffsetFor(apophenia.SequenceLinear, 0, 0, 0))
+		}
 	}
 }
 
@@ -759,14 +764,20 @@ func (g *genericGenerator) Prepare(ts *taskSpec, cols, rows int64) {
 // suitable timestamps.
 func (g *genericGenerator) Generated(col, row uint64) {
 	g.values++
-	if g.Stamping {
+	if g.Stamp != stampTypeNone {
 		if g.tries > g.expected {
 			g.overran.Do(func() {
 				fmt.Printf("unexpected: total tries %d, expected tries %d\n", g.tries, g.expected)
 			})
 		}
-		// put row at slightly different offsets
-		g.LatestStamp = (g.FirstStamp + (g.StampStep * g.tries)) + int64(row)
+		switch g.Stamp {
+		case stampTypeIncreasing:
+			// put row at slightly different offsets
+			g.LatestStamp = (g.FirstStamp + (g.StampStep * g.tries)) + int64(row)
+		case stampTypeRandom:
+			val := g.stampGen.Int63() % g.expected
+			g.LatestStamp = (g.FirstStamp + (g.StampStep * val))
+		}
 	}
 }
 
