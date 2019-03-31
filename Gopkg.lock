@@ -2,6 +2,14 @@
 
 
 [[projects]]
+  digest = "1:e4b30804a381d7603b8a344009987c1ba351c26043501b23b8c7ce21f0b67474"
+  name = "github.com/BurntSushi/toml"
+  packages = ["."]
+  pruneopts = ""
+  revision = "3012a1dbe2e4bd1391d42b32f0577cb7bbc7f005"
+  version = "v0.3.1"
+
+[[projects]]
   digest = "1:eb53021a8aa3f599d29c7102e65026242bdedce998a54837dc67f14b6a97c5fd"
   name = "github.com/fsnotify/fsnotify"
   packages = ["."]
@@ -16,6 +24,14 @@
   pruneopts = ""
   revision = "aa810b61a9c79d51363740d207bb46cf8e620ed5"
   version = "v1.2.0"
+
+[[projects]]
+  digest = "1:85f8f8d390a03287a563e215ea6bd0610c858042731a8b42062435a0dcbc485f"
+  name = "github.com/hashicorp/golang-lru"
+  packages = ["simplelru"]
+  pruneopts = ""
+  revision = "7087cb70de9f7a8bc0a10c375cb0d2280a8edf9c"
+  version = "v0.5.1"
 
 [[projects]]
   digest = "1:d14365c51dd1d34d5c79833ec91413bfbb166be978724f15701e17080dc06dec"
@@ -45,6 +61,14 @@
   version = "v1.0"
 
 [[projects]]
+  digest = "1:188943f91b6136f1ac372d80684d4989b7ccbdb2bf6d640bc6f9905a440b11e7"
+  name = "github.com/jaffee/commandeer"
+  packages = ["."]
+  pruneopts = ""
+  revision = "d0012ff26169b05dca5c14910d9415ae389efb8e"
+  version = "v0.1.0"
+
+[[projects]]
   digest = "1:961dc3b1d11f969370533390fdf203813162980c858e1dabe827b60940c909a5"
   name = "github.com/magiconair/properties"
   packages = ["."]
@@ -69,15 +93,16 @@
   version = "v1.2.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:92b68160529f1cbef1b2812c88a49977b934a4929aabb3dc8372b42859486293"
+  branch = "imagine"
+  digest = "1:452f6f198454911b98e00b704bf9593df518284d9207e12ed73bc03e22683efc"
   name = "github.com/pilosa/go-pilosa"
   packages = [
     ".",
     "gopilosa_pbuf",
   ]
   pruneopts = ""
-  revision = "685e4c64e70ec3fb183a1b124323ece421d92f14"
+  revision = "aea111fcbe0f159aca787f988ea9e5dd6ec223b6"
+  source = "github.com/jaffee/go-pilosa"
 
 [[projects]]
   branch = "master"
@@ -193,7 +218,10 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/BurntSushi/toml",
+    "github.com/jaffee/commandeer",
     "github.com/pilosa/go-pilosa",
+    "github.com/pkg/errors",
     "github.com/spf13/cobra",
     "github.com/spf13/pflag",
     "github.com/spf13/viper",
