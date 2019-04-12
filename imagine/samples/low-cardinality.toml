@@ -1,0 +1,7 @@
+densityscale = 2097152
+version = "1.0"
+[indexes.users]
+columns = 100000
+fields = [
+{ name = "flags", type = "set", max = 200, density = 0.99, valueRule = "zipf", zipfV = 1.0, zipfS = 4.0, },
+]

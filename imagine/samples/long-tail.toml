@@ -1,0 +1,8 @@
+densityscale = 2097152
+version = "1.0"
+[indexes.users]
+columns = 10000
+fields = [
+{ name = "long-tail", type = "set", max = 1000, density = 0.00001, valueRule = "zipf", zipfV = 9999.0, zipfS = 1.001, },
+{ name = "long-tail", type = "set", chance = 0.01, density = 0.001, valueRule = "zipf", zipfV = 9999.0, zipfS = 1.001, },
+]
