@@ -1,0 +1,17 @@
+densityscale = 2097152
+version = "1.0"
+[indexes.testidx]
+columns = 10000000
+fields = [
+{ name = "timestamp", type = "time", max=1, density = 1.0, valueRule="zipf", quantum="YMDH" },
+]
+[[workloads]]
+name = "ingest"
+threadCount = 6
+batchSize = 1048576
+useRoaring = true
+[[workloads.batches]]
+description = "initial"
+tasks = [
+{ index = "testidx", field = "timestamp", stamp = "increasing", stampStart = "2019-01-01T00:00:00Z", stampRange = "240h" },
+]

@@ -329,9 +329,9 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 		case fieldTypeBSI:
 			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
 		case fieldTypeSet:
-			dbIndex.Field(name, pilosa.OptFieldTypeSet(field.Cache, 1000))
+			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), 1000))
 		case fieldTypeMutex:
-			dbIndex.Field(name, pilosa.OptFieldTypeMutex(field.Cache, 1000))
+			dbIndex.Field(name, pilosa.OptFieldTypeMutex(pilosa.CacheType(field.Cache.String()), 1000))
 		case fieldTypeTime:
 			dbIndex.Field(name, pilosa.OptFieldTypeTime(pilosa.TimeQuantum(field.Quantum.String())))
 		default:
