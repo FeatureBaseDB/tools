@@ -1,4 +1,0 @@
-[[constraint]]
-    name = "github.com/pilosa/go-pilosa"
-    branch = "imagine"
-    source = "github.com/jaffee/go-pilosa"
