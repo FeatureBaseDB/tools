@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/jaffee/commandeer"
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pkg/errors"
@@ -134,6 +137,10 @@ func (c *Config) readSpecs() error {
 }
 
 func main() {
+	go func() {
+		fmt.Printf("failed to start pprof server on 6060: %v\n", http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
 	conf := &Config{
@@ -242,6 +249,7 @@ func main() {
 			log.Fatalf("deleting indexes: %v", err)
 		}
 	}
+
 	fmt.Printf("done.\n")
 }
 
@@ -319,9 +327,9 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 		case fieldTypeBSI:
 			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
 		case fieldTypeSet:
-			dbIndex.Field(name, pilosa.OptFieldTypeSet("none", 0))
+			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), 1000))
 		case fieldTypeMutex:
-			dbIndex.Field(name, pilosa.OptFieldTypeMutex("none", 0))
+			dbIndex.Field(name, pilosa.OptFieldTypeMutex(pilosa.CacheType(field.Cache.String()), 1000))
 		case fieldTypeTime:
 			dbIndex.Field(name, pilosa.OptFieldTypeTime(pilosa.TimeQuantum(field.Quantum.String())))
 		default:

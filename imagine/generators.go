@@ -51,6 +51,9 @@ func NewGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (Co
 	if ts.Parent.ThreadCount != nil {
 		opts = append(opts, pilosa.OptImportThreadCount(*ts.Parent.ThreadCount))
 	}
+	if ts.UseRoaring != nil {
+		opts = append(opts, pilosa.OptImportRoaring(*ts.UseRoaring))
+	}
 	if noSortNeeded(ts) {
 		opts = append(opts, pilosa.OptImportSort(false))
 	}

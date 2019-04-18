@@ -7,29 +7,14 @@ CLONE_URL=github.com/pilosa/tools
 PKGS := $(shell cd $(GOPATH)/src/$(CLONE_URL); go list ./... | grep -v vendor)
 BUILD_TIME=`date -u +%FT%T%z`
 LDFLAGS="-X github.com/pilosa/tools.Version=$(VERSION) -X github.com/pilosa/tools.BuildTime=$(BUILD_TIME)"
+export GO111MODULE=on
 
-default: test pi
+default: test install
 
-$(GOPATH)/bin:
-	mkdir $(GOPATH)/bin
+test:
+	go test ./... $(TESTFLAGS)
 
-dep: $(GOPATH)/bin
-	go get -u github.com/golang/dep/cmd/dep
-
-vendor: Gopkg.toml
-ifndef DEP
-	make dep
-endif
-	dep ensure -vendor-only
-	touch vendor
-
-Gopkg.lock: dep Gopkg.toml
-	dep ensure
-
-test: vendor
-	go test $(PKGS) $(TESTFLAGS)
-
-cover: vendor
+cover:
 	mkdir -p build/coverage
 	echo "mode: set" > build/coverage/all.out
 	for pkg in $(PKGS) ; do \
@@ -45,10 +30,7 @@ cover-pkg:
 cover-viz: cover
 	go tool cover -html=build/coverage/all.out
 
-pi: vendor
-	go build -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
-
-crossbuild: vendor
+crossbuild:
 	mkdir -p build/pi-$(IDENTIFIER)
 	make pi FLAGS="-o build/pi-$(IDENTIFIER)/pi"
 	cp LICENSE README.md build/pi-$(IDENTIFIER)
@@ -60,5 +42,6 @@ release:
 	make crossbuild GOOS=linux GOARCH=386
 	make crossbuild GOOS=darwin GOARCH=amd64
 
-install: vendor
+install:
 	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
+	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/imagine

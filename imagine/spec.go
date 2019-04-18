@@ -149,7 +149,7 @@ type fieldSpec struct {
 	Chance        *float64     // probability of using this fieldSpec for a given column
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
-	Quantum       *timeQuantum // time quantum, useful only forr time fields
+	Quantum       *timeQuantum // time quantum, useful only for time fields
 
 	// Only useful for set/mutex fields.
 	Cache cacheType // "lru" or "none", default is lru for set/mutex
@@ -167,6 +167,7 @@ type workloadSpec struct {
 	Batches     []*batchSpec
 	ThreadCount *int // threads to use for each importer
 	BatchSize   *int
+	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
 // batchSpec describes a set of tasks to happen in parallel
@@ -174,8 +175,9 @@ type batchSpec struct {
 	Parent      *workloadSpec `toml:"-"`
 	Description string
 	Tasks       []*taskSpec
-	ThreadCount *int // override workload threadcount
-	BatchSize   *int // override workload batchsize
+	ThreadCount *int  // override workload threadcount
+	BatchSize   *int  // override workload batchsize
+	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
 // taskSpec describes a single task, which is populating some kind of data
@@ -198,6 +200,7 @@ type taskSpec struct {
 	BatchSize             *int           // override batch batchsize
 	ZipfV, ZipfS          float64
 	ZipfRange             *uint64
+	UseRoaring            *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
 func (fs *fieldSpec) String() string {
@@ -562,6 +565,9 @@ func (bs *batchSpec) Cleanup(conf *Config) error {
 	if bs.BatchSize == nil {
 		bs.BatchSize = bs.Parent.BatchSize
 	}
+	if bs.UseRoaring == nil {
+		bs.UseRoaring = bs.Parent.UseRoaring
+	}
 	for _, task := range bs.Tasks {
 		task.Parent = bs
 		err := task.Cleanup(conf)
@@ -635,6 +641,9 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	}
 	if ts.BatchSize == nil {
 		ts.BatchSize = ts.Parent.BatchSize
+	}
+	if ts.UseRoaring == nil {
+		ts.UseRoaring = ts.Parent.UseRoaring
 	}
 	// handle timestamp behavior, if requested.
 	if ts.Stamp == stampTypeNone {
