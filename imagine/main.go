@@ -41,7 +41,6 @@ type Config struct {
 	verifyType   verifyType
 	Generate     bool `help:"generate data as specified by workloads"`
 	Delete       bool `help:"delete specified indexes"`
-	DryRun       bool `help:"dry-run; describe what would be done"`
 	Describe     bool `help:"describe the data sets and workloads"`
 	onlyDescribe bool
 	Prefix       string `help:"prefix to use on index names"`
@@ -139,9 +138,11 @@ func main() {
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
 	conf := &Config{
-		Host:   "localhost",
-		Port:   10101,
-		Prefix: "imaginary-",
+		Host:     "localhost",
+		Port:     10101,
+		Generate: true,
+		Verify:   "update",
+		Prefix:   "imaginary-",
 	}
 	conf.flagset = flag.NewFlagSet("", flag.ContinueOnError)
 
