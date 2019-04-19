@@ -389,7 +389,7 @@ func (ts *tomlSpec) CleanupWorkloads(conf *Config) error {
 
 // Cleanup does data validation and cleanup for an indexSpec.
 func (is *indexSpec) Cleanup(conf *Config) error {
-	is.FullName = is.Parent.Prefix + "-" + is.Name
+	is.FullName = is.Parent.Prefix + is.Name
 	if is.FieldsByName == nil {
 		is.FieldsByName = make(map[string]*fieldSpec, len(is.Fields))
 	}

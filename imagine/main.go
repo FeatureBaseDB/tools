@@ -35,29 +35,28 @@ const (
 
 // Config describes the overall configuration of the tool.
 type Config struct {
-	Host          string `help:"host name for Pilosa server"`
-	Port          int    `help:"host port for Pilosa server"`
-	Verify        string `help:"index structure validation: purge/error/update/create"`
-	verifyType    verifyType
-	Generate      bool `help:"generate data as specified by workloads"`
-	Delete        bool `help:"delete specified indexes"`
-	DryRun        bool `help:"dry-run; describe what would be done"`
-	Describe      bool `help:"describe the data sets and workloads"`
-	onlyDescribe  bool
-	Prefix        string `help:"prefix to use on index names"`
-	defaultPrefix bool
-	CPUProfile    string `help:"record CPU profile to file"`
-	MemProfile    string `help:"record allocation profile to file"`
-	Time          bool   `help:"report on time elapsed for operations"`
-	Status        bool   `help:"show status updates while processing"`
-	ColumnScale   int64  `help:"scale number of columns provided by specs"`
-	RowScale      int64  `help:"scale number of rows provided by specs"`
-	flagset       *flag.FlagSet
-	specFiles     []string
-	specs         []*tomlSpec
-	indexes       map[string]*indexSpec
-	workloads     []namedWorkload
-	dbSchema      map[string]map[string]*pilosa.Field
+	Host         string `help:"host name for Pilosa server"`
+	Port         int    `help:"host port for Pilosa server"`
+	Verify       string `help:"index structure validation: purge/error/update/create"`
+	verifyType   verifyType
+	Generate     bool `help:"generate data as specified by workloads"`
+	Delete       bool `help:"delete specified indexes"`
+	DryRun       bool `help:"dry-run; describe what would be done"`
+	Describe     bool `help:"describe the data sets and workloads"`
+	onlyDescribe bool
+	Prefix       string `help:"prefix to use on index names"`
+	CPUProfile   string `help:"record CPU profile to file"`
+	MemProfile   string `help:"record allocation profile to file"`
+	Time         bool   `help:"report on time elapsed for operations"`
+	Status       bool   `help:"show status updates while processing"`
+	ColumnScale  int64  `help:"scale number of columns provided by specs"`
+	RowScale     int64  `help:"scale number of rows provided by specs"`
+	flagset      *flag.FlagSet
+	specFiles    []string
+	specs        []*tomlSpec
+	indexes      map[string]*indexSpec
+	workloads    []namedWorkload
+	dbSchema     map[string]map[string]*pilosa.Field
 }
 
 // Run does validation on the configuration data. Used by
@@ -69,10 +68,6 @@ func (c *Config) Run() error {
 	}
 	if int(uint16(c.Port)) != c.Port {
 		return fmt.Errorf("port %d out of range", c.Port)
-	}
-	if c.Prefix == "" {
-		c.defaultPrefix = true
-		c.Prefix = "imaginary"
 	}
 	// if not given other instructions, just describe the specs
 	if !c.Generate && !c.Delete && c.Verify == "" {
@@ -118,7 +113,7 @@ func (c *Config) readSpecs() error {
 		// here is where we put overrides like setting the prefix
 		// from command-line parameters before doing more validation and
 		// populating inferred fields.
-		if c.defaultPrefix == false || spec.Prefix == "" {
+		if spec.Prefix == "" {
 			spec.Prefix = c.Prefix
 		}
 		err = spec.CleanupIndexes(c)
@@ -144,8 +139,9 @@ func main() {
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
 	conf := &Config{
-		Host: "localhost",
-		Port: 10101,
+		Host:   "localhost",
+		Port:   10101,
+		Prefix: "imaginary-",
 	}
 	conf.flagset = flag.NewFlagSet("", flag.ContinueOnError)
 
