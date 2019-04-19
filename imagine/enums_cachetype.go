@@ -6,9 +6,9 @@ import (
 	"fmt"
 )
 
-const _cacheTypeName = "defaultnonelru"
+const _cacheTypeName = "defaultnonelruranked"
 
-var _cacheTypeIndex = [...]uint8{0, 7, 11, 14}
+var _cacheTypeIndex = [...]uint8{0, 7, 11, 14, 20}
 
 func (i cacheType) String() string {
 	if i < 0 || i >= cacheType(len(_cacheTypeIndex)-1) {
@@ -17,12 +17,13 @@ func (i cacheType) String() string {
 	return _cacheTypeName[_cacheTypeIndex[i]:_cacheTypeIndex[i+1]]
 }
 
-var _cacheTypeValues = []cacheType{0, 1, 2}
+var _cacheTypeValues = []cacheType{0, 1, 2, 3}
 
 var _cacheTypeNameToValueMap = map[string]cacheType{
 	_cacheTypeName[0:7]:   0,
 	_cacheTypeName[7:11]:  1,
 	_cacheTypeName[11:14]: 2,
+	_cacheTypeName[14:20]: 3,
 }
 
 // cacheTypeString retrieves an enum value from the enum constants string name.

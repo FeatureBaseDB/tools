@@ -1,6 +1,6 @@
-.PHONY: dep pi crossbuild install release test cover cover-pkg cover-viz
+.PHONY: dep pi crossbuild install release test cover cover-pkg cover-viz enumer
 
-DEP := $(shell command -v dep 2>/dev/null)
+ENUMER := $(shell command -v enumer 2>/dev/null)
 VERSION := $(shell git describe --tags 2> /dev/null || echo unknown)
 IDENTIFIER := $(VERSION)-$(GOOS)-$(GOARCH)
 CLONE_URL=github.com/pilosa/tools
@@ -42,6 +42,27 @@ release:
 	make crossbuild GOOS=linux GOARCH=386
 	make crossbuild GOOS=darwin GOARCH=amd64
 
-install:
-	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
+install: install-pi install-imagine
+
+install-imagine:
 	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/imagine
+
+install-pi:
+	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
+
+
+generate: enumer-install
+	cd imagine && \
+	enumer -type=cacheType -trimprefix=cacheType -text -transform=kebab -output enums_cachetype.go && \
+	enumer -type=densityType -trimprefix=densityType -text -transform=kebab -output enums_densitytype.go && \
+	enumer -type=dimensionOrder -trimprefix=dimensionOrder -text -transform=kebab -output enums_dimensionorder.go && \
+	enumer -type=fieldType -trimprefix=fieldType -transform=kebab -text -output enums_fieldtype.go && \
+	enumer -type=stampType -trimprefix=stampType -text -transform=kebab -output enums_stamptype.go && \
+	enumer -type=timeQuantum -trimprefix=timeQuantum -text -transform=caps -output enums_timequantum.go && \
+	enumer -type=valueOrder -trimprefix=valueOrder -text -transform=kebab -output enums_valueorder.go && \
+	enumer -type=verifyType -trimprefix=verifyType -text -transform=kebab -output enums_verifytype.go
+
+
+enumer-install:
+	$(if $(ENUMER),@echo "enumer already installed — skipping.", go get -u github.com/alvaroloes/enumer)
+

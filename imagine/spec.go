@@ -58,6 +58,7 @@ const (
 	cacheTypeDefault cacheType = iota
 	cacheTypeNone
 	cacheTypeLRU
+	cacheTypeRanked
 )
 
 type stampType int
@@ -152,7 +153,8 @@ type fieldSpec struct {
 	Quantum       *timeQuantum // time quantum, useful only for time fields
 
 	// Only useful for set/mutex fields.
-	Cache cacheType // "lru" or "none", default is lru for set/mutex
+	Cache     cacheType // "ranked", "lru", or "none", default is ranked for set/mutex
+	CacheSize int
 }
 
 type namedWorkload struct {
@@ -514,10 +516,16 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	if fs.Max < fs.Min {
 		return fmt.Errorf("field %s has maximum %d, less than minimum %d", fs.Name, fs.Max, fs.Min)
 	}
+
+	// I don't think there's any use for a CacheSize of 0 - just set CacheTypeNone in that case.
+	if fs.CacheSize == 0 {
+		fs.CacheSize = 1000
+	}
+
 	if fs.Cache == cacheTypeDefault {
 		switch fs.Type {
 		case fieldTypeSet, fieldTypeMutex:
-			fs.Cache = cacheTypeLRU
+			fs.Cache = cacheTypeRanked
 		case fieldTypeBSI:
 			fs.Cache = cacheTypeNone
 		}

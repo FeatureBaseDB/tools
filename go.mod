@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/BurntSushi/toml v0.3.1
+	github.com/alvaroloes/enumer v0.0.0-20180611091743-6bcfe2edaac3 // indirect
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/golang/protobuf v1.3.1
 	github.com/hashicorp/golang-lru v0.5.1
@@ -12,6 +13,7 @@ require (
 	github.com/jaffee/commandeer v0.1.0
 	github.com/magiconair/properties v1.8.0
 	github.com/mitchellh/mapstructure v1.1.2
+	github.com/pascaldekloe/name v0.0.0-20180628100202-0fd16699aae1 // indirect
 	github.com/pelletier/go-toml v1.3.0
 	github.com/pilosa/go-pilosa v0.0.0-20190411142335-f4e04bc9733d
 	github.com/pilosa/pilosa v1.2.1-0.20190410162749-b973f8c96356
