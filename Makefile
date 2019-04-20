@@ -53,14 +53,7 @@ install-pi:
 
 generate: enumer-install
 	cd imagine && \
-	enumer -type=cacheType -trimprefix=cacheType -text -transform=kebab -output enums_cachetype.go && \
-	enumer -type=densityType -trimprefix=densityType -text -transform=kebab -output enums_densitytype.go && \
-	enumer -type=dimensionOrder -trimprefix=dimensionOrder -text -transform=kebab -output enums_dimensionorder.go && \
-	enumer -type=fieldType -trimprefix=fieldType -transform=kebab -text -output enums_fieldtype.go && \
-	enumer -type=stampType -trimprefix=stampType -text -transform=kebab -output enums_stamptype.go && \
-	enumer -type=timeQuantum -trimprefix=timeQuantum -text -transform=caps -output enums_timequantum.go && \
-	enumer -type=valueOrder -trimprefix=valueOrder -text -transform=kebab -output enums_valueorder.go && \
-	enumer -type=verifyType -trimprefix=verifyType -text -transform=kebab -output enums_verifytype.go
+	go generate
 
 
 enumer-install:
