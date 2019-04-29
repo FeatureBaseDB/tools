@@ -50,6 +50,7 @@ type Config struct {
 	Status       bool   `help:"show status updates while processing"`
 	ColumnScale  int64  `help:"scale number of columns provided by specs"`
 	RowScale     int64  `help:"scale number of rows provided by specs"`
+	LogImports   string `help:"file name to log all imports to (so they can be replayed later)"`
 	flagset      *flag.FlagSet
 	specFiles    []string
 	specs        []*tomlSpec
@@ -172,7 +173,16 @@ func main() {
 		log.Fatalf("could not create Pilosa URI: %v", err)
 	}
 
-	client, err = pilosa.NewClient(uri)
+	clientOpts := make([]pilosa.ClientOption, 0)
+	if conf.LogImports != "" {
+		f, err := os.Create(conf.LogImports)
+		if err != nil {
+			log.Fatalf("Couldn't open conf.LogImports: '%s'. Err: %v", conf.LogImports, err)
+		}
+		clientOpts = append(clientOpts, pilosa.ExperimentalOptClientLogImports(f))
+	}
+
+	client, err = pilosa.NewClient(uri, clientOpts...)
 	if err != nil {
 		log.Fatalf("could not create Pilosa client: %v", err)
 	}

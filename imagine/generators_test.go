@@ -152,3 +152,49 @@ func TestNewSetGenerator(t *testing.T) {
 
 	close(updateChan)
 }
+
+func TestMutexGen(t *testing.T) {
+	spec := &taskSpec{
+		FieldSpec: &fieldSpec{
+			Type:         fieldTypeMutex,
+			Max:          2,
+			Chance:       float64p(1.0),
+			DensityScale: uint64p(2097152),
+			Density:      0.9,
+			ValueRule:    densityTypeZipf,
+			Cache:        cacheTypeLRU,
+		},
+		ColumnOrder:    valueOrderLinear,
+		DimensionOrder: dimensionOrderRow,
+		Columns:        uint64p(10),
+		RowOrder:       valueOrderLinear,
+		Seed:           int64p(0),
+	}
+
+	updateChan := make(chan taskUpdate, 10)
+	go func() {
+		for _, ok := <-updateChan; ok; {
+		}
+	}()
+	sg, err := newMutexGenerator(spec, updateChan, "updateid")
+	if err != nil {
+		t.Fatalf("getting new set generator: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for _, err := sg.NextRecord(); err != io.EOF; _, err = sg.NextRecord() {
+			if err != nil {
+				t.Fatalf("Error in iterator: %v", err)
+			}
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatalf("mutex generator hanging")
+	}
+
+}
