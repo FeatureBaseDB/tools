@@ -35,7 +35,7 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/pascaldekloe/name v0.0.0-20180628100202-0fd16699aae1 // indirect
 	github.com/pelletier/go-toml v1.3.0
-	github.com/pilosa/go-pilosa v1.3.1-0.20190426232806-5176ede4ba8a
+	github.com/pilosa/go-pilosa v1.3.1-0.20190430220627-7dd81a2aecff
 	github.com/pilosa/pilosa v1.3.0
 	github.com/pkg/errors v0.8.1
 	github.com/posener/complete v1.2.1 // indirect
