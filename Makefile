@@ -1,4 +1,4 @@
-.PHONY: dep pi crossbuild install release test cover cover-pkg cover-viz enumer
+.PHONY: pi crossbuild install release test cover cover-pkg cover-viz enumer
 
 ENUMER := $(shell command -v enumer 2>/dev/null)
 VERSION := $(shell git describe --tags 2> /dev/null || echo unknown)
