@@ -61,6 +61,7 @@ Build Time: ` + tools.BuildTime + "\n",
 	_ = rc.PersistentFlags().MarkHidden("config")
 
 	rc.AddCommand(NewBenchCommand())
+	rc.AddCommand(NewReplayCommand())
 
 	rc.SetOutput(os.Stderr)
 	return rc

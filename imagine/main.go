@@ -35,29 +35,28 @@ const (
 
 // Config describes the overall configuration of the tool.
 type Config struct {
-	Host          string `help:"host name for Pilosa server"`
-	Port          int    `help:"host port for Pilosa server"`
-	Verify        string `help:"index structure validation: purge/error/update/create"`
-	verifyType    verifyType
-	Generate      bool `help:"generate data as specified by workloads"`
-	Delete        bool `help:"delete specified indexes"`
-	DryRun        bool `help:"dry-run; describe what would be done"`
-	Describe      bool `help:"describe the data sets and workloads"`
-	onlyDescribe  bool
-	Prefix        string `help:"prefix to use on index names"`
-	defaultPrefix bool
-	CPUProfile    string `help:"record CPU profile to file"`
-	MemProfile    string `help:"record allocation profile to file"`
-	Time          bool   `help:"report on time elapsed for operations"`
-	Status        bool   `help:"show status updates while processing"`
-	ColumnScale   int64  `help:"scale number of columns provided by specs"`
-	RowScale      int64  `help:"scale number of rows provided by specs"`
-	flagset       *flag.FlagSet
-	specFiles     []string
-	specs         []*tomlSpec
-	indexes       map[string]*indexSpec
-	workloads     []namedWorkload
-	dbSchema      map[string]map[string]*pilosa.Field
+	Host         string `help:"host name for Pilosa server"`
+	Port         int    `help:"host port for Pilosa server"`
+	Verify       string `help:"index structure validation: purge/error/update/create"`
+	verifyType   verifyType
+	Generate     bool `help:"generate data as specified by workloads"`
+	Delete       bool `help:"delete specified indexes"`
+	Describe     bool `help:"describe the data sets and workloads"`
+	onlyDescribe bool
+	Prefix       string `help:"prefix to use on index names"`
+	CPUProfile   string `help:"record CPU profile to file"`
+	MemProfile   string `help:"record allocation profile to file"`
+	Time         bool   `help:"report on time elapsed for operations"`
+	Status       bool   `help:"show status updates while processing"`
+	ColumnScale  int64  `help:"scale number of columns provided by specs"`
+	RowScale     int64  `help:"scale number of rows provided by specs"`
+	LogImports   string `help:"file name to log all imports to (so they can be replayed later)"`
+	flagset      *flag.FlagSet
+	specFiles    []string
+	specs        []*tomlSpec
+	indexes      map[string]*indexSpec
+	workloads    []namedWorkload
+	dbSchema     map[string]map[string]*pilosa.Field
 }
 
 // Run does validation on the configuration data. Used by
@@ -69,10 +68,6 @@ func (c *Config) Run() error {
 	}
 	if int(uint16(c.Port)) != c.Port {
 		return fmt.Errorf("port %d out of range", c.Port)
-	}
-	if c.Prefix == "" {
-		c.defaultPrefix = true
-		c.Prefix = "imaginary"
 	}
 	// if not given other instructions, just describe the specs
 	if !c.Generate && !c.Delete && c.Verify == "" {
@@ -118,7 +113,7 @@ func (c *Config) readSpecs() error {
 		// here is where we put overrides like setting the prefix
 		// from command-line parameters before doing more validation and
 		// populating inferred fields.
-		if c.defaultPrefix == false || spec.Prefix == "" {
+		if spec.Prefix == "" {
 			spec.Prefix = c.Prefix
 		}
 		err = spec.CleanupIndexes(c)
@@ -144,8 +139,11 @@ func main() {
 	// Conf defines the default/initial values for config, which
 	// can be overridden by command line options.
 	conf := &Config{
-		Host: "localhost",
-		Port: 10101,
+		Host:     "localhost",
+		Port:     10101,
+		Generate: true,
+		Verify:   "update",
+		Prefix:   "imaginary-",
 	}
 	conf.flagset = flag.NewFlagSet("", flag.ContinueOnError)
 
@@ -175,7 +173,16 @@ func main() {
 		log.Fatalf("could not create Pilosa URI: %v", err)
 	}
 
-	client, err = pilosa.NewClient(uri)
+	clientOpts := make([]pilosa.ClientOption, 0)
+	if conf.LogImports != "" {
+		f, err := os.Create(conf.LogImports)
+		if err != nil {
+			log.Fatalf("Couldn't open conf.LogImports: '%s'. Err: %v", conf.LogImports, err)
+		}
+		clientOpts = append(clientOpts, pilosa.ExperimentalOptClientLogImports(f))
+	}
+
+	client, err = pilosa.NewClient(uri, clientOpts...)
 	if err != nil {
 		log.Fatalf("could not create Pilosa client: %v", err)
 	}
@@ -327,9 +334,9 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 		case fieldTypeBSI:
 			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
 		case fieldTypeSet:
-			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), 1000))
+			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), field.CacheSize))
 		case fieldTypeMutex:
-			dbIndex.Field(name, pilosa.OptFieldTypeMutex(pilosa.CacheType(field.Cache.String()), 1000))
+			dbIndex.Field(name, pilosa.OptFieldTypeMutex(pilosa.CacheType(field.Cache.String()), field.CacheSize))
 		case fieldTypeTime:
 			dbIndex.Field(name, pilosa.OptFieldTypeTime(pilosa.TimeQuantum(field.Quantum.String())))
 		default:

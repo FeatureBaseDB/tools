@@ -201,7 +201,7 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	case valueOrderStride:
 		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max)), nil
 	case valueOrderLinear:
-		return newIncrementGenerator(0, int64(fs.Max)), nil
+		return newIncrementGenerator(0, int64(fs.Max)), nil // TODO use fs.Min instead of 0?
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
 		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, 1, *ts.Seed)
@@ -473,6 +473,8 @@ type singleValueGenerator struct {
 	updateID       string
 }
 
+const updatePeriod = 100000
+
 // Iterate loops over columns, producing a value for each column. If a density
 // was specified, it returns only some of these values.
 func (g *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok bool) {
@@ -480,7 +482,7 @@ func (g *singleValueGenerator) Iterate() (col int64, value int64, done bool, ok 
 		col, done = g.colGen.Next()
 		value = g.valueGen.Nth(col)
 		g.tries++
-		if g.updateChan != nil && (g.tries%10000) == 0 {
+		if g.updateChan != nil && (g.tries%updatePeriod) == 0 {
 			cols, _ := g.colGen.Status()
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: 0, done: g.completed}
 		}
@@ -660,7 +662,7 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
 		bit := g.weighted.Bit(offset, g.density, g.densityScale)
 		g.tries++
-		if g.updateChan != nil && g.tries%10000 == 0 {
+		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
 			rows, _ := g.rowGen.Status()
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
@@ -696,7 +698,7 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
 		bit := g.weighted.Bit(offset, density, g.densityScale)
 		g.tries++
-		if g.updateChan != nil && g.tries%10000 == 0 {
+		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
 			rows, _ := g.rowGen.Status()
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}

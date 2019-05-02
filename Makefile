@@ -1,6 +1,6 @@
-.PHONY: dep pi crossbuild install release test cover cover-pkg cover-viz
+.PHONY: pi crossbuild install release test cover cover-pkg cover-viz enumer
 
-DEP := $(shell command -v dep 2>/dev/null)
+ENUMER := $(shell command -v enumer 2>/dev/null)
 VERSION := $(shell git describe --tags 2> /dev/null || echo unknown)
 IDENTIFIER := $(VERSION)-$(GOOS)-$(GOARCH)
 CLONE_URL=github.com/pilosa/tools
@@ -42,6 +42,20 @@ release:
 	make crossbuild GOOS=linux GOARCH=386
 	make crossbuild GOOS=darwin GOARCH=amd64
 
-install:
-	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
+install: install-pi install-imagine
+
+install-imagine:
 	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/imagine
+
+install-pi:
+	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
+
+
+generate: enumer-install
+	cd imagine && \
+	go generate
+
+
+enumer-install:
+	$(if $(ENUMER),@echo "enumer already installed — skipping.", go get -u github.com/alvaroloes/enumer)
+
