@@ -362,6 +362,7 @@ func (s *NumStats) Combine(other *NumStats) {
 	if other.Max > s.Max {
 		s.Max = other.Max
 	}
+	s.NumZero += other.NumZero
 	s.Total += other.Total
 	s.Num += other.Num
 	s.Mean = s.Total / s.Num
