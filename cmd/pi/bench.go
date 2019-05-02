@@ -44,6 +44,7 @@ agent numbers will do interesting work.
 	benchCmd.AddCommand(NewRangeQueryCommand())
 	benchCmd.AddCommand(NewSliceWidthCommand())
 	benchCmd.AddCommand(NewZipfCommand())
+	benchCmd.AddCommand(NewTPSCommand())
 
 	return benchCmd
 }

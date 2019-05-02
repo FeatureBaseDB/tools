@@ -294,3 +294,76 @@ func (s *Stats) Add(td time.Duration) {
 	s.Mean += delta / time.Duration(s.Num)
 	s.sumSquareDelta += float64(delta * (td - s.Mean))
 }
+
+func (s *Stats) Combine(other *Stats) {
+	if other.Min < s.Min {
+		s.Min = other.Min
+	}
+	if other.Max > s.Max {
+		s.Max = other.Max
+	}
+	s.Total += other.Total
+	s.Num += other.Num
+	s.Mean = s.Total / time.Duration(s.Num)
+	s.All = append(s.All, other.All...)
+}
+
+// NumStats object helps track stats. This and Stats (which was
+// originally made specifically for time) should probably be unified.
+type NumStats struct {
+	sumSquareDelta float64
+
+	NumZero int64   `json:"num-zero"`
+	Min     int64   `json:"min"`
+	Max     int64   `json:"max"`
+	Mean    int64   `json:"mean"`
+	Total   int64   `json:"total"`
+	Num     int64   `json:"num"`
+	All     []int64 `json:"all"`
+	SaveAll bool    `json:"-"`
+}
+
+// NewNumStats gets a NumStats object.
+func NewNumStats() *NumStats {
+	return &NumStats{
+		Min: 1<<63 - 1,
+		All: make([]int64, 0),
+	}
+}
+
+// Add adds a new time to the stats object.
+func (s *NumStats) Add(td int64) {
+	if s.SaveAll {
+		s.All = append(s.All, td)
+	}
+	if td == 0 {
+		s.NumZero++
+	}
+	s.Num += 1
+	s.Total += td
+	if td < s.Min {
+		s.Min = td
+	}
+	if td > s.Max {
+		s.Max = td
+	}
+
+	// online variance calculation
+	// https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
+	delta := td - s.Mean
+	s.Mean += delta / int64(s.Num)
+	s.sumSquareDelta += float64(delta * (td - s.Mean))
+}
+
+func (s *NumStats) Combine(other *NumStats) {
+	if other.Min < s.Min {
+		s.Min = other.Min
+	}
+	if other.Max > s.Max {
+		s.Max = other.Max
+	}
+	s.Total += other.Total
+	s.Num += other.Num
+	s.Mean = s.Total / s.Num
+	s.All = append(s.All, other.All...)
+}
