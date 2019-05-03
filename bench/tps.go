@@ -124,12 +124,12 @@ func (b *TPSBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum 
 		})
 	}
 	err = eg.Wait()
+	duration := time.Since(start)
 	if err == nil {
 		for i := 1; i < len(stats); i++ {
 			stats[0].Combine(stats[i])
 		}
 		result.Extra["countstats"] = stats[0]
-		duration := time.Since(start)
 		seconds := float64(duration) / 1000000000
 		result.Extra["tps"] = float64(b.Iterations*b.Concurrency) / seconds
 	}
