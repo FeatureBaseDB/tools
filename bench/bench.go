@@ -313,6 +313,11 @@ func (s *Stats) Combine(other *Stats) {
 type NumStats struct {
 	sumSquareDelta float64
 
+	// NumZero counts the number of values that have been added which
+	// are zero. This is a cheap, simple, replacement for more
+	// sophisticated tracking of the distribution of the data that
+	// let's us know if (e.g.) we have a bunch of queries doing
+	// nothing because we're querying empty rows or something.
 	NumZero int64   `json:"num-zero"`
 	Min     int64   `json:"min"`
 	Max     int64   `json:"max"`
@@ -331,7 +336,7 @@ func NewNumStats() *NumStats {
 	}
 }
 
-// Add adds a new time to the stats object.
+// Add adds a new value to the stats object.
 func (s *NumStats) Add(td int64) {
 	if s.SaveAll {
 		s.All = append(s.All, td)

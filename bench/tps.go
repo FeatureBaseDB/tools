@@ -93,6 +93,9 @@ func (b *TPSBenchmark) Run(ctx context.Context, client *pilosa.Client, agentNum 
 			fields = append(fields, fld)
 		}
 	}
+	if len(fields) == 0 {
+		return result, errors.Errorf("no fields to query in index '%s'", b.Index)
+	}
 
 	queries := make([]func(...*pilosa.PQLRowQuery) *pilosa.PQLRowQuery, 0)
 	if b.Intersect {
