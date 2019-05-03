@@ -25,6 +25,11 @@ Pilosa <iterations> times serially. The idea is to get an
 understanding of what kind of query throughput various Pilosa
 configurations can handle.
 
+For this to be useful, you must already have an index in Pilosa with
+at least 1 field which has some data in it. I recommend the "imagine"
+tool (in this repository) for generating fake data with semi-realistic
+characteristics.
+
 For each query, TPS chooses randomly from the enabled query types
 (intersect, union, difference, xor), and then chooses two random
 fields, and two random rows within each field to perform the given
