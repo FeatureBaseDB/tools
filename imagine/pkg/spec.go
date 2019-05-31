@@ -1,4 +1,4 @@
-package main
+package imagine
 
 //go:generate enumer -type=fieldType -trimprefix=fieldType -transform=kebab -text -output enums_fieldtype.go
 //go:generate enumer -type=densityType -trimprefix=densityType -text -transform=kebab -output enums_densitytype.go
