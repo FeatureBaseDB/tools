@@ -35,9 +35,9 @@ const (
 
 // Config describes the overall configuration of the tool.
 type Config struct {
-	Host         string `help:"host name for Pilosa server"`
-	Port         int    `help:"host port for Pilosa server"`
-	Verify       string `help:"index structure validation: purge/error/update/create"`
+	Hosts        []string `help:"comma separated host names for Pilosa servers"`
+	Port         int      `help:"host port for Pilosa server"`
+	Verify       string   `help:"index structure validation: purge/error/update/create"`
 	verifyType   verifyType
 	Generate     bool `help:"generate data as specified by workloads"`
 	Delete       bool `help:"delete specified indexes"`
@@ -51,6 +51,7 @@ type Config struct {
 	ColumnScale  int64  `help:"scale number of columns provided by specs"`
 	RowScale     int64  `help:"scale number of rows provided by specs"`
 	LogImports   string `help:"file name to log all imports to (so they can be replayed later)"`
+	ThreadCount  int    `help:"number of threads to use for each import, overrides value set in config file"`
 	flagset      *flag.FlagSet
 	specFiles    []string
 	specs        []*tomlSpec
@@ -68,6 +69,9 @@ func (conf *Config) Run() error {
 	}
 	if int(uint16(conf.Port)) != conf.Port {
 		return fmt.Errorf("port %d out of range", conf.Port)
+	}
+	if conf.ThreadCount < 0 {
+		return fmt.Errorf("invalid thread count %d [must be a positive number]", conf.ThreadCount)
 	}
 	// if not given other instructions, just describe the specs
 	if !conf.Generate && !conf.Delete && conf.Verify == "" {
@@ -89,7 +93,7 @@ func (conf *Config) Run() error {
 			conf.verifyType = verifyTypeError
 		}
 	}
-	conf.specFiles = conf.flagset.Args()
+	conf.NewSpecsFiles(conf.flagset.Args())
 	if len(conf.specFiles) < 1 {
 		return errors.New("must specify one or more spec files")
 	}
@@ -102,7 +106,8 @@ func (conf *Config) Run() error {
 	return nil
 }
 
-func (conf *Config) readSpecs() error {
+// ReadSpecs reads the files in conf.specFiles and populates fields
+func (conf *Config) ReadSpecs() error {
 	conf.specs = make([]*tomlSpec, 0, len(conf.specFiles))
 	conf.indexes = make(map[string]*indexSpec, len(conf.specFiles))
 	for _, path := range conf.specFiles {
@@ -135,11 +140,13 @@ func (conf *Config) readSpecs() error {
 // which can be overridden by command line options.
 func NewConfig() *Config {
 	return &Config{
-		Host:     "localhost",
-		Port:     10101,
-		Generate: true,
-		Verify:   "update",
-		Prefix:   "imaginary-",
+		Hosts:       []string{"localhost"},
+		Port:        10101,
+		Generate:    true,
+		Verify:      "update",
+		Prefix:      "imaginary-",
+		ThreadCount: 0, // if unchanged, uses workloadspec.threadcount
+						// if workloadspec.threadcount is also unset, defaults to 1
 	}
 }
 
@@ -156,7 +163,7 @@ func (conf *Config) Execute() {
 		log.Fatalf("parsing arguments: %s", err)
 	}
 
-	err = conf.readSpecs()
+	err = conf.ReadSpecs()
 	if err != nil {
 		log.Fatalf("config/spec error: %v", err)
 	}
@@ -172,9 +179,13 @@ func (conf *Config) Execute() {
 		}
 	}
 
-	uri, err := pilosa.NewURIFromHostPort(conf.Host, uint16(conf.Port))
-	if err != nil {
-		log.Fatalf("could not create Pilosa URI: %v", err)
+	uris := make([]*pilosa.URI, 0, len(conf.Hosts))
+	for _, host := range conf.Hosts {
+		uri, err := pilosa.NewURIFromHostPort(host, uint16(conf.Port))
+		if err != nil {
+			log.Fatalf("could not create Pilosa URI: %v", err)
+		}
+		uris = append(uris, uri)
 	}
 
 	clientOpts := make([]pilosa.ClientOption, 0)
@@ -186,7 +197,8 @@ func (conf *Config) Execute() {
 		clientOpts = append(clientOpts, pilosa.ExperimentalOptClientLogImports(f))
 	}
 
-	client, err = pilosa.NewClient(uri, clientOpts...)
+	cluster := pilosa.NewClusterWithHost(uris...)
+	client, err := pilosa.NewClient(cluster, clientOpts...)
 	if err != nil {
 		log.Fatalf("could not create Pilosa client: %v", err)
 	}
@@ -262,6 +274,11 @@ func (conf *Config) Execute() {
 	}
 
 	fmt.Printf("done.\n")
+}
+
+// NewSpecsFiles copies files to config.specFiles
+func (conf *Config) NewSpecsFiles(files []string) {
+	conf.specFiles = files
 }
 
 // CompareIndexes is the general form of comparing client and server index
