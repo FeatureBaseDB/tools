@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/pilosa/tools/imagine/imagine"
+	imagine "github.com/pilosa/tools/imagine/pkg"
 )
 
 func main() {

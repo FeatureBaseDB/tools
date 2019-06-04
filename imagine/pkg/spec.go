@@ -277,12 +277,12 @@ func describeWorkload(wl *workloadSpec) {
 	}
 }
 
-func (t *taskSpec) String() string {
+func (ts *taskSpec) String() string {
 	offset := ""
-	if t.ColumnOffset != 0 {
-		offset = fmt.Sprintf(" starting at %d", t.ColumnOffset)
+	if ts.ColumnOffset != 0 {
+		offset = fmt.Sprintf(" starting at %d", ts.ColumnOffset)
 	}
-	return fmt.Sprintf("%s/%s: %d columns%s", t.Index, t.Field, *t.Columns, offset)
+	return fmt.Sprintf("%s/%s: %d columns%s", ts.Index, ts.Field, *ts.Columns, offset)
 }
 
 func readSpec(path string) (*tomlSpec, error) {
@@ -549,7 +549,9 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 // Cleanup performs bookkeeping tasks and error-checking, and calls the
 // Cleanup method of associated batches.
 func (ws *workloadSpec) Cleanup(conf *Config) error {
-	if ws.ThreadCount != nil {
+	if conf.ThreadCount != 0 {
+		ws.ThreadCount = &conf.ThreadCount
+	} else if ws.ThreadCount != nil {
 		if *ws.ThreadCount < 1 {
 			return fmt.Errorf("invalid thread count %d [must be a positive number]", *ws.ThreadCount)
 		}
@@ -567,7 +569,9 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 // Cleanup performs bookkeeping tasks, and error-checking, and calls the
 // Cleanup method of associated tasks.
 func (bs *batchSpec) Cleanup(conf *Config) error {
-	if bs.ThreadCount == nil {
+	if conf.ThreadCount != 0 {
+		bs.ThreadCount = &conf.ThreadCount
+	} else if bs.ThreadCount == nil {
 		bs.ThreadCount = bs.Parent.ThreadCount
 	}
 	if bs.BatchSize == nil {
