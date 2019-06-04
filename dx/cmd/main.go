@@ -1,4 +1,4 @@
-package main
+package dx
 
 import (
 	"fmt"
@@ -7,6 +7,14 @@ import (
 	"github.com/spf13/cobra"
 	// "github.com/pilosa/tools/dx"
 )
+
+// flags
+var ThreadCount int
+var CHosts []string
+var PHosts []string
+var CPort int
+var PPort int
+
 
 func main() {
 	if err := NewRootCmd().Execute(); err != nil {
@@ -25,9 +33,11 @@ func NewRootCmd() *cobra.Command {
 			fmt.Println("dx tool")
 		},
 	}
-	rc.PersistentFlags().IntP("threadCount", "r", 1, "Number of concurrent goroutines to allocate")
-	rc.PersistentFlags().StringSliceP("candidate", "c", []string{"localhost:10102"}, "Address of candidate instance")
-	rc.PersistentFlags().StringSliceP("primary", "p", []string{"localhost:10103"}, "Address of primary instance")
+	rc.PersistentFlags().IntVarP(&ThreadCount, "threadCount", "r", 1, "Number of concurrent goroutines to allocate")
+	rc.PersistentFlags().StringSliceVar(&CHosts ,"cHosts", []string{"localhost"}, "Hosts of candidate instance")
+	rc.PersistentFlags().StringSliceVar(&PHosts ,"pHosts", []string{"localhost"}, "Hosts of primary instance")
+	rc.PersistentFlags().IntVar(&CPort, "cPort", 10101, "Port of candidate instance")
+	rc.PersistentFlags().IntVar(&PPort, "pPort", 10101, "Port of primary instance")
 	
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
