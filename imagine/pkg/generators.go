@@ -201,7 +201,7 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	case valueOrderStride:
 		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max)), nil
 	case valueOrderLinear:
-		return newIncrementGenerator(0, int64(fs.Max)), nil // TODO use fs.Min instead of 0?
+		return newIncrementGenerator(int64(fs.Min), int64(fs.Max)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
 		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, 1, *ts.Seed)
