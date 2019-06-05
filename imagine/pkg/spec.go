@@ -289,7 +289,6 @@ func readSpec(path string) (*tomlSpec, error) {
 	var ts tomlSpec
 	md, err := toml.DecodeFile(path, &ts)
 	if err != nil {
-		fmt.Printf("this err\n")
 		return nil, err
 	}
 	// don't allow keys we haven't heard of
