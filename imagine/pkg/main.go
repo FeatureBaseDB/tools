@@ -106,7 +106,7 @@ func (conf *Config) Run() error {
 	return nil
 }
 
-// ReadSpecs reads the files in conf.specFiles and populates fields
+// ReadSpecs reads the files in conf.specFiles and populates fields.
 func (conf *Config) ReadSpecs() error {
 	conf.specs = make([]*tomlSpec, 0, len(conf.specFiles))
 	conf.indexes = make(map[string]*indexSpec, len(conf.specFiles))
@@ -146,7 +146,7 @@ func NewConfig() *Config {
 		Verify:      "update",
 		Prefix:      "imaginary-",
 		ThreadCount: 0, // if unchanged, uses workloadspec.threadcount
-						// if workloadspec.threadcount is also unset, defaults to 1
+		// if workloadspec.threadcount is also unset, defaults to 1
 	}
 }
 
@@ -276,7 +276,7 @@ func (conf *Config) Execute() {
 	fmt.Printf("done.\n")
 }
 
-// NewSpecsFiles copies files to config.specFiles
+// NewSpecsFiles copies files to config.specFiles.
 func (conf *Config) NewSpecsFiles(files []string) {
 	conf.specFiles = files
 }

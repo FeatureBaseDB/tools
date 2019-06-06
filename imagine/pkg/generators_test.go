@@ -83,6 +83,52 @@ func durationp(v duration) *duration {
 	return &v
 }
 
+func TestFieldMin(t *testing.T) {
+	startTime := time.Date(2000, time.Month(1), 2, 3, 4, 5, 6, time.UTC)
+	dur := time.Hour * 120
+	spec := &taskSpec{
+		FieldSpec: &fieldSpec{
+			Type:         fieldTypeTime,
+			Min:          10,
+			Max:          12,
+			Chance:       float64p(1.0),
+			DensityScale: uint64p(2097152),
+			Density:      1.0,
+		},
+		ColumnOrder:    valueOrderLinear,
+		DimensionOrder: dimensionOrderRow,
+		Columns:        uint64p(10),
+		RowOrder:       valueOrderLinear,
+		Seed:           int64p(0),
+		Stamp:          stampTypeIncreasing,
+		StampStart:     &startTime,
+		StampRange:     durationp(duration(dur)),
+	}
+
+	updateChan := make(chan taskUpdate, 10)
+	go func() {
+		for _, ok := <-updateChan; ok; {
+		}
+	}()
+	sg, err := newSetGenerator(spec, updateChan, "updateid")
+	if err != nil {
+		t.Fatalf("getting new set generator: %v", err)
+	}
+
+	r, err := sg.NextRecord()
+	if err != nil {
+		t.Fatalf("Error in iterator: %v", err)
+	}
+	col, ok := r.(gopilosa.Column)
+	if !ok {
+		t.Fatalf("%v not a Column", r)
+	}
+	if col.RowID != 10 {
+		t.Fatalf("field.Min not respected, got row %d, expected 10", col.RowID)
+	}
+
+}
+
 func TestNewSetGenerator(t *testing.T) {
 	startTime := time.Date(2000, time.Month(1), 2, 3, 4, 5, 6, time.UTC)
 	dur := time.Hour * 120
