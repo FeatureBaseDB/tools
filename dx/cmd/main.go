@@ -3,20 +3,30 @@ package dx
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/pilosa/go-pilosa"
 	"github.com/spf13/cobra"
 	// "github.com/pilosa/tools/dx"
 )
 
-// TODO: add solo flag
-// flags
-var ThreadCount int
-var CHosts []string
-var PHosts []string
-var CPort int
-var PPort int
-var SpecsFile = "./specs.toml"
+// Main is the default type a dx command uses.
+type Main struct {
+	ThreadCount		int
+	CHosts			[]string
+	PHosts			[]string
+	CPort			int
+	PPort			int
+	SpecsFile		string
+	Solo			bool
+}
+
+// NewMain creates a new empty Main object.
+func NewMain() *Main {
+	return &Main{}
+}
+
+var m = NewMain()
 
 func main() {
 	if err := NewRootCmd().Execute(); err != nil {
@@ -29,19 +39,21 @@ func main() {
 func NewRootCmd() *cobra.Command {
 	rc := &cobra.Command{
 		Use:   "dx",
-		Short: "compare difference between two Pilosa instances",
-		Long:  `Compare difference between candidate Pilosa instance and last known-good Pilosa version`,
+		Short: "compare differences between two Pilosa instances",
+		Long:  `Compare differences between candidate Pilosa instance and last known-good Pilosa version.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("dx tool")
+			
 		},
 	}
-	rc.PersistentFlags().IntVarP(&ThreadCount, "threadCount", "r", 1, "Number of concurrent goroutines to allocate")
-	rc.PersistentFlags().StringSliceVar(&CHosts ,"cHosts", []string{"localhost"}, "Hosts of candidate instance")
-	rc.PersistentFlags().StringSliceVar(&PHosts ,"pHosts", []string{"localhost"}, "Hosts of primary instance")
-	rc.PersistentFlags().IntVar(&CPort, "cPort", 10101, "Port of candidate instance")
+	rc.PersistentFlags().IntVarP(&m.ThreadCount, "threadCount", "t", 1, "Number of concurrent goroutines to allocate")
+	rc.PersistentFlags().StringSliceVar(&m.CHosts, "cHosts", []string{"localhost"}, "Hosts of candidate instance")
+	rc.PersistentFlags().StringSliceVar(&m.PHosts, "pHosts", []string{"localhost"}, "Hosts of primary instance")
+	rc.PersistentFlags().IntVar(&m.CPort, "cPort", 10101, "Port of candidate instance")
 	// TODO: set default to 10101 for production
-	rc.PersistentFlags().IntVar(&PPort, "pPort", 10102, "Port of primary instance")
-	
+	rc.PersistentFlags().IntVar(&m.PPort, "pPort", 10102, "Port of primary instance")
+	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsFile", "./specs.toml", "Path to specs file")
+	rc.PersistentFlags().BoolVarP(&m.Solo, "solo", "s", false, "Run on only one instace of Pilosa")
+
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
 	rc.AddCommand(NewAllCommand())
@@ -67,4 +79,42 @@ func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
 		return nil, fmt.Errorf("could not create Pilosa cluster: %v", err)
 	}
 	return client, nil
-} 
+}
+
+// Result is the result of running a single goroutine on
+// a single Pilosa instance. Result will be the type passed
+// around in channels while running multiple goroutines.
+type Result struct {
+	result pilosa.QueryResult
+	time   time.Duration
+	err    error
+}
+
+// NewResult initializes a new Result struct.
+func NewResult() *Result {
+	return &Result{
+		result: nil,
+		time:   0,
+		err:    nil,
+	}
+}
+
+type specsConfig struct {
+	indexName	string
+	fieldName	string
+	min			int64
+	max			int64
+	columns		int64
+}
+
+// TODO: parse automatically
+// based on specs.toml
+var specs = specsConfig{
+	indexName: 	"dx-index", 
+	fieldName: 	"field", 
+	min: 		0, 
+	max: 		1000, 
+	columns:	1000,
+}
+
+// TODO: BUFFER ALL CHANNELS

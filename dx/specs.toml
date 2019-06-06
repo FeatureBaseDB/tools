@@ -1,12 +1,9 @@
 densityscale = 2097152
 version = "1.0"
-[indexes.users]
+[indexes.index]
 columns = 1000
 fields = [
-# age = { type = "BSI", min = 10, max = 120 }
-# { name = "income", type = "bsi", min = 0, max = 640000, density = 1.0 },
-{ name = "numbers", type = "set", min = 0, max = 200, density = 0.01, },
-{ name = "numbers", type = "set", chance = 0.05, density = 1.0, },
+{ name = "field", type = "set", min = 0, max = 1000, density = 0.01, chance = 0.05, density = 1.0 },
 ]
 [[workloads]]
 name = "sample"
@@ -14,11 +11,5 @@ threadCount = 1
 [[workloads.batches]]
 description = "initial"
 tasks = [
-# { index = "users", field = "income", },
-{ index = "users", field = "numbers", columnOrder = "stride", stride = 3 },
+{ index = "index", field = "field", columnOrder = "stride", stride = 3 },
 ]
-# [[workloads.batches]]
-# description = "repopulate"
-# tasks = [
-# { index = "users", field = "income", columnOrder = "permute" },
-# ]

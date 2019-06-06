@@ -2,7 +2,7 @@ package dx
 
 import (
 	"fmt"
-	"sync"
+	"os"
 	"time"
 
 	imagine "github.com/pilosa/tools/imagine/pkg"
@@ -14,78 +14,91 @@ func NewIngestCommand() *cobra.Command {
 	ingestCmd := &cobra.Command{
 		Use:   "ingest",
 		Short: "ingest randomly generated data",
-		Long:  `Ingest randomly generated data from imagine tool in both instances of Pilosa`,
+		Long:  `Ingest randomly generated data from imagine tool in both instances of Pilosa.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("Executing ingest")
 			
-			candidateCh := make(chan time.Duration, 1)
-			primaryCh := make(chan time.Duration, 1)
-			var wg sync.WaitGroup
-
-			wg.Add(2)
-			specsFiles := []string{SpecsFile}
-			go timedIngest(newCandidateConfig(specsFiles), candidateCh, &wg)
-			go timedIngest(newPrimaryConfig(specsFiles), primaryCh, &wg)
-
-			wg.Wait()
-
-			// TODO: multicolumn printing
-			// TODO: add delta analysis
-			fmt.Println(<-candidateCh)
-			fmt.Println(<-primaryCh)
-
-			fmt.Print("...done!")
-
+			if err := ExecuteIngest(); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+			
 		},
 	}
 	return ingestCmd
 }
 
 
-// TODO: error checking should quit program
-// timedIngest executes an ingest command and sends the duration over the provided channel.
-func timedIngest(conf *imagine.Config, timeChan chan time.Duration, wg *sync.WaitGroup) {
-	now := time.Now()
-	if err := executeIngest(conf); err != nil {
-		fmt.Println("could not execute ingest: %v", err)
-	}
-	duration := time.Since(now)
-	timeChan <- duration
-	wg.Done()
+// ExecuteIngest executes the ingest on both Pilosa instances.
+func ExecuteIngest() error {	
+	cResultChan := make(chan *Result, 1)
+	pResultChan := make(chan *Result, 1)
 
+	specsFiles := []string{m.SpecsFile}
+	go runIngestOnInstance(newCandidateConfig(specsFiles), cResultChan)
+	go runIngestOnInstance(newPrimaryConfig(specsFiles), pResultChan)
+
+	cResult := <- cResultChan
+	pResult := <- pResultChan
+
+	if cResult.err != nil || pResult.err != nil {
+		if cResult.err != nil {
+			fmt.Printf("could not ingest in candidate: %v", cResult.err)
+		}
+		if pResult.err != nil {
+			fmt.Printf("could not ingest in primary: %v", pResult.err)
+		}
+		return fmt.Errorf("error ingesting")
+	}
+	timeDelta := float64(cResult.time - pResult.time) / float64(pResult.time)
+
+	printIngestResults(specs.columns, cResult.time, pResult.time, timeDelta)
+	return nil
 }
 
-// executeIngest ingests data based on a config file.
-func executeIngest(conf *imagine.Config) error {
+
+// runIngestOnInstance ingests data based on a config file.
+func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
+	result := NewResult()
+
 	err := conf.ReadSpecs()
 	if err != nil {
-		return fmt.Errorf("config/spec error: %v", err)
+		result.err = fmt.Errorf("config/spec error: %v", err)
+		resultChan <- result
+		return
 	}
 
 	client, err := initializeClient(conf.Hosts, conf.Port)
 	if err != nil {
-		return fmt.Errorf("could not create Pilosa client: %v", err)
+		result.err = fmt.Errorf("could not create Pilosa client: %v", err)
+		resultChan <- result
+		return
 	}
 
+	now := time.Now()
 	if err = conf.UpdateIndexes(client); err != nil {
-		return fmt.Errorf("could not update indexes: %v", err)
+		result.err = fmt.Errorf("could not update indexes: %v", err)
+		resultChan <- result
+		return
 	}
 	
 	// TODO: set stdout to null
 	err = conf.ApplyWorkloads(client)
 	if err != nil {
-		return fmt.Errorf("applying workloads: %v", err)
+		result.err = fmt.Errorf("applying workloads: %v", err)
+		resultChan <- result
+		return
 	}
 
-	return nil
+	result.time = time.Since(now)
+	resultChan <- result
 }
 
 func newCandidateConfig(specsFiles []string) *imagine.Config {
-	return newConfig(CHosts, CPort, specsFiles)
+	return newConfig(m.CHosts, m.CPort, specsFiles)
 }
 
 func newPrimaryConfig(specsFiles []string) *imagine.Config {
-	return newConfig(PHosts, PPort, specsFiles)
+	return newConfig(m.PHosts, m.PPort, specsFiles)
 }
 
 func newConfig(hosts []string, port int, specsFiles []string) *imagine.Config {
@@ -93,7 +106,7 @@ func newConfig(hosts []string, port int, specsFiles []string) *imagine.Config {
 		Hosts:			hosts,
 		Port:			port,
 		Prefix:			"dx-",
-		ThreadCount:	ThreadCount,
+		ThreadCount:	m.ThreadCount,
 	}
 	conf.NewSpecsFiles(specsFiles)
 

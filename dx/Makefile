@@ -1,9 +1,15 @@
 
 build:
-	go build -o /Users/shaquillewyanque/git/pilosa/tools/dx/dx /Users/shaquillewyanque/git/pilosa/tools/dx/cmd
+	go build -o dx ./main.go
 
-test:
-	dx && dx ingest && dx query && dx all
+ingest:
+	dx ingest --cPort=10102 --pPort=10103 --threadCount=1
+
+query:
+	dx query --cPort=10102 --pPort=10103 --queries=100,1000,10000 --threadCount=1
+
+server:
+	${MAKE} -j2 candidate primary
 
 candidate:
 	$(GOPATH)/bin/pilosa server --bind="localhost:10102" --gossip.port=14002 --data-dir="~/.pilosa/dx/candidate"
