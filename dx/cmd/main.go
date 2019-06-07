@@ -2,31 +2,14 @@ package dx
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
 	"time"
 
 	"github.com/pilosa/go-pilosa"
 	"github.com/spf13/cobra"
-	// "github.com/pilosa/tools/dx"
 )
-
-// Main is the default type a dx command uses.
-type Main struct {
-	ThreadCount		int
-	CHosts			[]string
-	PHosts			[]string
-	CPort			int
-	PPort			int
-	SpecsFile		string
-	Solo			bool
-}
-
-// NewMain creates a new empty Main object.
-func NewMain() *Main {
-	return &Main{}
-}
-
-var m = NewMain()
 
 func main() {
 	if err := NewRootCmd().Execute(); err != nil {
@@ -35,6 +18,40 @@ func main() {
 	}
 }
 
+func newLogger(verbose bool) *log.Logger {
+	if verbose {
+		return log.New(os.Stderr, "", log.LstdFlags)
+	}
+	return log.New(ioutil.Discard, "", log.LstdFlags)
+}
+
+// Main contains the flags dx uses and a logger.
+type Main struct {
+	ThreadCount int
+	CHosts      []string
+	PHosts      []string
+	CPort       int
+	PPort       int
+	SpecsFile   string
+	Solo        bool
+	Verbose     bool
+	Prefix      string
+	NumQueries  []int // slice of numbers of queries to run
+	NumRows     int64 // number of rows to intersect in a query
+	Logger      *log.Logger
+}
+
+// NewMain creates a new empty Main object.
+func NewMain() *Main {
+	return &Main{
+		Prefix: "dx-",
+	}
+}
+
+// m is the only global variable and contains necessary flags and the logger.
+// The default values for the fields of m are set through cobra NewRootCmd().
+var m = NewMain()
+
 // NewRootCmd creates an instance of the cobra root command for dx.
 func NewRootCmd() *cobra.Command {
 	rc := &cobra.Command{
@@ -42,27 +59,75 @@ func NewRootCmd() *cobra.Command {
 		Short: "compare differences between two Pilosa instances",
 		Long:  `Compare differences between candidate Pilosa instance and last known-good Pilosa version.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			
+
+			fmt.Println("dx is a tool used to measure the differences between two Pilosa instances. The following checks whether the two instances specified by the flags are running.")
+
+			if err := printServers(); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
 		},
 	}
-	rc.PersistentFlags().IntVarP(&m.ThreadCount, "threadCount", "t", 1, "Number of concurrent goroutines to allocate")
-	rc.PersistentFlags().StringSliceVar(&m.CHosts, "cHosts", []string{"localhost"}, "Hosts of candidate instance")
-	rc.PersistentFlags().StringSliceVar(&m.PHosts, "pHosts", []string{"localhost"}, "Hosts of primary instance")
-	rc.PersistentFlags().IntVar(&m.CPort, "cPort", 10101, "Port of candidate instance")
-	// TODO: set default to 10101 for production
-	rc.PersistentFlags().IntVar(&m.PPort, "pPort", 10102, "Port of primary instance")
-	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsFile", "./specs.toml", "Path to specs file")
+	rc.PersistentFlags().IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
+	rc.PersistentFlags().StringSliceVar(&m.CHosts, "chosts", []string{"localhost"}, "Hosts of candidate instance")
+	rc.PersistentFlags().StringSliceVar(&m.PHosts, "phosts", []string{"localhost"}, "Hosts of primary instance")
+	rc.PersistentFlags().IntVar(&m.CPort, "cport", 10101, "Port of candidate instance")
+	rc.PersistentFlags().IntVar(&m.PPort, "pport", 10101, "Port of primary instance")
+	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "specs.toml", "Path to specs file")
 	rc.PersistentFlags().BoolVarP(&m.Solo, "solo", "s", false, "Run on only one instace of Pilosa")
+	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
+	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
+
+	m.Logger = newLogger(m.Verbose)
 
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
-	rc.AddCommand(NewAllCommand())
 
 	rc.SetOutput(os.Stderr)
 
 	return rc
 }
 
+func printServers() error {
+	candidate, err := initializeClient(m.CHosts, m.CPort)
+	if err != nil {
+		return fmt.Errorf("could not create candidate client: %v", err)
+	}
+	fmt.Printf("\nCandidate Pilosa\nrunning on hosts %v and port %v\n", m.CHosts, m.CPort)
+	if err = printServerInfo(candidate); err != nil {
+		return fmt.Errorf("could not print candidate server info: %v", err)
+	}
+
+	primary, err := initializeClient(m.PHosts, m.PPort)
+	if err != nil {
+		return fmt.Errorf("could not create primary client: %v", err)
+	}
+	fmt.Printf("Primary Pilosa\nrunning on hosts %v and port %v\n", m.PHosts, m.PPort)
+	if err = printServerInfo(primary); err != nil {
+		return fmt.Errorf("could not print primary server info: %v", err)
+	}
+	return nil
+}
+
+// from package imagine
+func printServerInfo(client *pilosa.Client) error {
+	serverInfo, err := client.Info()
+	if err != nil {
+		return fmt.Errorf("couldn't get server info: %v", err)
+	}
+	serverMemMB := serverInfo.Memory / (1024 * 1024)
+	serverMemGB := (serverMemMB + 1023) / 1024
+	fmt.Printf("server memory: %dGB [%dMB]\n", serverMemGB, serverMemMB)
+	fmt.Printf("server CPU: %s\n[%d physical cores, %d logical cores available]\n", serverInfo.CPUType, serverInfo.CPUPhysicalCores, serverInfo.CPULogicalCores)
+	serverStatus, err := client.Status()
+	if err != nil {
+		return fmt.Errorf("couldn't get cluster status info: %v", err)
+	}
+	fmt.Printf("cluster nodes: %d\n\n", len(serverStatus.Nodes))
+	return nil
+}
+
+// initalizeClient creates a Pilosa cluster from a list of hosts and a common port.
 func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
 	uris := make([]*pilosa.URI, 0, len(hosts))
 	for _, host := range hosts {
@@ -98,23 +163,3 @@ func NewResult() *Result {
 		err:    nil,
 	}
 }
-
-type specsConfig struct {
-	indexName	string
-	fieldName	string
-	min			int64
-	max			int64
-	columns		int64
-}
-
-// TODO: parse automatically
-// based on specs.toml
-var specs = specsConfig{
-	indexName: 	"dx-index", 
-	fieldName: 	"field", 
-	min: 		0, 
-	max: 		1000, 
-	columns:	1000,
-}
-
-// TODO: BUFFER ALL CHANNELS

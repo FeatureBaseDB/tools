@@ -3,10 +3,16 @@ build:
 	go build -o dx ./main.go
 
 ingest:
-	dx ingest --cPort=10102 --pPort=10103 --threadCount=1
+	dx ingest --cport=10102 --pport=10103 --threadcount=1
+
+ingest4:
+	dx ingest --cport=10102 --pport=10103 --threadcount=4
 
 query:
-	dx query --cPort=10102 --pPort=10103 --queries=100,1000,10000 --threadCount=1
+	dx query --cport=10102 --pport=10103 --queries=100,1000,10000 --threadcount=1
+
+query4:
+	dx query --cport=10102 --pport=10103 --queries=100,1000,10000 --threadcount=4
 
 server:
 	${MAKE} -j2 candidate primary
