@@ -18,7 +18,7 @@ type specsConfig struct {
 // getSpecs automatically parses the specsFile
 // and returns a default value if that fails.
 func getSpecs(specsFile string) (*specsConfig, error) {
-	indexName, fieldName, fieldMin, fieldMax, columns, err := GetSpecsInfo(specsFile)
+	indexName, fieldName, fieldMin, fieldMax, columns, err := getSpecsInfo(specsFile)
 	if err != nil {
 		m.Logger.Printf("could not parse specs file: %v, using default values instead", err)
 		return &specsConfig{
@@ -38,9 +38,9 @@ func getSpecs(specsFile string) (*specsConfig, error) {
 	}, nil
 }
 
-// GetSpecsInfo decodes the field name, min, max, and number of columns
+// getSpecsInfo decodes the field name, min, max, and number of columns
 // from a specs file with the index name "index".
-func GetSpecsInfo(specsFile string) (indexName string, fieldName string, fieldMin int64, fieldMax int64, columns int64, err error) {
+func getSpecsInfo(specsFile string) (indexName string, fieldName string, fieldMin int64, fieldMax int64, columns int64, err error) {
 	config, err := toml.LoadFile(specsFile)
 	if err != nil {
 		return "", "", 0, 0, 0, fmt.Errorf("could not load specs file: %v", err)

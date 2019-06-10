@@ -54,7 +54,14 @@ func ExecuteIngest() error {
 	if err != nil {
 		fmt.Println("using default specs value")
 	}
-	if err = printIngestResults(specs.columns, cResult.time, pResult.time, timeDelta); err != nil {
+	size := (specs.max - specs.min) * specs.columns
+	b := &Benchmark{
+		Size:      size,
+		CTime:     cResult.time,
+		PTime:     pResult.time,
+		TimeDelta: timeDelta,
+	}
+	if err = printIngestResults(b); err != nil {
 		return fmt.Errorf("could not print results: %v", err)
 	}
 	return nil

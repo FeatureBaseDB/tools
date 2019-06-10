@@ -32,16 +32,6 @@ func NewQueryCommand() *cobra.Command {
 	return ingestCmd
 }
 
-// QueryBenchmark is the result of executing a query benchmark.
-// This is the result passed on to printing.
-type QueryBenchmark struct {
-	Queries   int
-	Accuracy  float64
-	CTime     time.Duration // candidate total time
-	PTime     time.Duration // primary total time
-	TimeDelta float64
-}
-
 // QResult is the result of querying two instances of Pilosa.
 type QResult struct {
 	correct       bool // if both results are the same
@@ -102,7 +92,7 @@ func newCSIF(hosts []string, port int, indexName, fieldName string) (*CSIF, erro
 // ExecuteQueries executes the random queries on both Pilosa instances repeatedly
 // according to the values specified in m.NumQueries.
 func ExecuteQueries() error {
-	qBench := make([]*QueryBenchmark, 0, len(m.NumQueries))
+	qBench := make([]*Benchmark, 0, len(m.NumQueries))
 	for _, numQueries := range m.NumQueries {
 		q, err := executeQueries(numQueries)
 		if err != nil {
@@ -117,7 +107,7 @@ func ExecuteQueries() error {
 	return nil
 }
 
-func executeQueries(numQueries int) (*QueryBenchmark, error) {
+func executeQueries(numQueries int) (*Benchmark, error) {
 	specs, err := getSpecs(m.SpecsFile)
 	if err != nil {
 		fmt.Println("using default specs values")
@@ -182,8 +172,8 @@ func executeQueries(numQueries int) (*QueryBenchmark, error) {
 
 	accuracy := float64(numCorrect) / float64(validQueries)
 	timeDelta := float64(cTotal-pTotal) / float64(pTotal)
-	return &QueryBenchmark{
-		Queries:   validQueries,
+	return &Benchmark{
+		Size:      int64(validQueries),
 		Accuracy:  accuracy,
 		CTime:     cTotal,
 		PTime:     pTotal,

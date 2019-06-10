@@ -157,9 +157,15 @@ type Result struct {
 
 // NewResult initializes a new Result struct.
 func NewResult() *Result {
-	return &Result{
-		result: nil,
-		time:   0,
-		err:    nil,
-	}
+	return &Result{}
+}
+
+// Benchmark is the result of executing an ingest or query benchmark.
+// This is the result passed on to printing.
+type Benchmark struct {
+	Size      int64
+	Accuracy  float64       // only for queries
+	CTime     time.Duration // candidate total time
+	PTime     time.Duration // primary total time
+	TimeDelta float64
 }
