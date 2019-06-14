@@ -62,6 +62,7 @@ Build Time: ` + tools.BuildTime + "\n",
 
 	rc.AddCommand(NewBenchCommand())
 	rc.AddCommand(NewReplayCommand())
+	rc.AddCommand(NewImportFragsCommand())
 
 	rc.SetOutput(os.Stderr)
 	return rc
