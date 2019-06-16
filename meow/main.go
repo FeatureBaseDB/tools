@@ -633,13 +633,26 @@ func printSizes(sizes *encodedSizes, description string) {
 		fmt.Printf("%10s ", encoding)
 	}
 	fmt.Println()
+	printed := 0
+	totalResults := make(map[string]int64)
+	totalContainers := 0
 	for class, results := range sizes.sizes {
 		if sizes.containers[class] == 0 {
 			continue
 		}
+		totalContainers += sizes.containers[class]
+		printed++
 		fmt.Printf("%-8s %6d: ", class, sizes.containers[class])
 		for _, encoding := range encoderNames {
 			fmt.Printf("%10d ", results[encoding])
+			totalResults[encoding] += results[encoding]
+		}
+		fmt.Println()
+	}
+	if printed > 1 {
+		fmt.Printf("%-8s %6d: ", "total", totalContainers)
+		for _, encoding := range encoderNames {
+			fmt.Printf("%10d ", totalResults[encoding])
 		}
 		fmt.Println()
 	}
