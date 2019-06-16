@@ -179,7 +179,7 @@ func (m *MeowBits) GetBucket(bucket uint8, into []uint8) (n int) {
 		copy(into, m.data[offset:offset+uint16(n)])
 		return n
 	}
-	if n < 224 {
+	if n <= 224 {
 		var bits [4]uint64
 		for i := 0; i < 4; i++ {
 			bits[i] = binary.LittleEndian.Uint64(m.data[offset+uint16(i*8):])
