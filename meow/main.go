@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
+	"path/filepath"
 
 	"math/bits"
 	"os"
+	"sort"
 	"unsafe"
 )
 
@@ -36,7 +38,323 @@ type interval16 struct{ start, last uint16 }
 type MeowBits struct {
 	presence [4]uint64
 	buckets  [256]uint8
+	offsets  [256]uint16
 	data     [8192]uint8
+}
+
+func (m *MeowBits) String() string {
+	totalN := 0
+	totalC := 0
+	for i := 0; i < 256; i++ {
+		if m.Presence(uint8(i)) {
+			totalC++
+			if m.buckets[i] != 0 {
+				totalN += int(m.buckets[i])
+			} else {
+				totalN += 256
+			}
+		}
+	}
+	return fmt.Sprintf("meowbits<%d containers, %d bits>", totalC, totalN)
+}
+
+type MeowEncoder interface {
+	Decode([]byte) *MeowBits
+	Encode(*MeowBits) []byte
+}
+
+var encoders = map[string]MeowEncoder{
+	"naive":    &EncoderNaive{},
+	"omitting": &EncoderOmitting{},
+	"flaggy":   &EncoderFlaggy{},
+}
+
+var encoderNames []string
+
+type encodedSizes struct {
+	containers map[string]int
+	sizes      map[string]map[string]int64
+}
+
+func newEncodedSizes() *encodedSizes {
+	es := encodedSizes{
+		containers: make(map[string]int),
+		sizes:      make(map[string]map[string]int64),
+	}
+	for _, name := range []string{"array", "bitmap", "run"} {
+		es.sizes[name] = make(map[string]int64)
+	}
+	return &es
+}
+
+var totalSizes *encodedSizes
+
+// the type definitions here are just documentation of the layout parsed.
+type EncoderNaive struct {
+	presence [4]uint64
+	buckets  [256]uint8
+	data     [8192]uint8
+}
+
+func (e *EncoderNaive) Decode(in []byte) *MeowBits {
+	m := &MeowBits{}
+	for i := 0; i < 4; i++ {
+		m.presence[i] = binary.LittleEndian.Uint64(in[i*8:])
+	}
+	copy(m.buckets[:], in[32:])
+	copy(m.data[:], in[288:])
+	offset := uint16(0)
+	for i := 0; i < 256; i++ {
+		m.offsets[i] = offset
+		offset += m.BucketSize(uint8(i))
+	}
+	return m
+}
+
+func (e *EncoderNaive) Encode(m *MeowBits) []byte {
+	length := 288 + m.offsets[255] + m.BucketSize(255)
+	out := make([]uint8, length)
+	for i := 0; i < 4; i++ {
+		binary.LittleEndian.PutUint64(out[i*8:], m.presence[i])
+	}
+	copy(out[32:], m.buckets[:])
+	copy(out[288:], m.data[:])
+	return out
+}
+
+type EncoderOmitting struct {
+	metaPresence uint16
+	presence     []uint16
+	buckets      []uint8
+	data         []uint8
+}
+
+func (e *EncoderOmitting) Decode(in []byte) *MeowBits {
+	m := &MeowBits{}
+	offset := uint16(0)
+	presence16 := binary.LittleEndian.Uint16(in[offset:])
+	offset += 2
+	bit := uint(0)
+	for i := 0; i < 4; i++ {
+		for j := uint(0); j < 4; j++ {
+			if presence16&(1<<bit) != 0 {
+				m.presence[i] |= uint64(binary.LittleEndian.Uint16(in[offset:])) << (16 * j)
+				offset += 2
+			}
+			bit++
+		}
+	}
+	for i := 0; i < 256; i++ {
+		if m.Presence(uint8(i)) {
+			m.buckets[i] = in[offset]
+			offset++
+		}
+	}
+	copy(m.data[:], in[offset:])
+	offset = 0
+	for i := 0; i < 256; i++ {
+		m.offsets[i] = offset
+		offset += m.BucketSize(uint8(i))
+	}
+	return m
+}
+
+func (e *EncoderOmitting) Encode(m *MeowBits) []byte {
+	var presence16 uint16
+	var subPresence16 [16]uint16
+	var subContainers int
+	var containers int
+	var bit uint
+	for i := 0; i < 4; i++ {
+		word := m.presence[i]
+		for j := 0; j < 4; j++ {
+			subPresence := uint16(word & 0xFFFF)
+			count := bits.OnesCount16(subPresence)
+			if count > 0 {
+				subPresence16[bit] = subPresence
+				subContainers++
+				containers += count
+				presence16 |= (1 << bit)
+			}
+			bit++
+			word >>= 16
+		}
+	}
+	length := 2 + (2 * subContainers) + containers + int(m.offsets[255]) + int(m.BucketSize(255))
+	out := make([]uint8, length)
+	binary.LittleEndian.PutUint16(out[:], presence16)
+	offset := 2
+	for i := uint(0); i < 16; i++ {
+		if presence16&(1<<i) != 0 {
+			binary.LittleEndian.PutUint16(out[offset:], subPresence16[i])
+			offset += 2
+		}
+	}
+	for i := 0; i < 256; i++ {
+		if m.Presence(uint8(i)) {
+			out[offset] = m.buckets[i]
+			offset++
+		}
+	}
+	copy(out[offset:], m.data[:])
+	return out
+}
+
+// extra fancy: flaggy encoder uses two bits per block of 16 containers.
+// 00: none present
+// 01: present, corresponding presence word must exist
+// 10: all present, corresponding presence word not needed
+// 11: all present, all full; don't store sizes.
+type EncoderFlaggy struct {
+	metaPresence uint32
+	presence     []uint16
+	buckets      []uint8
+	data         []uint8
+}
+
+func (e *EncoderFlaggy) Decode(in []byte) *MeowBits {
+	m := &MeowBits{}
+	offset := uint16(0)
+	presence32 := binary.LittleEndian.Uint32(in[offset:])
+	offset += 4
+	bit := uint(0)
+	// denotes batches of 16 bits that we can skip
+	var antiPresence [16]bool
+	for i := 0; i < 4; i++ {
+		for j := uint(0); j < 4; j++ {
+			switch (presence32 >> bit) & 3 {
+			case 0:
+			case 1:
+				m.presence[i] |= uint64(binary.LittleEndian.Uint16(in[offset:])) << (16 * j)
+				offset += 2
+			case 2:
+				m.presence[i] |= 0xFFFF << (16 * j)
+			case 3:
+				m.presence[i] |= 0xFFFF << (16 * j)
+				antiPresence[i*4+int(j)] = true
+			}
+			bit += 2
+		}
+	}
+	for i := 0; i < 256; i++ {
+		if i%16 == 0 && antiPresence[i/16] {
+			i += 15
+			continue
+		}
+		if m.Presence(uint8(i)) {
+			m.buckets[i] = in[offset]
+			offset++
+		}
+	}
+	copy(m.data[:], in[offset:])
+	offset = 0
+	for i := 0; i < 256; i++ {
+		m.offsets[i] = offset
+		offset += m.BucketSize(uint8(i))
+	}
+	return m
+}
+
+func (e *EncoderFlaggy) Encode(m *MeowBits) []byte {
+	var presence32 uint32
+	var subPresence16 [16]uint16
+	var subContainers int
+	var containers int
+	var bit uint
+	var antiPresence [16]bool
+	for i := 0; i < 4; i++ {
+		word := m.presence[i]
+		for j := 0; j < 4; j++ {
+			subPresence := uint16(word & 0xFFFF)
+			count := bits.OnesCount16(subPresence)
+			if count > 0 {
+				subPresence16[bit/2] = subPresence
+				containers += count
+				if count == 16 {
+					presence32 |= (2 << bit)
+					baseBucket := (i * 64) + (j * 16)
+					allFull := true
+					for k := 0; k < 16; k++ {
+						if m.buckets[baseBucket+k] != 0 {
+							allFull = false
+							break
+						}
+					}
+					if allFull {
+						presence32 |= (1 << bit)
+						antiPresence[i*4+int(j)] = true
+					}
+				} else {
+					presence32 |= (1 << bit)
+					subContainers++
+				}
+			}
+			bit += 2
+			word >>= 16
+		}
+	}
+	length := 4 + (2 * subContainers) + containers + int(m.offsets[255]) + int(m.BucketSize(255))
+	out := make([]uint8, length)
+	binary.LittleEndian.PutUint32(out[:], presence32)
+	offset := 4
+	for i := uint(0); i < 16; i++ {
+		if (presence32>>(i*2))&3 == 1 {
+			binary.LittleEndian.PutUint16(out[offset:], subPresence16[i])
+			offset += 2
+		}
+	}
+	for i := 0; i < 256; i++ {
+		if i%16 == 0 && antiPresence[i/16] {
+			i += 15
+			continue
+		}
+		if m.Presence(uint8(i)) {
+			out[offset] = m.buckets[i]
+			offset++
+		}
+	}
+	copy(out[offset:], m.data[:])
+	return out
+}
+
+func (m *MeowBits) TryEncodings(class string, roaringSize int, fileSizes *encodedSizes) {
+	fileSizes.containers[class]++
+	totalSizes.containers[class]++
+	fileSizes.sizes[class]["roaring"] += int64(roaringSize)
+	totalSizes.sizes[class]["roaring"] += int64(roaringSize)
+	for k, e := range encoders {
+		outData := e.Encode(m)
+		reRead := e.Decode(outData)
+		if *reRead != *m {
+			fmt.Printf("encoding %s mismatch for %s container [%v in, %v out]\n", k, class, m, reRead)
+			if reRead.presence != m.presence {
+				fmt.Printf("presence mismatch\n")
+			}
+			if reRead.buckets != m.buckets {
+				fmt.Printf("buckets mismatch\n")
+			}
+			if reRead.data != m.data {
+				for i := 0; i < len(m.data); i++ {
+					if reRead.data[i] != m.data[i] {
+						min := i - 3
+						if min < 0 {
+							min = 0
+						}
+						max := i + 3
+						if max > len(m.data) {
+							max = len(m.data)
+						}
+						fmt.Printf("data mismatch, starting at offset %d [%d-%d]: %02x <=> %02x\n",
+							i, min, max, m.data[min:max], reRead.data[min:max])
+						break
+					}
+				}
+			}
+			panic("stopping here")
+		}
+		fileSizes.sizes[class][k] += int64(len(outData))
+		totalSizes.sizes[class][k] += int64(len(outData))
+	}
 }
 
 func (m *MeowBits) SetPresence(bucket uint8) {
@@ -47,8 +365,8 @@ func (m *MeowBits) ClearPresence(bucket uint8) {
 	m.presence[bucket>>6] &^= 1 << uint64(bucket&63)
 }
 
-func (m *MeowBits) Presence(bucket uint8) uint64 {
-	return (m.presence[bucket>>6] >> uint64(bucket&63)) & 1
+func (m *MeowBits) Presence(bucket uint8) bool {
+	return ((m.presence[bucket>>6] >> uint64(bucket&63)) & 1) != 0
 }
 
 func (m *MeowBits) BucketSize(bucket uint8) uint16 {
@@ -65,32 +383,16 @@ func (m *MeowBits) BucketSize(bucket uint8) uint16 {
 	return 32
 }
 
-func (m *MeowBits) Size() int {
-	offset := m.BucketOffset(255)
-	if m.Presence(255) != 0 {
-		offset += m.BucketSize(255)
-	}
-	return int(offset) + 288
-}
-
-func (m *MeowBits) BucketOffset(bucket uint8) uint16 {
-	var idx uint8
-	var offset uint16
-	for idx = 0; idx < bucket; idx++ {
-		if m.Presence(idx) != 0 {
-			offset += m.BucketSize(idx)
-		}
-	}
-	return offset
-}
-
 func (m *MeowBits) RemoveBucket(bucket uint8) {
-	if m.Presence(bucket) == 0 {
+	if !m.Presence(bucket) {
 		return
 	}
-	offset := m.BucketOffset(bucket)
+	offset := m.offsets[bucket]
 	size := m.BucketSize(bucket)
 	copy(m.data[offset:], m.data[offset+size:])
+	for i := int(bucket) + 1; i < 256; i++ {
+		m.offsets[i] -= size
+	}
 	m.buckets[bucket] = 0
 	m.ClearPresence(bucket)
 }
@@ -121,13 +423,17 @@ func (m *MeowBits) SetBucket(bucket uint8, vals []uint8) {
 	if len(vals) > 256 {
 		panic("more than 256 vals for a bucket")
 	}
-	offset := m.BucketOffset(bucket)
+	offset := m.offsets[bucket]
 	oldSize := m.BucketSize(bucket)
 	m.buckets[bucket] = uint8(len(vals))
 	m.SetPresence(bucket)
 	newSize := m.BucketSize(bucket)
 	if oldSize != newSize {
 		copy(m.data[offset+oldSize:], m.data[offset+newSize:])
+		difference := newSize - oldSize
+		for i := int(bucket) + 1; i < 256; i++ {
+			m.offsets[i] += difference
+		}
 	}
 	// 256 values: represented as nothing, because there's
 	// 0 bits of additional data needed to tell us which 256
@@ -164,7 +470,7 @@ func (m *MeowBits) SetBucket(bucket uint8, vals []uint8) {
 }
 
 func (m *MeowBits) GetBucket(bucket uint8, into []uint8) (n int) {
-	if m.Presence(bucket) == 0 {
+	if !m.Presence(bucket) {
 		return 0
 	}
 	n = int(m.buckets[bucket])
@@ -174,7 +480,7 @@ func (m *MeowBits) GetBucket(bucket uint8, into []uint8) (n int) {
 		}
 		return 256
 	}
-	offset := m.BucketOffset(bucket)
+	offset := m.offsets[bucket]
 	if n < 32 {
 		copy(into, m.data[offset:offset+uint16(n)])
 		return n
@@ -274,7 +580,7 @@ func RunToMeowBits(runs []interval16) (m *MeowBits) {
 func (m *MeowBits) GetN() int {
 	count := 0
 	for i := 0; i < 256; i++ {
-		if m.Presence(uint8(i)) != 0 {
+		if m.Presence(uint8(i)) {
 			if m.buckets[i] != 0 {
 				count += int(m.buckets[i])
 			} else {
@@ -321,7 +627,25 @@ func (m *MeowBits) Bitmap() []uint64 {
 	return out
 }
 
-func ExamineRoaring(data []byte) error {
+func printSizes(sizes *encodedSizes, description string) {
+	fmt.Printf("%-10s       ", description)
+	for _, encoding := range encoderNames {
+		fmt.Printf("%10s ", encoding)
+	}
+	fmt.Println()
+	for class, results := range sizes.sizes {
+		if sizes.containers[class] == 0 {
+			continue
+		}
+		fmt.Printf("%-8s %6d: ", class, sizes.containers[class])
+		for _, encoding := range encoderNames {
+			fmt.Printf("%10d ", results[encoding])
+		}
+		fmt.Println()
+	}
+}
+
+func ExamineRoaring(data []byte, path string) error {
 	expectedSize := 0
 	if len(data) < headerBaseSize {
 		return fmt.Errorf("data too small")
@@ -346,13 +670,10 @@ func ExamineRoaring(data []byte) error {
 	offsets := postHeader[headerDataSize : headerDataSize+(keyN*4)]
 	var opLog []byte = postHeader
 	var nTotal int
-	arrays := 0
-	bitmaps := 0
-	runs := 0
-	var roaringArraySize, meowArraySize, roaringBitmapSize, meowBitmapSize, roaringRunSize, meowRunSize int64
+
+	fileSizes := newEncodedSizes()
 
 	// Descriptive header section: Read container keys and cardinalities.
-	fmt.Printf("container keys:\n")
 done:
 	for i, header, offset := 0, headers, offsets; i < int(keyN); i, header, offset = i+1, header[12:], offset[4:] {
 		key := binary.LittleEndian.Uint64(header[0:8])
@@ -368,7 +689,6 @@ done:
 			array := (*[1 << 16]uint16)(unsafe.Pointer(&body[0]))[:n:n]
 			m := ArrayToMeowBits(array)
 			a2 := m.Array()
-			arrays++
 			if len(array) != len(a2) {
 				fmt.Printf("array mismatch, expected %d entries, got %d\n", len(array), len(a2))
 				if len(array) > 5 {
@@ -390,20 +710,17 @@ done:
 					}
 				}
 			}
-			meowArraySize += int64(m.Size())
 			if n <= 5 {
 				expectedSize += 32
 			} else {
 				expectedSize += 32 + (2 * n)
 			}
 			dataSize = int(n) * 2
-			roaringArraySize += int64(dataSize)
+			m.TryEncodings("array", dataSize, fileSizes)
 		case 2: // bitmap
 			bitmap := (*[1024]uint64)(unsafe.Pointer(&body[0]))[:1024:1024]
 			m := BitmapToMeowBits(bitmap)
 			b2 := m.Bitmap()
-			meowBitmapSize += int64(m.Size())
-			bitmaps++
 			for word := 0; word < len(bitmap); word++ {
 				if bitmap[word] != b2[word] {
 					fmt.Printf("bitmap [%d] mismatch: word %d, expected %x, got %x\n",
@@ -412,30 +729,25 @@ done:
 				}
 			}
 			dataSize = 8192
-			roaringBitmapSize += int64(dataSize)
+			m.TryEncodings("bitmap", dataSize, fileSizes)
 			expectedSize += 8192 + 32
 		case 3: //run
 			count := int(binary.LittleEndian.Uint16(body[:2]))
 			dataSize = 2 + (count * 4)
 			expectedSize += 32 + (4 * count)
 			rle := (*[2048]interval16)(unsafe.Pointer(&data[offset+2]))[:count:count]
-			runs++
-			b2 := RunToMeowBits(rle)
-			if b2.GetN() != n {
-				fmt.Printf("run of %d came out as %d\n", n, b2.GetN())
+			m := RunToMeowBits(rle)
+			if m.GetN() != n {
+				fmt.Printf("run of %d came out as %d\n", n, m.GetN())
 			}
-			roaringRunSize += int64(dataSize)
-			meowRunSize += int64(b2.Size())
+			m.TryEncodings("run", dataSize, fileSizes)
 		}
 		// fmt.Printf("idx %d: key %d, type %d, n %d, data size %d\n", i, key, typ, n, dataSize)
 		opLog = data[int(offset)+dataSize:]
 	}
-	fmt.Printf("%d arrays [%d vs %d], %d bitmaps [%d vs %d], %d runs [%d vs %d], total %d vs %d\n",
-		arrays, roaringArraySize, meowArraySize,
-		bitmaps, roaringBitmapSize, meowBitmapSize,
-		runs, roaringRunSize, meowRunSize,
-		roaringArraySize+roaringBitmapSize+roaringRunSize, meowArraySize+meowBitmapSize+meowRunSize)
-	fmt.Printf("op log %d bytes\n", len(opLog))
+	printSizes(fileSizes, filepath.Base(filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path))))))
+
+	// fmt.Printf("op log %d bytes\n", len(opLog))
 
 	ops := opLog
 	opCount := 0
@@ -462,9 +774,10 @@ done:
 			fmt.Printf("  %d\n", k)
 		}
 	}
-	fmt.Printf("%d indexes, total n %d, expected size %d [file size %d including ops], ", keyN, nTotal, expectedSize, len((data)))
-	fmt.Printf("plus %d ops [%d bytes, %d values]\n", opCount, len(opLog), opN)
-
+	if false {
+		fmt.Printf("%d indexes, total n %d, expected size %d [file size %d including ops], ", keyN, nTotal, expectedSize, len((data)))
+		fmt.Printf("plus %d ops [%d bytes, %d values]\n", opCount, len(opLog), opN)
+	}
 	return nil
 }
 
@@ -549,15 +862,24 @@ func (op *op) size() int {
 }
 
 func main() {
+	encoderNames = make([]string, 0, len(encoders)+1)
+	for k := range encoders {
+		encoderNames = append(encoderNames, k)
+	}
+	sort.Strings(encoderNames)
+	// it is intentional that "roaring" goes at the end of the list.
+	encoderNames = append(encoderNames, "roaring")
+	totalSizes = newEncodedSizes()
 	for _, path := range os.Args[1:] {
 		data, err := ioutil.ReadFile(path)
 		if err != nil {
 			fmt.Printf("error reading '%s': %v\n", path, err)
 			continue
 		}
-		err = ExamineRoaring(data)
+		err = ExamineRoaring(data, path)
 		if err != nil {
 			fmt.Printf("error examining '%s': %v\n", path, err)
 		}
 	}
+	printSizes(totalSizes, "total")
 }
