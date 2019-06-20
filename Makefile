@@ -53,9 +53,10 @@ install-pi:
 
 generate: enumer-install
 	cd imagine && \
+	go generate && \
+	cd pkg && \
 	go generate
 
 
 enumer-install:
 	$(if $(ENUMER),@echo "enumer already installed — skipping.", go get -u github.com/alvaroloes/enumer)
-

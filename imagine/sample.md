@@ -23,8 +23,8 @@ these indexes, but having three of them lets us do interesting comparisons.
 ### Users
 
 The main index is a table of information about users. Fields:
-	age (BSI)
-	income (BSI)
+	age (int)
+	income (int)
 	favorite numbers (N rows, bits indicate "user likes number")
 	least favorite numbers (N rows, bits indicate "user dislikes number")
 
@@ -38,7 +38,7 @@ use case we potentially care about.
 
 ### Events
 
-The second table, `events`, has a BSI field which contains column IDs from the
+The second table, `events`, has an int field which contains column IDs from the
 user table. This allows comparisons to go either of two ways; you can perform
 queries on this table, then create a new row which has bits set for all the
 entries in the `userid` field for the returned columns, or you can perform
@@ -46,7 +46,7 @@ queries on `users`, then select entries from this table which have a value in
 that set of columns present in their `userid` field. Events likewise have
 other fields:
 	timestamp of event
-	BSI fields
+	int fields
 	count-type fields
 	fields which encourage union/intersection queries
 

@@ -99,21 +99,21 @@ Fields can take several kinds, specified as "type". Defined types:
   values.
 * `mutex`: The "mutex" field type, which is like a set, only it enforces
   that only one row is set per column.
-* `bsi`: The binary-representation field type, usable for range queries.
+* `int`: The binary-representation field type, usable for range queries.
 * `time`: The "time" field type, which is a set with additional optional
   timestamp information.
 
 All fields share some common parameters:
 
 * `zipfV`, `zipfS`: the V/S values used for a Zipf distribution of values.
-* `min`, `max`: Minimum and maximum values. For BSI fields, this is the value
+* `min`, `max`: Minimum and maximum values. For int fields, this is the value
   range; for set/mutex fields, it's the range of rows that will be
   potentially generated.
 * `sourceIndex`: An index to use for values; the value range will be the
   source index's column range. If source index has 100,000 columns, this
   is equivalent to "min: 0, max: 99999".
 * `density`: The field's base density of bits set. For a set, this density
-  applies to each row independently; for a mutex or BSI field, it
+  applies to each row independently; for a mutex or int field, it
   determines how many columns should have a value set.
 * `valueRule`: "linear" or "zipf". Exact interpretation varies by field type,
   but "linear" indicates that all rows should have the same density of
@@ -151,9 +151,9 @@ Zipf parameters: This just follows the behavior of the Zipf generator in
 `math/rand`. A single value is determined for each column, determining which
 bit is set.
 
-#### BSI Fields
+#### Int Fields
 
-By default, every member of a BSI field is set to a random value within the
+By default, every member of a int field is set to a random value within the
 range.
 
 Zipf parameters: This follows the behavior of the Zipf generator in `math/rand`,
@@ -211,7 +211,7 @@ Each task outlines a specific set of data to populate in a given field.
 * `stride`: The stride to use with a columnOrder of "stride".
 * `rowOrder`: "linear" or "permute" (default linear). Determines the order
   in which row values are computed, for set fields, or whether to permute
-  generated values, for mutex or BSI fields.
+  generated values, for mutex or int fields.
 * `batchSize`: Size of import batches (overrides, but defaults to,
   batch's batchSize).
 * `stamp`: Controls timestamp behavior. One of "none", "random", "increasing".
@@ -229,7 +229,7 @@ These values are then subtracted from the *next* column number -- the lowest
 column number not currently known to `imagine`, to produce a range which might
 indicate updates to existing columns, or might indicate a new column. A value
 is generated for each column. Note that this will pick values the same way
-mutex or BSI fields do, rather than generating all the values for each column,
+mutex or int fields do, rather than generating all the values for each column,
 and the same column may be generated more than once. This behavior attempts
 to simulate likely behavior for event streams.
 
@@ -246,7 +246,7 @@ its stream and get the same bits every time. See the related package
 Set values are computed using `apophenia.Weighted`, with `seed` equal to the
 row number, and `id` equal to the column number.
 
-Mutex/BSI: Mutex and BSI fields both generate a single value in their range.
+Mutex/Int: Mutex and int fields both generate a single value in their range.
 Linear values are computed using `row` 0, `iter` 0, and are computed as
 `min + U % (max - min)`. (For a mutex, the minimum value is always 0.) Zipf
 values are computed using iterated values for `row` 0 as inputs to another

@@ -3,8 +3,8 @@ version = "1.0"
 [indexes.users]
 columns = 100
 fields = [
-# age = { type = "BSI", min = 10, max = 120 }
-# { name = "income", type = "bsi", min = 0, max = 640000, density = 1.0 },
+# age = { type = "int", min = 10, max = 120 }
+# { name = "income", type = "int", min = 0, max = 640000, density = 1.0 },
 { name = "numbers", type = "set", max = 2, density = 0.01, },
 { name = "numbers", type = "set", chance = 0.05, density = 1.0, },
 ]

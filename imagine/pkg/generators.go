@@ -17,7 +17,7 @@ var newGenerators = map[fieldType]genfunc{
 	fieldTypeSet:   newSetGenerator,
 	fieldTypeTime:  newSetGenerator,
 	fieldTypeMutex: newMutexGenerator,
-	fieldTypeBSI:   newBSIGenerator,
+	fieldTypeInt:   newIntGenerator,
 }
 
 // A generator needs to be able to generate columns and rows, sequentially.
@@ -71,7 +71,7 @@ func noSortNeeded(ts *taskSpec) bool {
 }
 
 // Three cases:
-// BSI: FieldValue, one per column.
+// Int: FieldValue, one per column.
 // Mutex: Column, one per column.
 // Set: FieldValue, possibly many per column, possibly column-major.
 
@@ -156,10 +156,10 @@ func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string
 	return &g, nil
 }
 
-// newBSIGenerator builds a value generator, which is a generator
+// newIntGenerator builds a value generator, which is a generator
 // that computes a single value for a column, then returns it as a
 // pilosa.FieldValue.
-func newBSIGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+func newIntGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	g := fieldValueGenerator{}
 	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
@@ -214,7 +214,7 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 }
 
 // makeValueGenerator makes a generator which generates values for fields which
-// can only have one value per column, such as mutex/BSI fields.
+// can only have one value per column, such as mutex/Int fields.
 func makeValueGenerator(ts *taskSpec) (vg valueGenerator, err error) {
 	fs := ts.FieldSpec
 	switch fs.ValueRule {
@@ -391,7 +391,7 @@ func (g *zipfColumnGenerator) Status() (int64, int64) {
 }
 
 // valueGenerator represents a thing which generates predictable values
-// for a sequence. Used for mutex/BSI fields.
+// for a sequence. Used for mutex/Int fields.
 type valueGenerator interface {
 	Nth(int64) int64
 }
