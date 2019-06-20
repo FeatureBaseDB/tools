@@ -175,22 +175,7 @@ Workloads are sequential. They have the following attributes:
 * `batchSize`: The default size of import batches (number of records before
   the client transmits records to the server).
 
-Each workload also has one or more "batches", which are sets of tasks.
-Batches are executed sequentially in order within each workload. They
-are introduced using `[[workloads.batches]]`.
-
-#### Batches
-
-Each batch has optional configuration fields, plus an array of tasks.
-
-* `description`: A description of the workload.
-* `threadCount`: Number of importer threads to use in imports.
-* `batchSize`: Size of import batches (overrides, but defaults to,
-  workload's batchSize).
-
-The `threadCount` value for a batch overrides the parent workload's default,
-and is used for each task within the batch. Additionally, the tasks within a
-batch are all executed in parallel.
+Each workload also has an array of tasks, which are all executed in parallel.
 
 #### Tasks
 

@@ -8,8 +8,6 @@ fields = [
 [[workloads]]
 name = "ingest"
 threadCount = 1
-[[workloads.batches]]
-description = "initial"
 tasks = [
 { index = "players", field = "timey", columnOrder = "permute", columns = 500 },
 ]
