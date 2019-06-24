@@ -3,7 +3,7 @@ version = "1.0"
 [indexes.students_ts]
 columns = 10000000
 fields = [
-{ name = "age", type = "bsi", max = 100, min=14, density = 0.99, valueRule = "zipf", zipfV = 3.0, zipfS = 1.1 },
+{ name = "age", type = "int", max = 100, min=14, density = 0.99, valueRule = "zipf", zipfV = 3.0, zipfS = 1.1 },
 ]
 [[workloads]]
 name = "ingest"

@@ -23,7 +23,7 @@ type fieldType int
 
 const (
 	fieldTypeUndef fieldType = iota
-	fieldTypeBSI
+	fieldTypeInt
 	fieldTypeSet
 	fieldTypeMutex
 	fieldTypeTime
@@ -140,9 +140,9 @@ type fieldSpec struct {
 
 	// common values for all the field types
 	Name          string
-	Type          fieldType    // "set", "mutex", "bsi"
+	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
-	Min, Max      int64        // Allowable value range for a BSI field. Row range for set/mutex fields.
+	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
 	ValueRule     densityType  // which of several hypothetical density/value algorithms to use.
@@ -221,8 +221,8 @@ func (fs *fieldSpec) String() string {
 	switch fs.Type {
 	case fieldTypeSet:
 		return fmt.Sprintf("set: rows %d, density %s", fs.Max, density)
-	case fieldTypeBSI:
-		return fmt.Sprintf("BSI: Min %d, Max %d, density %s", fs.Min, fs.Max, density)
+	case fieldTypeInt:
+		return fmt.Sprintf("int: Min %d, Max %d, density %s", fs.Min, fs.Max, density)
 	default:
 		return fmt.Sprintf("%#v", *fs)
 	}
@@ -525,12 +525,12 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 		switch fs.Type {
 		case fieldTypeSet, fieldTypeMutex:
 			fs.Cache = cacheTypeRanked
-		case fieldTypeBSI:
+		case fieldTypeInt:
 			fs.Cache = cacheTypeNone
 		}
 	}
-	if fs.Type == fieldTypeBSI && fs.Cache != cacheTypeNone {
-		return fmt.Errorf("field %s specifies a cache (%v) for a BSI field", fs.Name, fs.Cache)
+	if fs.Type == fieldTypeInt && fs.Cache != cacheTypeNone {
+		return fmt.Errorf("field %s specifies a cache (%v) for an int field", fs.Name, fs.Cache)
 	}
 	if fs.Type == fieldTypeTime {
 		if fs.Quantum == nil {
@@ -661,8 +661,8 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		return nil
 	}
 	// We can't do timestamps with FieldValue returns.
-	if ts.FieldSpec.Type == fieldTypeBSI {
-		return fmt.Errorf("field %s: BSI fields don't support timestamps", ts.Field)
+	if ts.FieldSpec.Type == fieldTypeInt {
+		return fmt.Errorf("field %s: Int fields don't support timestamps", ts.Field)
 	}
 	// default to one week
 	if ts.StampRange == nil {

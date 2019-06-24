@@ -10,7 +10,7 @@ column order import followed by random updates.
 
 - low cardinality mutex field (3), even distribution, 99% of columns have values.
 
-- 16 bit BSI field 99% of columns have a value. zipfian distribution within the 16 bit range
-- 32 bit BSI field 99% of columns have a value. zipfian distribution within the 32 bit range
-- 64 bit BSI field 99% of columns have a value. simulated high precision
+- 16 bit int field 99% of columns have a value. zipfian distribution within the 16 bit range
+- 32 bit int field 99% of columns have a value. zipfian distribution within the 32 bit range
+- 64 bit int field 99% of columns have a value. simulated high precision
   timestamp - each update increases slightly from the previous number.

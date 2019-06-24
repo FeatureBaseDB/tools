@@ -352,7 +352,7 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 		}
 		changed = true
 		switch field.Type {
-		case fieldTypeBSI:
+		case fieldTypeInt:
 			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
 		case fieldTypeSet:
 			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), field.CacheSize))

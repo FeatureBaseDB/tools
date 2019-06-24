@@ -8,10 +8,10 @@ fields = [
 { name = "timestamp", type = "time", max=1, density = 1.0, valueRule="zipf", quantum="YMDH" },
 #{ name = "client_mac", type="set", max=10000000, density=0.001, valueRule="zipf"},
 { name = "zone", type="set", max=300, density=0.1, valueRule="zipf", cache = "lru" },
-{ name = "age", type="bsi", max=100, min=14, density=0.99, valueRule="zipf", zipfV = 3.0, zipfS = 1.1 },
+{ name = "age", type="int", max=100, min=14, density=0.99, valueRule="zipf", zipfV = 3.0, zipfS = 1.1 },
 { name = "on_campus", type="mutex", max=2, density=0.9, valueRule="zipf", cache = "lru", zipfS = 1.1, zipfV = 3.0 },
 { name = "athlete", type="mutex", max=2, density=1.0, valueRule="linear", cache = "lru" },
-{ name = "gpa", type="bsi", max=400, min=0, density=0.99, valueRule="zipf", zipfV = 3.0, zipfS = 1.1 },
+{ name = "gpa", type="int", max=400, min=0, density=0.99, valueRule="zipf", zipfV = 3.0, zipfS = 1.1 },
 ]
 [[workloads]]
 name = "ingest"
