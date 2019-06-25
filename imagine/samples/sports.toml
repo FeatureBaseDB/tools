@@ -10,8 +10,6 @@ name = "ingest"
 threadCount = 4
 batchSize = 1048576
 useRoaring = true
-[[workloads.batches]]
-description = "initial"
 tasks = [
-{ index = "users", field = "timey", stamp = "increasing", stampRange = "7560h", columns = 100000000 },
+    { index = "users", field = "timey", stamp = "increasing", stampRange = "7560h", columns = 100000000 },
 ]

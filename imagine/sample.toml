@@ -11,14 +11,10 @@ fields = [
 [[workloads]]
 name = "sample"
 threadCount = 1
-[[workloads.batches]]
-description = "initial"
 tasks = [
 # { index = "users", field = "income", },
 { index = "users", field = "numbers", columnOrder = "stride", stride = 3 },
 ]
-# [[workloads.batches]]
-# description = "repopulate"
 # tasks = [
 # { index = "users", field = "income", columnOrder = "permute" },
 # ]

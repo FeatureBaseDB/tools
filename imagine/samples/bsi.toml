@@ -11,23 +11,21 @@ fields = [
 ]
 [[workloads]]
 name = "Int initial import"
-[[workloads.batches]]
-description = "import16"
 tasks = [{ index = "inttest", field = "int16", seed = 1 }]
-[[workloads.batches]]
-description = "import32"
-tasks = [{ index = "inttest", field = "int32", seed = 2 }]
-[[workloads.batches]]
-description = "import63"
-tasks = [{ index = "inttest", field = "int63", seed = 3 }]
+
+# TODO: move to another workload
+#tasks = [{ index = "inttest", field = "int32", seed = 2 }]
+
+# TODO: move to another workload
+#tasks = [{ index = "inttest", field = "int63", seed = 3 }]
+
 [[workloads]]
 name = "Int updates"
-[[workloads.batches]]
-description = "import16"
 tasks = [{ index = "inttest", field = "int16", seed = 4, columns = 1000, columnOrder = "permute" }]
-[[workloads.batches]]
-description = "import32"
-tasks = [{ index = "inttest", field = "int32", seed = 5, columns = 1000, columnOrder = "permute" }]
-[[workloads.batches]]
-description = "import63"
-tasks = [{ index = "inttest", field = "int63", seed = 6, columns = 1000, columnOrder = "permute" }]
+
+
+# TODO: move to another workload
+#tasks = [{ index = "inttest", field = "int32", seed = 5, columns = 1000, columnOrder = "permute" }]
+
+# TODO: move to another workload
+#tasks = [{ index = "inttest", field = "int63", seed = 6, columns = 1000, columnOrder = "permute" }]

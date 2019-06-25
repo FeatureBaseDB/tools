@@ -10,7 +10,4 @@ name = "ingest"
 threadCount = 6
 batchSize = 1048576
 useRoaring = true
-[[workloads.batches]]
-[[workloads.batches]]
-description = "import16"
 tasks = [{ index = "students_ts", field = "age", seed = 1 }]

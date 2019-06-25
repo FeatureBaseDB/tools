@@ -18,15 +18,13 @@ name = "ingest"
 threadCount = 6
 batchSize = 1048576
 useRoaring = true
-[[workloads.batches]]
-description = "initial"
 tasks = [
-{ index = "students_ts", field = "gender"},
-{ index = "students_ts", field = "school"},
-{ index = "students_ts", field = "timestamp", stamp = "increasing", stampStart = "2019-01-01T00:00:00Z", stampRange = "240h" },
-#{ index = "students_ts", field = "client_mac"},
-{ index = "students_ts", field = "zone"},
-{ index = "students_ts", field = "age", seed = 1},
-{ index = "students_ts", field = "on_campus"},
-{ index = "students_ts", field = "gpa", seed = 2},
+    { index = "students_ts", field = "gender"},
+    { index = "students_ts", field = "school"},
+    { index = "students_ts", field = "timestamp", stamp = "increasing", stampStart = "2019-01-01T00:00:00Z", stampRange = "240h" },
+    #{ index = "students_ts", field = "client_mac"},
+    { index = "students_ts", field = "zone"},
+    { index = "students_ts", field = "age", seed = 1},
+    { index = "students_ts", field = "on_campus"},
+    { index = "students_ts", field = "gpa", seed = 2},
 ]

@@ -166,27 +166,17 @@ type namedWorkload struct {
 type workloadSpec struct {
 	Name        string
 	Description string
-	Batches     []*batchSpec
+	Tasks       []*taskSpec
 	ThreadCount *int // threads to use for each importer
 	BatchSize   *int
-	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
-}
-
-// batchSpec describes a set of tasks to happen in parallel
-type batchSpec struct {
-	Parent      *workloadSpec `toml:"-"`
-	Description string
-	Tasks       []*taskSpec
-	ThreadCount *int  // override workload threadcount
-	BatchSize   *int  // override workload batchsize
 	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
 // taskSpec describes a single task, which is populating some kind of data
 // in some kind of field.
 type taskSpec struct {
-	Parent                *batchSpec `toml:"-"`
-	FieldSpec             *fieldSpec `toml:"-"` // once things are built up, this gets pointed to the actual field spec
+	Parent                *workloadSpec `toml:"-"`
+	FieldSpec             *fieldSpec    `toml:"-"` // once things are built up, this gets pointed to the actual field spec
 	Index                 string
 	IndexFullName         string `toml:"-"`
 	Field                 string
@@ -269,11 +259,8 @@ func describeWorkload(wl *workloadSpec) {
 		return
 	}
 	fmt.Printf("  workload %s:\n", wl.Name)
-	for _, b := range wl.Batches {
-		fmt.Printf("   batch [%s]\n", b.Description)
-		for _, t := range b.Tasks {
-			fmt.Printf("    task %v\n", t)
-		}
+	for _, t := range wl.Tasks {
+		fmt.Printf("    task %v\n", t)
 	}
 }
 
@@ -546,7 +533,7 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 }
 
 // Cleanup performs bookkeeping tasks and error-checking, and calls the
-// Cleanup method of associated batches.
+// Cleanup method of associated tasks.
 func (ws *workloadSpec) Cleanup(conf *Config) error {
 	if conf.ThreadCount != 0 {
 		ws.ThreadCount = &conf.ThreadCount
@@ -555,32 +542,8 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 			return fmt.Errorf("invalid thread count %d [must be a positive number]", *ws.ThreadCount)
 		}
 	}
-	for _, batch := range ws.Batches {
-		batch.Parent = ws
-		err := batch.Cleanup(conf)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Cleanup performs bookkeeping tasks, and error-checking, and calls the
-// Cleanup method of associated tasks.
-func (bs *batchSpec) Cleanup(conf *Config) error {
-	if conf.ThreadCount != 0 {
-		bs.ThreadCount = &conf.ThreadCount
-	} else if bs.ThreadCount == nil {
-		bs.ThreadCount = bs.Parent.ThreadCount
-	}
-	if bs.BatchSize == nil {
-		bs.BatchSize = bs.Parent.BatchSize
-	}
-	if bs.UseRoaring == nil {
-		bs.UseRoaring = bs.Parent.UseRoaring
-	}
-	for _, task := range bs.Tasks {
-		task.Parent = bs
+	for _, task := range ws.Tasks {
+		task.Parent = ws
 		err := task.Cleanup(conf)
 		if err != nil {
 			return err
