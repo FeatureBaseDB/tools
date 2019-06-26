@@ -52,6 +52,8 @@ type Config struct {
 	RowScale     int64  `help:"scale number of rows provided by specs"`
 	LogImports   string `help:"file name to log all imports to (so they can be replayed later)"`
 	ThreadCount  int    `help:"number of threads to use for each import, overrides value set in config file"`
+	NoImport     bool   `help:"do not import the generated bits"`
+	PrintOut     bool   `help:"print out the generated data in ROW_ID,COLUMN_ID format"`
 	flagset      *flag.FlagSet
 	specFiles    []string
 	specs        []*tomlSpec
@@ -478,7 +480,34 @@ func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err
 		tasks.Add(1)
 		go func(idx int, itr CountingIterator, opts []pilosa.ImportOption, field *pilosa.Field, indexName, fieldName string) {
 			before := time.Now()
-			errs[idx] = client.ImportField(field, itr, opts...)
+			if conf.NoImport {
+				errs[idx] = nil
+				if conf.PrintOut {
+					for {
+						rec, err := itr.NextRecord()
+						if err != nil {
+							break
+						}
+						switch r := rec.(type) {
+						case pilosa.Column:
+							if r.Timestamp > 0 {
+								fmt.Printf("%d,%d,%d\n", r.RowID, r.ColumnID, r.Timestamp)
+							} else {
+								fmt.Printf("%d,%d\n", r.RowID, r.ColumnID)
+							}
+						}
+					}
+				} else {
+					for {
+						_, err := itr.NextRecord()
+						if err != nil {
+							break
+						}
+					}
+				}
+			} else {
+				errs[idx] = client.ImportField(field, itr, opts...)
+			}
 			if conf.Time {
 				after := time.Now()
 				v, t := itr.Values()
