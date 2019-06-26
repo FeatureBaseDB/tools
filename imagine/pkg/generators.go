@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"sync"
 
 	pilosa "github.com/pilosa/go-pilosa"
@@ -113,6 +114,12 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 	g.updateChan = updateChan
 	g.updateID = updateID
+	if fs.Probability != nil {
+		g.probability = *fs.Probability
+	} else {
+		g.probability = 0.5
+	}
+	g.fast = fs.Fast
 
 	return iter, nil
 }
@@ -635,6 +642,8 @@ type doubleValueGenerator struct {
 	row, col         int64
 	updateChan       chan taskUpdate
 	updateID         string
+	probability      float64
+	fast             bool
 }
 
 // rowMajorValueGenerator is a generator which generates values for every
@@ -646,21 +655,28 @@ type rowMajorValueGenerator struct {
 
 // NextRecord finds the next record, if one is available.
 func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
+	var bit uint64
+	fast := g.fast
+	prob := g.probability
 	for !g.colDone || !g.rowDone {
 		if g.colDone {
 			g.row, g.rowDone = g.rowGen.Next()
-			if !g.densityPerCol {
+			if !fast && !g.densityPerCol {
 				g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
 			}
 		}
 		g.col, g.colDone = g.colGen.Next()
-		if g.densityPerCol {
-			g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
+		if fast && rand.Float64() < prob {
+			bit = 1
+		} else {
+			if g.densityPerCol {
+				g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
+			}
+			// use row as the "seed" for Weighted computations, so each row
+			// can have different values.
+			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+			bit = g.weighted.Bit(offset, g.density, g.densityScale)
 		}
-		// use row as the "seed" for Weighted computations, so each row
-		// can have different values.
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
-		bit := g.weighted.Bit(offset, g.density, g.densityScale)
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
@@ -689,14 +705,21 @@ type columnMajorValueGenerator struct {
 
 // NextRecord returns the next record, if one is available.
 func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
+	var bit uint64
+	fast := g.fast
+	prob := g.probability
 	for !g.colDone || !g.rowDone {
 		if g.rowDone {
 			g.col, g.colDone = g.colGen.Next()
 		}
 		g.row, g.rowDone = g.rowGen.Next()
-		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
-		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
-		bit := g.weighted.Bit(offset, density, g.densityScale)
+		if fast && rand.Float64() < prob {
+			bit = 1
+		} else {
+			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+			density := g.densityGen.Density(uint64(g.col), uint64(g.row))
+			bit = g.weighted.Bit(offset, density, g.densityScale)
+		}
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()

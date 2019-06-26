@@ -113,6 +113,8 @@ type tomlSpec struct {
 	Seed         int64 // default PRNG seed
 	Indexes      map[string]*indexSpec
 	Workloads    []*workloadSpec
+	Fast         bool    // do not make the density calculation, use probability
+	Probability  float64 //  if rand < probability, set a bit
 }
 
 type indexSpec struct {
@@ -151,6 +153,8 @@ type fieldSpec struct {
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only for time fields
+	Fast          bool
+	Probability   *float64
 
 	// Only useful for set/mutex fields.
 	Cache     cacheType // "ranked", "lru", or "none", default is ranked for set/mutex
@@ -464,6 +468,11 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
+	if fs.Probability == nil {
+		// inherit parent's probability
+		fs.Probability = &fs.Parent.Parent.Probability
+	}
+	fs.Fast = fs.Parent.Parent.Fast
 	// no specified chance = 1.0
 	if fs.Chance == nil {
 		f := float64(1.0)

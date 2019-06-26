@@ -1,0 +1,14 @@
+version = "1.0"
+fast = true
+probability = 0.5
+[indexes.users]
+columns = 1000000
+fields = [
+{name = "numbers", type = "set", min=0, max=1000, chance = 0.05, density = 1.0, },
+]
+[[workloads]]
+name = "sample"
+threadCount = 1
+tasks = [
+{ index = "users", field = "numbers", columnOrder = "stride", stride = 3, dimensionOrder="row" },
+]

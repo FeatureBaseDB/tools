@@ -498,12 +498,15 @@ func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err
 						}
 					}
 				} else {
+					totalBits := 0
 					for {
 						_, err := itr.NextRecord()
 						if err != nil {
 							break
 						}
+						totalBits += 1
 					}
+					fmt.Println("total bits:", totalBits)
 				}
 			} else {
 				errs[idx] = client.ImportField(field, itr, opts...)
