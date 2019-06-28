@@ -1,9 +1,9 @@
 version = "1.0"
 fast = true
 [indexes.users]
-columns = 1000
+columns = 1000000000
 fields = [
-{name = "numbers", type = "set", min=0, max=10, zipfA=3.0 },
+{name = "numbers", type = "set", min=0, max=100000, zipfA=3.0 },
 ]
 [[workloads]]
 name = "sample"
