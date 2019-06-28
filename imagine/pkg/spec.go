@@ -113,7 +113,8 @@ type tomlSpec struct {
 	Seed         int64 // default PRNG seed
 	Indexes      map[string]*indexSpec
 	Workloads    []*workloadSpec
-	Fast         bool    // do not make the density calculation, use probability
+	Fast         bool
+	CachePath    string  // the path for random uint cache
 	Probability  float64 //  if rand < probability, set a bit
 }
 
@@ -144,6 +145,7 @@ type fieldSpec struct {
 	Name          string
 	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
+	ZipfA         float64      // alpha parameter for a zipf distribution, should be >= 0
 	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
@@ -154,7 +156,7 @@ type fieldSpec struct {
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only for time fields
 	Fast          bool
-	Probability   *float64
+	CachePath     string
 
 	// Only useful for set/mutex fields.
 	Cache     cacheType // "ranked", "lru", or "none", default is ranked for set/mutex
@@ -468,11 +470,8 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
-	if fs.Probability == nil {
-		// inherit parent's probability
-		fs.Probability = &fs.Parent.Parent.Probability
-	}
 	fs.Fast = fs.Parent.Parent.Fast
+	fs.CachePath = fs.Parent.Parent.CachePath
 	// no specified chance = 1.0
 	if fs.Chance == nil {
 		f := float64(1.0)

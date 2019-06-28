@@ -1,12 +1,17 @@
 package imagine
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math"
 	"math/rand"
+	"os"
 	"sync"
+	"time"
 
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/apophenia"
@@ -77,12 +82,15 @@ func noSortNeeded(ts *taskSpec) bool {
 // Set: FieldValue, possibly many per column, possibly column-major.
 
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	fs := ts.FieldSpec
+	if fs.Fast {
+		return newFastValueGenerator(fs), nil
+	}
 	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
 	// of individual values rather than populating every field
 	if ts.ColumnOrder == valueOrderZipf {
 		return newMutexGenerator(ts, updateChan, updateID)
 	}
-	fs := ts.FieldSpec
 	var g *doubleValueGenerator
 	switch ts.DimensionOrder {
 	case dimensionOrderRow:
@@ -114,12 +122,6 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	g.weighted, err = apophenia.NewWeighted(apophenia.NewSequence(*ts.Seed))
 	g.updateChan = updateChan
 	g.updateID = updateID
-	if fs.Probability != nil {
-		g.probability = *fs.Probability
-	} else {
-		g.probability = 0.5
-	}
-	g.fast = fs.Fast
 
 	return iter, nil
 }
@@ -642,8 +644,6 @@ type doubleValueGenerator struct {
 	row, col         int64
 	updateChan       chan taskUpdate
 	updateID         string
-	probability      float64
-	fast             bool
 }
 
 // rowMajorValueGenerator is a generator which generates values for every
@@ -656,27 +656,21 @@ type rowMajorValueGenerator struct {
 // NextRecord finds the next record, if one is available.
 func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 	var bit uint64
-	fast := g.fast
-	prob := g.probability
 	for !g.colDone || !g.rowDone {
 		if g.colDone {
 			g.row, g.rowDone = g.rowGen.Next()
-			if !fast && !g.densityPerCol {
+			if !g.densityPerCol {
 				g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
 			}
 		}
 		g.col, g.colDone = g.colGen.Next()
-		if fast && rand.Float64() < prob {
-			bit = 1
-		} else {
-			if g.densityPerCol {
-				g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
-			}
-			// use row as the "seed" for Weighted computations, so each row
-			// can have different values.
-			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
-			bit = g.weighted.Bit(offset, g.density, g.densityScale)
+		if g.densityPerCol {
+			g.density = g.densityGen.Density(uint64(g.col), uint64(g.row))
 		}
+		// use row as the "seed" for Weighted computations, so each row
+		// can have different values.
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+		bit = g.weighted.Bit(offset, g.density, g.densityScale)
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
@@ -706,20 +700,14 @@ type columnMajorValueGenerator struct {
 // NextRecord returns the next record, if one is available.
 func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 	var bit uint64
-	fast := g.fast
-	prob := g.probability
 	for !g.colDone || !g.rowDone {
 		if g.rowDone {
 			g.col, g.colDone = g.colGen.Next()
 		}
 		g.row, g.rowDone = g.rowGen.Next()
-		if fast && rand.Float64() < prob {
-			bit = 1
-		} else {
-			offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
-			density := g.densityGen.Density(uint64(g.col), uint64(g.row))
-			bit = g.weighted.Bit(offset, density, g.densityScale)
-		}
+		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
+		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
+		bit = g.weighted.Bit(offset, density, g.densityScale)
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
@@ -811,4 +799,141 @@ func (g *genericGenerator) Generated(col, row uint64) {
 
 func (g *genericGenerator) Values() (int64, int64) {
 	return g.values, g.tries
+}
+
+type fastValueGenerator struct {
+	bitsPerRow   []int64
+	nextBitIndex int64
+	rowIndex     int64
+	rowBitCount  int64
+	bits         []uint64
+	rowIDMin     int64
+	rowIDMax     int64
+}
+
+func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
+	rowCount := fs.Max - fs.Min
+	randSeed := int64(0)
+	totalBitCount := int64(fs.Parent.Columns)
+	bitsPerRow := make([]int64, rowCount)
+	bits := loadBits(fs.CachePath, totalBitCount, randSeed)
+	zipfS := fs.ZipfS
+	zipfV := fs.ZipfV
+
+	if randSeed == 0 {
+		randSeed = int64(time.Now().Nanosecond())
+	}
+	if zipfS <= 1.0 {
+		zipfS = 2.0
+	}
+	if zipfV < 1.0 {
+		zipfV = 1.0
+	}
+
+	r := rand.New(rand.NewSource(randSeed))
+	z := newZipf(fs.ZipfA, int(totalBitCount/rowCount))
+
+	for i, rowIndex := range r.Perm(int(rowCount)) {
+		bitCount := int64(1 + z.F(i+1)*float64(totalBitCount))
+		bitsPerRow[rowIndex] += bitCount
+		totalBitCount -= bitCount
+	}
+
+	// add or remove bits so there are exactly fs.Parent.Columns bits
+	step := int64(1)
+	if totalBitCount < 0 {
+		step = -1
+		totalBitCount = -totalBitCount
+	}
+	for totalBitCount > 0 {
+		for i := 0; i < int(rowCount); i++ {
+			bitsPerRow[i] += step
+			totalBitCount -= 1
+			if totalBitCount <= 0 {
+				break
+			}
+		}
+	}
+
+	return &fastValueGenerator{
+		rowIndex:     0,
+		nextBitIndex: 0,
+		bitsPerRow:   bitsPerRow,
+		bits:         bits,
+		rowIDMin:     fs.Min,
+	}
+}
+
+func (g *fastValueGenerator) NextRecord() (pilosa.Record, error) {
+	if g.rowBitCount >= g.bitsPerRow[g.rowIndex] {
+		g.rowIndex += 1
+		g.rowBitCount = 0
+	}
+	if g.rowIndex >= int64(len(g.bitsPerRow)) {
+		return nil, io.EOF
+	}
+	columnID := g.bits[g.nextBitIndex%int64(len(g.bits))]
+	g.rowBitCount += 1
+	g.nextBitIndex += 1
+	return pilosa.Column{RowID: uint64(g.rowIDMin + g.rowIndex), ColumnID: columnID}, nil
+}
+
+func (g *fastValueGenerator) Values() (int64, int64) {
+	return g.nextBitIndex, g.nextBitIndex
+}
+
+func loadBits(path string, totalBitCount int64, randSeed int64) []uint64 {
+	var bits []uint64
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		r := rand.New(rand.NewSource(randSeed))
+		bits = make([]uint64, totalBitCount)
+		for i := int64(0); i < totalBitCount; i++ {
+			bits[i] = r.Uint64()
+		}
+		if path != "" {
+			var buf bytes.Buffer
+			enc := gob.NewEncoder(&buf)
+			err := enc.Encode(bits)
+			if err != nil {
+				panic(err)
+			}
+			err = ioutil.WriteFile(path, buf.Bytes(), 0600)
+			if err != nil {
+				panic(err)
+			}
+		}
+
+	} else {
+		b, err := ioutil.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		buf := bytes.NewBuffer(b)
+		dec := gob.NewDecoder(buf)
+		dec.Decode(&bits)
+
+	}
+	return bits
+}
+
+type zipf struct {
+	s float64
+	a float64
+	n int
+}
+
+func newZipf(a float64, n int) zipf {
+	s := 0.0
+	for i := 1; i <= n; i++ {
+		s += math.Pow(1.0/float64(i), a)
+	}
+	return zipf{
+		s: s,
+		a: a,
+		n: n,
+	}
+}
+
+func (z zipf) F(x int) float64 {
+	return 1.0 / (math.Pow(float64(x), z.a) * z.s)
 }

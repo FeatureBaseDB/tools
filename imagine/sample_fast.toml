@@ -1,10 +1,9 @@
 version = "1.0"
 fast = true
-probability = 0.5
 [indexes.users]
-columns = 1000000
+columns = 1000
 fields = [
-{name = "numbers", type = "set", min=0, max=1000, chance = 0.05, density = 1.0, },
+{name = "numbers", type = "set", min=0, max=10, zipfA=3.0 },
 ]
 [[workloads]]
 name = "sample"
