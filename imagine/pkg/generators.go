@@ -655,7 +655,6 @@ type rowMajorValueGenerator struct {
 
 // NextRecord finds the next record, if one is available.
 func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	var bit uint64
 	for !g.colDone || !g.rowDone {
 		if g.colDone {
 			g.row, g.rowDone = g.rowGen.Next()
@@ -670,7 +669,7 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		// use row as the "seed" for Weighted computations, so each row
 		// can have different values.
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
-		bit = g.weighted.Bit(offset, g.density, g.densityScale)
+		bit := g.weighted.Bit(offset, g.density, g.densityScale)
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()
@@ -699,7 +698,6 @@ type columnMajorValueGenerator struct {
 
 // NextRecord returns the next record, if one is available.
 func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
-	var bit uint64
 	for !g.colDone || !g.rowDone {
 		if g.rowDone {
 			g.col, g.colDone = g.colGen.Next()
@@ -707,7 +705,7 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 		g.row, g.rowDone = g.rowGen.Next()
 		offset := apophenia.OffsetFor(apophenia.SequenceWeighted, uint32(g.row), 0, uint64(g.col))
 		density := g.densityGen.Density(uint64(g.col), uint64(g.row))
-		bit = g.weighted.Bit(offset, density, g.densityScale)
+		bit := g.weighted.Bit(offset, density, g.densityScale)
 		g.tries++
 		if g.updateChan != nil && g.tries%updatePeriod == 0 {
 			cols, _ := g.colGen.Status()

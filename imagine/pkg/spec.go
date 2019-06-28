@@ -114,8 +114,7 @@ type tomlSpec struct {
 	Indexes      map[string]*indexSpec
 	Workloads    []*workloadSpec
 	Fast         bool
-	CachePath    string  // the path for random uint cache
-	Probability  float64 //  if rand < probability, set a bit
+	CachePath    string // the path for random uint cache
 }
 
 type indexSpec struct {
