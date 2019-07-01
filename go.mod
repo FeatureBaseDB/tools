@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/BurntSushi/toml v0.3.1
 	github.com/OneOfOne/xxhash v1.2.5 // indirect
-	github.com/alvaroloes/enumer v0.0.0-20180611091743-6bcfe2edaac3 // indirect
+	github.com/alvaroloes/enumer v1.1.2 // indirect
 	github.com/armon/go-metrics v0.0.0-20190423201044-2801d9688273 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/beorn7/perks v1.0.0 // indirect
@@ -33,7 +33,6 @@ require (
 	github.com/mattn/go-isatty v0.0.7 // indirect
 	github.com/miekg/dns v1.1.8 // indirect
 	github.com/mitchellh/mapstructure v1.1.2
-	github.com/pascaldekloe/name v0.0.0-20180628100202-0fd16699aae1 // indirect
 	github.com/pelletier/go-toml v1.3.0
 	github.com/pilosa/go-pilosa v1.3.1-0.20190430220627-7dd81a2aecff
 	github.com/pilosa/pilosa v1.3.0
@@ -53,12 +52,12 @@ require (
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/uber/jaeger-client-go v2.16.0+incompatible // indirect
 	github.com/uber/jaeger-lib v2.0.0+incompatible // indirect
-	golang.org/x/crypto v0.0.0-20190424203555-c05e17bb3b2d // indirect
-	golang.org/x/net v0.0.0-20190424112056-4829fb13d2c6 // indirect
+	golang.org/x/crypto v0.0.0-20190618222545-ea8f1a30c443 // indirect
+	golang.org/x/net v0.0.0-20190619014844-b5b0513f8c1b // indirect
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
-	golang.org/x/sys v0.0.0-20190425045458-9f0b1ff7b46a
-	golang.org/x/text v0.3.1
-	golang.org/x/tools v0.0.0-20190425001055-9e44c1c40307 // indirect
+	golang.org/x/sys v0.0.0-20190619223125-e40ef342dc56
+	golang.org/x/text v0.3.2
+	golang.org/x/tools v0.0.0-20190619215442-4adf7a708c2d // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/yaml.v2 v2.2.2
 )

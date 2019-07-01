@@ -37,6 +37,44 @@ func runZipf(zf func() uint64, values []uint64, n uint64, t *testing.T) {
 	}
 }
 
+type zipfTestCase struct {
+	q, v float64
+	seq  Sequence
+	exp  string
+}
+
+func (z zipfTestCase) String() string {
+	return fmt.Sprintf("q: %g, v: %g, seq: %t, expected error: %t",
+		z.q, z.v, z.seq != nil, z.exp != "")
+}
+
+func Test_InvalidInputs(t *testing.T) {
+	seq := NewSequence(0)
+	testCases := []zipfTestCase{
+		{q: 1, v: 1.1, seq: seq, exp: "need q > 1 (got 1) and v >= 1 (got 1.1) for Zipf distribution"},
+		{q: 1.1, v: 0.99, seq: seq, exp: "need q > 1 (got 1.1) and v >= 1 (got 0.99) for Zipf distribution"},
+		{q: 1.1, v: 1.1, seq: nil, exp: "need a usable PRNG apophenia.Sequence"},
+		{q: math.NaN(), v: 1.1, seq: nil, exp: "q (NaN) and v (1.1) must not be NaN for Zipf distribution"},
+		{q: 1.01, v: 2, seq: seq, exp: ""},
+	}
+	for _, c := range testCases {
+		z, err := NewZipf(c.q, c.v, 20, 0, c.seq)
+		if c.exp != "" {
+			if err == nil {
+				t.Errorf("case %v: expected error '%s', got no error", c, c.exp)
+			} else if err.Error() != c.exp {
+				t.Errorf("case %v: expected error '%s', got error '%s'", c, c.exp, err.Error())
+			}
+		} else {
+			if err != nil {
+				t.Errorf("case %v: unexpected error %v", c, err)
+			} else if z == nil {
+				t.Errorf("case %v: nil Zipf despite no error", c)
+			}
+		}
+	}
+}
+
 const runs = 1000000
 
 func Test_CompareWithMath(t *testing.T) {

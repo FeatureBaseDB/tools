@@ -352,7 +352,7 @@ func (conf *Config) CompareFields(client *pilosa.Client, dbIndex *pilosa.Index, 
 		}
 		changed = true
 		switch field.Type {
-		case fieldTypeBSI:
+		case fieldTypeInt:
 			dbIndex.Field(name, pilosa.OptFieldTypeInt(int64(field.Min), int64(field.Max)))
 		case fieldTypeSet:
 			dbIndex.Field(name, pilosa.OptFieldTypeSet(pilosa.CacheType(field.Cache.String()), field.CacheSize))
@@ -440,11 +440,9 @@ func (conf *Config) ApplyWorkload(client *pilosa.Client, wl *workloadSpec) (err 
 			fmt.Printf(" workload %s %s in %v\n", wl.Name, completed, after.Sub(before))
 		}()
 	}
-	for _, batch := range wl.Batches {
-		err = conf.ApplyBatch(client, batch)
-		if err != nil {
-			return err
-		}
+	err = conf.ApplyTasks(client, wl.Tasks)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -457,28 +455,16 @@ type taskUpdate struct {
 }
 
 // ApplyBatch attempts to process the configured batch.
-func (conf *Config) ApplyBatch(client *pilosa.Client, batch *batchSpec) (err error) {
+func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err error) {
 	var tasks sync.WaitGroup
-	if conf.Time {
-		before := time.Now()
-		fmt.Printf("  beginning batch %s\n", batch.Description)
-		defer func() {
-			after := time.Now()
-			var completed = "completed"
-			if err != nil {
-				completed = "failed"
-			}
-			fmt.Printf("  workload %s %s in %v\n", batch.Description, completed, after.Sub(before))
-		}()
-	}
 	// and now, in parallel...
-	errs := make([]error, len(batch.Tasks))
-	updateChan := make(chan taskUpdate, len(batch.Tasks))
+	errs := make([]error, len(allTasks))
+	updateChan := make(chan taskUpdate, len(allTasks))
 	generatorUpdateChan := updateChan
 	if !conf.Status {
 		generatorUpdateChan = nil
 	}
-	for idx, task := range batch.Tasks {
+	for idx, task := range allTasks {
 		field := conf.dbSchema[task.IndexFullName][task.Field]
 		if field == nil {
 			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.IndexFullName, task.Field)

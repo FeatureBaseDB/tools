@@ -23,7 +23,7 @@ type fieldType int
 
 const (
 	fieldTypeUndef fieldType = iota
-	fieldTypeBSI
+	fieldTypeInt
 	fieldTypeSet
 	fieldTypeMutex
 	fieldTypeTime
@@ -140,9 +140,9 @@ type fieldSpec struct {
 
 	// common values for all the field types
 	Name          string
-	Type          fieldType    // "set", "mutex", "bsi"
+	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
-	Min, Max      int64        // Allowable value range for a BSI field. Row range for set/mutex fields.
+	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
 	ValueRule     densityType  // which of several hypothetical density/value algorithms to use.
@@ -166,27 +166,17 @@ type namedWorkload struct {
 type workloadSpec struct {
 	Name        string
 	Description string
-	Batches     []*batchSpec
+	Tasks       []*taskSpec
 	ThreadCount *int // threads to use for each importer
 	BatchSize   *int
-	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
-}
-
-// batchSpec describes a set of tasks to happen in parallel
-type batchSpec struct {
-	Parent      *workloadSpec `toml:"-"`
-	Description string
-	Tasks       []*taskSpec
-	ThreadCount *int  // override workload threadcount
-	BatchSize   *int  // override workload batchsize
 	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
 // taskSpec describes a single task, which is populating some kind of data
 // in some kind of field.
 type taskSpec struct {
-	Parent                *batchSpec `toml:"-"`
-	FieldSpec             *fieldSpec `toml:"-"` // once things are built up, this gets pointed to the actual field spec
+	Parent                *workloadSpec `toml:"-"`
+	FieldSpec             *fieldSpec    `toml:"-"` // once things are built up, this gets pointed to the actual field spec
 	Index                 string
 	IndexFullName         string `toml:"-"`
 	Field                 string
@@ -221,8 +211,8 @@ func (fs *fieldSpec) String() string {
 	switch fs.Type {
 	case fieldTypeSet:
 		return fmt.Sprintf("set: rows %d, density %s", fs.Max, density)
-	case fieldTypeBSI:
-		return fmt.Sprintf("BSI: Min %d, Max %d, density %s", fs.Min, fs.Max, density)
+	case fieldTypeInt:
+		return fmt.Sprintf("int: Min %d, Max %d, density %s", fs.Min, fs.Max, density)
 	default:
 		return fmt.Sprintf("%#v", *fs)
 	}
@@ -269,11 +259,8 @@ func describeWorkload(wl *workloadSpec) {
 		return
 	}
 	fmt.Printf("  workload %s:\n", wl.Name)
-	for _, b := range wl.Batches {
-		fmt.Printf("   batch [%s]\n", b.Description)
-		for _, t := range b.Tasks {
-			fmt.Printf("    task %v\n", t)
-		}
+	for _, t := range wl.Tasks {
+		fmt.Printf("    task %v\n", t)
 	}
 }
 
@@ -525,12 +512,12 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 		switch fs.Type {
 		case fieldTypeSet, fieldTypeMutex:
 			fs.Cache = cacheTypeRanked
-		case fieldTypeBSI:
+		case fieldTypeInt:
 			fs.Cache = cacheTypeNone
 		}
 	}
-	if fs.Type == fieldTypeBSI && fs.Cache != cacheTypeNone {
-		return fmt.Errorf("field %s specifies a cache (%v) for a BSI field", fs.Name, fs.Cache)
+	if fs.Type == fieldTypeInt && fs.Cache != cacheTypeNone {
+		return fmt.Errorf("field %s specifies a cache (%v) for an int field", fs.Name, fs.Cache)
 	}
 	if fs.Type == fieldTypeTime {
 		if fs.Quantum == nil {
@@ -546,7 +533,7 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 }
 
 // Cleanup performs bookkeeping tasks and error-checking, and calls the
-// Cleanup method of associated batches.
+// Cleanup method of associated tasks.
 func (ws *workloadSpec) Cleanup(conf *Config) error {
 	if conf.ThreadCount != 0 {
 		ws.ThreadCount = &conf.ThreadCount
@@ -555,32 +542,8 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 			return fmt.Errorf("invalid thread count %d [must be a positive number]", *ws.ThreadCount)
 		}
 	}
-	for _, batch := range ws.Batches {
-		batch.Parent = ws
-		err := batch.Cleanup(conf)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Cleanup performs bookkeeping tasks, and error-checking, and calls the
-// Cleanup method of associated tasks.
-func (bs *batchSpec) Cleanup(conf *Config) error {
-	if conf.ThreadCount != 0 {
-		bs.ThreadCount = &conf.ThreadCount
-	} else if bs.ThreadCount == nil {
-		bs.ThreadCount = bs.Parent.ThreadCount
-	}
-	if bs.BatchSize == nil {
-		bs.BatchSize = bs.Parent.BatchSize
-	}
-	if bs.UseRoaring == nil {
-		bs.UseRoaring = bs.Parent.UseRoaring
-	}
-	for _, task := range bs.Tasks {
-		task.Parent = bs
+	for _, task := range ws.Tasks {
+		task.Parent = ws
 		err := task.Cleanup(conf)
 		if err != nil {
 			return err
@@ -661,8 +624,8 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 		return nil
 	}
 	// We can't do timestamps with FieldValue returns.
-	if ts.FieldSpec.Type == fieldTypeBSI {
-		return fmt.Errorf("field %s: BSI fields don't support timestamps", ts.Field)
+	if ts.FieldSpec.Type == fieldTypeInt {
+		return fmt.Errorf("field %s: Int fields don't support timestamps", ts.Field)
 	}
 	// default to one week
 	if ts.StampRange == nil {
