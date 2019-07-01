@@ -18,7 +18,6 @@ dx [command] [flags]
       --phosts       strings    Hosts of primary instance (default [localhost])
       --pport        int        Port of primary instance (default 10101)
   -p, --prefix       string     Prefix to use for index (default "dx-")
-  -s, --solo                    Run on only one instace of Pilosa
       --specsfile    string     Path to specs file (default "specs.toml")
   -t, --threadcount  int        Number of concurrent goroutines to allocate (default 1)
   -v, --verbose                 Enable verbose logging
@@ -89,4 +88,26 @@ server memory: 16GB [16384MB]
 server CPU: Intel(R) Core(TM) i7-6567U CPU @ 3.30GHz
 [2 physical cores, 4 logical cores available]
 cluster nodes: 1
+```
+
+## solo
+
+Sometimes, it may not be possible to run two clusters simultaneously for testing. In that case, `dx solo` commands can be used to run the desired command on a single cluster and temporarily store the results in the data directory specified by the `datadir` flag until a second command with the same specs file is ran.
+
+When a `solo` command is ran, `dx` will check the data directory for a previously stored result file matching the specs file provided. If the result file exists, `dx` will run the command and compare the result with the result stored in the file. Otherwise, if the file does not exist, `dx` will store the result in a file uniquely associated with the contents of the specs file.
+
+Sample workflow (sequentially ran):
+
+```
+> dx solo ingest --specsfile=specs.toml --cport=10101
+>>> ingest result is stored in ".dx/.solo/<sha256 hash of specs content>ingest"
+
+> dx solo query --specsfile=specs.toml --cport=10101 --queries=100,100,100,10000,1000,10000,100 --threadcount=4
+>>> query result is stored in ".dx/.solo/<sha256 hash of specs content>query<threadcount>"
+
+> dx solo ingest --specsfile=specs.toml --pport=10101
+>>> ingest result is compared to previously recorded result and printed out
+
+> dx solo query --specsfile=specs.toml --pport=10101
+>>> query result is compared to previously recorded result and printed out
 ```
