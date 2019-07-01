@@ -285,7 +285,7 @@ func (ts *taskSpec) String() string {
 	return fmt.Sprintf("%s/%s: %d columns%s", ts.Index, ts.Field, *ts.Columns, offset)
 }
 
-func readSpec(path string) (*tomlSpec, error) {
+func ReadSpec(path string) (*tomlSpec, error) {
 	var ts tomlSpec
 	md, err := toml.DecodeFile(path, &ts)
 	if err != nil {

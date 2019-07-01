@@ -111,7 +111,7 @@ func (conf *Config) ReadSpecs() error {
 	conf.specs = make([]*tomlSpec, 0, len(conf.specFiles))
 	conf.indexes = make(map[string]*indexSpec, len(conf.specFiles))
 	for _, path := range conf.specFiles {
-		spec, err := readSpec(path)
+		spec, err := ReadSpec(path)
 		if err != nil {
 			return fmt.Errorf("couldn't read spec '%s': %v", path, err)
 		}
