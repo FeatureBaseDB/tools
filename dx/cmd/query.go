@@ -55,8 +55,14 @@ func newQResult() *QResult {
 // this is unrelated to *pilosa.Holder.
 type holder struct {
 	instance string
-	client *pilosa.Client
-	iconfs map[string]*indexConfig
+	client   *pilosa.Client
+	iconfs   map[string]*indexConfig
+}
+
+func newHolder(iconfs map[string]*indexConfig) *holder {
+	return &holder{
+		iconfs: iconfs,
+	}
 }
 
 func initializeHolder(instanceType string, hosts []string, port int, iconfs map[string]*indexConfig) (*holder, error) {
@@ -93,8 +99,9 @@ func initializeHolder(instanceType string, hosts []string, port int, iconfs map[
 		}
 	}
 	return &holder{
-		client: client,
-		iconfs: newIconfs,
+		instance: instanceType,
+		client:   client,
+		iconfs:   newIconfs,
 	}, nil
 }
 
@@ -108,9 +115,12 @@ type CIF struct {
 	Min, Max int64
 }
 
-//TODO: check for errors
 // randomIF returns a random index and field from a holder.
 func (holder *holder) randomIF() (string, string, error) {
+	if len(holder.iconfs) == 0 {
+		return "", "", fmt.Errorf("index config has zero elements")
+	}
+
 	// random index
 	i := rand.Intn(len(holder.iconfs))
 	var iconf *indexConfig
@@ -121,6 +131,9 @@ func (holder *holder) randomIF() (string, string, error) {
 		i--
 	}
 
+	if len(iconf.fields) == 0 {
+		return "", "", fmt.Errorf("index %v has zero fields", iconf.name)
+	}
 	// random field
 	i = rand.Intn(len(iconf.fields))
 	var fconf *fieldConfig
@@ -142,7 +155,7 @@ func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 	if iconf.index == nil {
 		return nil, fmt.Errorf("could not create CIF because index %v is nil", iconf.name)
 	}
-	
+
 	if _, found := iconf.fields[fieldName]; !found {
 		return nil, fmt.Errorf("could not create CIF because field %v was not found in index %v", fieldName, indexName)
 	}
@@ -178,7 +191,7 @@ func ExecuteQueries() error {
 	if err != nil {
 		return fmt.Errorf("could not create holder for primary: %v", err)
 	}
-	
+
 	// run benchmarks
 	qBench := make([]*Benchmark, 0, len(m.NumQueries))
 	for _, numQueries := range m.NumQueries {
@@ -199,22 +212,22 @@ func ExecuteQueries() error {
 // queryOp is a hacky solution to allow launchThreads to be reused in query and solo query
 // TODO: refactor
 type queryOp struct {
-	holder		*holder
-	cHolder		*holder
-	pHolder		*holder
-	resultChan	chan *QResult
-	queryChan	chan *Query
-	numRows		int64
+	holder     *holder
+	cHolder    *holder
+	pHolder    *holder
+	resultChan chan *QResult
+	queryChan  chan *Query
+	numRows    int64
 }
 
 func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRows int64) (*Benchmark, error) {
 	qResultChan := make(chan *QResult, numQueries)
 	// TODO: check for pass by reference
-	q := &queryOp {
-		cHolder:	cHolder,
-		pHolder:	pHolder,
-		resultChan:	qResultChan,
-		numRows:	numRows,
+	q := &queryOp{
+		cHolder:    cHolder,
+		pHolder:    pHolder,
+		resultChan: qResultChan,
+		numRows:    numRows,
 	}
 	go launchThreads(numQueries, threadCount, q, runQuery)
 
@@ -276,8 +289,12 @@ func launchThreads(numQueries, threadCount int, q *queryOp, fn func(*queryOp)) {
 	close(workQueue)
 	go func() {
 		wg.Wait()
-		close(q.resultChan)
-		close(q.queryChan)
+		if q.resultChan != nil {
+			close(q.resultChan)
+		}
+		if q.queryChan != nil {
+			close(q.queryChan)
+		}
 	}()
 }
 
@@ -286,7 +303,7 @@ func runQuery(q *queryOp) {
 	cHolder, pHolder := q.cHolder, q.pHolder
 	qResultChan := q.resultChan
 	numRows := q.numRows
-	
+
 	qResult := newQResult()
 
 	cResultChan := make(chan *Result, 1)
@@ -315,9 +332,12 @@ func runQuery(q *queryOp) {
 		return
 	}
 
-	// TODO: verify cCIF == pCIF
 	// generate random row numbers to query in both instances
-	rows := generateRandomRows(cCIF.Min, cCIF.Max, numRows)
+	rows, err := generateRandomRows(cCIF.Min, cCIF.Max, numRows)
+	if err != nil {
+		m.Logger.Printf("could not generate reandom rows: %v", err)
+		return
+	}
 
 	go runQueryOnInstance(cCIF, rows, cResultChan)
 	go runQueryOnInstance(pCIF, rows, pResultChan)
@@ -343,14 +363,20 @@ func runQuery(q *queryOp) {
 	qResultChan <- qResult
 }
 
-func generateRandomRows(min, max, numRows int64) ([]int64) {
+func generateRandomRows(min, max, numRows int64) ([]int64, error) {
+	if min > max {
+		return nil, fmt.Errorf("min %v must be less than max %v", min, max)
+	}
 	rows := make([]int64, 0, numRows)
 	for i := int64(0); i < numRows; i++ {
 		// make sure row nums are in range
-		rowNum := min + rand.Int63n(max-min)
+		rowNum := min
+		if min < max {
+			rowNum += rand.Int63n(max - min)
+		}
 		rows = append(rows, rowNum)
 	}
-	return rows
+	return rows, nil
 }
 
 func runQueryOnInstance(cif *CIF, rows []int64, resultChan chan *Result) {

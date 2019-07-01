@@ -36,9 +36,9 @@ type Main struct {
 	SpecsFile   string
 	Verbose     bool
 	Prefix      string
-	NumQueries  []int	// slice of numbers of queries to run
-	NumRows     int64	// number of rows to intersect in a query
-	DataDir		string	// data directory to store results for solo command
+	NumQueries  []int  // slice of numbers of queries to run
+	NumRows     int64  // number of rows to intersect in a query
+	DataDir     string // data directory to store results for solo command
 	Logger      *log.Logger
 }
 

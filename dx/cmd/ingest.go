@@ -50,14 +50,7 @@ func ExecuteIngest() error {
 	}
 	timeDelta := float64(cResult.time-pResult.time) / float64(pResult.time)
 
-	// TODO: check if still needed
-	// specs, err := getSpecs(m.SpecsFile)
-	// if err != nil {
-	// 	return fmt.Errorf("could not parse specs file: %v", err)
-	// }
-	// size := (specs.max - specs.min) * specs.columns
 	b := &Benchmark{
-		// Size:      size,
 		CTime:     cResult.time,
 		PTime:     pResult.time,
 		TimeDelta: timeDelta,

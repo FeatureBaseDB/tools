@@ -68,7 +68,7 @@ func executeSoloIngest(config *imagine.Config, isFirstIngest bool, instanceType,
 	// A prior benchmark exists, so we read from that and compare the results.
 	bench, err := readIngestResultFile(otherInstanceType, filename, dataDir)
 	if err != nil {
-		return fmt.Errorf("could not read result file: %v", err)
+		return fmt.Errorf("error reading result file: %v", err)
 	}
 
 	switch instanceType {
@@ -148,7 +148,7 @@ func readIngestResultFile(instanceType string, filename, dataDir string) (*Bench
 		return nil, fmt.Errorf("results file should be tagged with ingest, got %v", words[0])
 	}
 	if words[1] != instanceType {
-		return nil, fmt.Errorf("results file has instance type %v", instanceType)
+		return nil, fmt.Errorf("results file already has instance type %v", words[1])
 	}
 	duration, err := time.ParseDuration(words[2])
 	if err != nil {

@@ -7,16 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )
 
 const (
-	instanceCandidate	string = "candidate"
-	instancePrimary		string = "primary"
-	cmdIngest			string = "ingest"
-	cmdQuery			string = "query"
+	instanceCandidate string = "candidate"
+	instancePrimary   string = "primary"
+	cmdIngest         string = "ingest"
+	cmdQuery          string = "query"
 )
 
 func otherInstance(instanceType string) (string, error) {
@@ -71,7 +72,7 @@ func determineInstance(flags *flag.FlagSet) (string, error) {
 // TODO: add threadCount to name
 
 // checkBenchIsFirst checks whether the benchmark being ran using a specs file
-// is the first by checking for the previous result in dataDir and returns 
+// is the first by checking for the previous result in dataDir and returns
 // isFirst, the hash string, and any error that might occur.
 func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 	hashFilename, err := hashSpecs(specsFile)
@@ -79,13 +80,13 @@ func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 		return true, true, "", fmt.Errorf("error hashing file: %v", err)
 	}
 
-	ingestPath := filepath.Join(dataDir, hashFilename + cmdIngest)
+	ingestPath := filepath.Join(dataDir, hashFilename+cmdIngest)
 	ingestFileExists, err := checkFileExists(ingestPath)
 	if err != nil {
 		return true, true, hashFilename, fmt.Errorf("error checking file existence: %v", err)
 	}
-	
-	queryPath := filepath.Join(dataDir, hashFilename + cmdQuery)
+
+	queryPath := filepath.Join(dataDir, hashFilename+cmdQuery+strconv.Itoa(m.ThreadCount))
 	queryFileExists, err := checkFileExists(queryPath)
 	if err != nil {
 		return true, true, hashFilename, fmt.Errorf("error checking file existence: %v", err)
@@ -101,7 +102,7 @@ func hashSpecs(specsFile string) (string, error) {
 		return "", fmt.Errorf("could not open specs file: %v", err)
 	}
 	defer file.Close()
-	
+
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", fmt.Errorf("could not copy file to hash: %v", err)

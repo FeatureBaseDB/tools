@@ -25,10 +25,10 @@ func newIndexConfig(name string, columns uint64) *indexConfig {
 func (iconf *indexConfig) deepcopy() *indexConfig {
 	newIconf := newIndexConfig(iconf.name, iconf.columns)
 	for fieldName, fconf := range iconf.fields {
-		newIconf.fields[fieldName] = &fieldConfig {
-			name:	fconf.name,
-			min:	fconf.min,
-			max:	fconf.max,
+		newIconf.fields[fieldName] = &fieldConfig{
+			name: fconf.name,
+			min:  fconf.min,
+			max:  fconf.max,
 		}
 	}
 	return newIconf

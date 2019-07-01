@@ -3,13 +3,11 @@ version = "1.0"
 [indexes.index]
 columns = 10000
 fields = [
-{ name = "field", type = "set", min = 0, max = 1000, density = 0.01, chance = 0.05, density = 1.0 },
+{ name = "field", type = "set", min = 0, max = 1000, density = 0.01, chance = 0.05, density = 1.0, },
 ]
 [[workloads]]
 name = "sample"
 threadCount = 1
-[[workloads.batches]]
-description = "initial"
 tasks = [
 { index = "index", field = "field", columnOrder = "stride", stride = 3 },
 ]
