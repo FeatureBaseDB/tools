@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pilosa/go-pilosa"
@@ -33,11 +34,11 @@ type Main struct {
 	CPort       int
 	PPort       int
 	SpecsFile   string
-	Solo        bool
 	Verbose     bool
 	Prefix      string
-	NumQueries  []int // slice of numbers of queries to run
-	NumRows     int64 // number of rows to intersect in a query
+	NumQueries  []int	// slice of numbers of queries to run
+	NumRows     int64	// number of rows to intersect in a query
+	DataDir		string	// data directory to store results for solo command
 	Logger      *log.Logger
 }
 
@@ -73,15 +74,17 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().StringSliceVar(&m.PHosts, "phosts", []string{"localhost"}, "Hosts of primary instance")
 	rc.PersistentFlags().IntVar(&m.CPort, "cport", 10101, "Port of candidate instance")
 	rc.PersistentFlags().IntVar(&m.PPort, "pport", 10101, "Port of primary instance")
-	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "specs.toml", "Path to specs file")
-	rc.PersistentFlags().BoolVarP(&m.Solo, "solo", "s", false, "Run on only one instace of Pilosa")
+	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
 	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
+
+	rc.MarkPersistentFlagRequired("specsfile")
 
 	m.Logger = newLogger(m.Verbose)
 
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
+	rc.AddCommand(NewSoloCommand())
 
 	rc.SetOutput(os.Stderr)
 
@@ -93,7 +96,7 @@ func printServers() error {
 	if err != nil {
 		return fmt.Errorf("could not create candidate client: %v", err)
 	}
-	fmt.Printf("\nCandidate Pilosa\nrunning on hosts %v and port %v\n", m.CHosts, m.CPort)
+	fmt.Printf("\nCandidate\non host/s %v and port %v\n", strings.Join(m.CHosts, ","), m.CPort)
 	if err = printServerInfo(candidate); err != nil {
 		return fmt.Errorf("could not print candidate server info: %v", err)
 	}
@@ -102,14 +105,14 @@ func printServers() error {
 	if err != nil {
 		return fmt.Errorf("could not create primary client: %v", err)
 	}
-	fmt.Printf("Primary Pilosa\nrunning on hosts %v and port %v\n", m.PHosts, m.PPort)
+	fmt.Printf("Primary\non host/s %v and port %v\n", strings.Join(m.PHosts, ","), m.PPort)
 	if err = printServerInfo(primary); err != nil {
 		return fmt.Errorf("could not print primary server info: %v", err)
 	}
 	return nil
 }
 
-// from package imagine
+// modified from package imagine
 func printServerInfo(client *pilosa.Client) error {
 	serverInfo, err := client.Info()
 	if err != nil {

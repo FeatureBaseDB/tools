@@ -1,6 +1,6 @@
 
 build:
-	go build -o dx ./main.go
+	GO111MODULE=on go build -o dx main.go
 
 ingest:
 	dx ingest --cport=10102 --pport=10103 --threadcount=1

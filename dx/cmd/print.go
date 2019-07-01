@@ -13,7 +13,11 @@ func printIngestResults(b *Benchmark) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 10, 5, 5, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(w, "ingest\t\tprimary\tcandidate\tdelta\t\n")
-	fmt.Fprintf(w, "%v\t\t%v\t%v\t%.1f%%\t\n", b.Size, b.PTime, b.CTime, timeDelta)
+	if b.Size != 0 {
+		fmt.Fprintf(w, "%v\t\t%v\t%v\t%.1f%%\t\n", b.Size, b.PTime, b.CTime, timeDelta)
+	} else {
+		fmt.Fprintf(w, "\t\t%v\t%v\t%.1f%%\t\n", b.PTime, b.CTime, timeDelta)
+	}
 	fmt.Fprintln(w)
 	if err := w.Flush(); err != nil {
 		return fmt.Errorf("could not flush writer: %v", err)

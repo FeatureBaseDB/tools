@@ -50,18 +50,19 @@ func ExecuteIngest() error {
 	}
 	timeDelta := float64(cResult.time-pResult.time) / float64(pResult.time)
 
-	specs, err := getSpecs(m.SpecsFile)
-	if err != nil {
-		fmt.Println("using default specs value")
-	}
-	size := (specs.max - specs.min) * specs.columns
+	// TODO: check if still needed
+	// specs, err := getSpecs(m.SpecsFile)
+	// if err != nil {
+	// 	return fmt.Errorf("could not parse specs file: %v", err)
+	// }
+	// size := (specs.max - specs.min) * specs.columns
 	b := &Benchmark{
-		Size:      size,
+		// Size:      size,
 		CTime:     cResult.time,
 		PTime:     pResult.time,
 		TimeDelta: timeDelta,
 	}
-	if err = printIngestResults(b); err != nil {
+	if err := printIngestResults(b); err != nil {
 		return fmt.Errorf("could not print results: %v", err)
 	}
 	return nil
@@ -85,13 +86,13 @@ func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
 		return
 	}
 
-	now := time.Now()
 	if err = conf.UpdateIndexes(client); err != nil {
 		result.err = fmt.Errorf("could not update indexes: %v", err)
 		resultChan <- result
 		return
 	}
 
+	now := time.Now()
 	err = conf.ApplyWorkloads(client)
 	if err != nil {
 		result.err = fmt.Errorf("applying workloads: %v", err)
