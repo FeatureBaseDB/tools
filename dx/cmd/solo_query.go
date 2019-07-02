@@ -43,6 +43,7 @@ type SoloBenchmark struct {
 	NumBenchmarks int               `json:"numBenchmarks"`
 	Benchmarks    []*QueryBenchmark `json:"benchmarks"`
 	ThreadCount   int               `json:"threadcount"`
+	ActualResults bool              `json:"actualresults"`
 }
 
 func newSoloBenchmark(benchType, instance string, threadCount int) *SoloBenchmark {
@@ -68,13 +69,15 @@ func newQueryBenchmark(numQueries int) *QueryBenchmark {
 	}
 }
 
-// Query contains the information related to an intersect query.
+// Query contains the information related to a single query.
 type Query struct {
-	IndexName string           `json:"index"`
-	FieldName string           `json:"field"`
-	Rows      []int64          `json:"rows"`
-	Result    pilosa.RowResult `json:"result"`
-	Time      TimeDuration     `json:"time"`
+	IndexName   string           `json:"index"`
+	FieldName   string           `json:"field"`
+	Type		byte             `json:"query"`
+	Rows        []int64          `json:"rows"`
+	Result      pilosa.RowResult `json:"result"`
+	ResultCount int64            `json:"resultcount"`
+	Time        TimeDuration     `json:"time"`
 }
 
 // ExecuteSoloQueries executes queries on a single Pilosa instance. This is where the configuration
@@ -111,7 +114,7 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 
 	// previous result file for specs does not exist. Running dx solo for the first time.
 	if isFirstQuery {
-		if err = executeFirstSoloQueries(holder, hashFilename, m.DataDir, m.NumQueries, m.ThreadCount, m.NumRows); err != nil {
+		if err = executeFirstSoloQueries(holder, hashFilename, m.DataDir, m.NumQueries, m.ThreadCount, m.NumRows, m.ActualResults); err != nil {
 			return fmt.Errorf("could not execute first solo queries: %v", err)
 		}
 		return nil
@@ -127,10 +130,11 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 // executeFirstSoloQueries is the entry point for executing queries on a single instance for the first time.
 // Queries are randomly generated, and the queries and results are recorded in a JSON file whose name is the
 // sha256 hash of the specs file + `query`.
-func executeFirstSoloQueries(holder *holder, filename, dataDir string, numBenchmarks []int, threadCount int, numRows int64) error {
+func executeFirstSoloQueries(holder *holder, filename, dataDir string, numBenchmarks []int, threadCount int, numRows int64, actualRes bool) error {
 	solobench := newSoloBenchmark(cmdQuery, holder.instance, threadCount)
+	solobench.ActualResults = actualRes
 	for _, numQueries := range numBenchmarks {
-		querybench, err := runFirstSoloQueries(holder, numQueries, threadCount, numRows)
+		querybench, err := runFirstSoloQueries(holder, numQueries, threadCount, numRows, actualRes)
 		if err != nil {
 			return fmt.Errorf("could not run first solo queries: %v", err)
 		}
@@ -145,7 +149,7 @@ func executeFirstSoloQueries(holder *holder, filename, dataDir string, numBenchm
 
 // runFirstSoloQueries launches threadcount number of goroutines that do the actual generation and running
 // of queries, and returns these results.
-func runFirstSoloQueries(holder *holder, numQueries, threadCount int, numRows int64) (*QueryBenchmark, error) {
+func runFirstSoloQueries(holder *holder, numQueries, threadCount int, numRows int64, actualRes bool) (*QueryBenchmark, error) {
 	qBench := newQueryBenchmark(numQueries)
 
 	queryChan := make(chan *Query, numQueries)
@@ -153,6 +157,7 @@ func runFirstSoloQueries(holder *holder, numQueries, threadCount int, numRows in
 		holder:    holder,
 		queryChan: queryChan,
 		numRows:   numRows,
+		actualRes: actualRes,
 	}
 	go launchThreads(numQueries, threadCount, q, runFirstSoloQueriesOnInstance)
 
@@ -183,8 +188,9 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 		m.Logger.Printf("could not generate random rows: %v", err)
 		return
 	}
+	queryType := randomQueryType()
 
-	go runQueryOnInstance(cif, rows, resultChan)
+	go runQueryOnInstance(cif, queryType, rows, resultChan, q.actualRes)
 	result := <-resultChan
 
 	if result.err != nil {
@@ -194,9 +200,14 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 	query := &Query{
 		IndexName: indexName,
 		FieldName: fieldName,
+		Type: queryType,
 		Rows:      rows,
-		Result:    result.result.Row(),
 		Time:      TimeDuration{Duration: result.time},
+	}
+	if q.actualRes {
+		query.Result = result.result.Row()
+	} else {
+		query.ResultCount = result.resultCount
 	}
 
 	q.queryChan <- query
@@ -220,7 +231,7 @@ func executeSecondSoloQueries(holder *holder, filename, dataDir string) error {
 	benchmarks := make([]*Benchmark, 0, solobench.NumBenchmarks)
 
 	for _, querybench := range solobench.Benchmarks {
-		bench, err := runSecondSoloBenchmark(holder, querybench, solobench.ThreadCount)
+		bench, err := runSecondSoloBenchmark(holder, querybench, solobench.ThreadCount, solobench.ActualResults)
 		if err != nil {
 			return err
 		}
@@ -242,7 +253,7 @@ func executeSecondSoloQueries(holder *holder, filename, dataDir string) error {
 
 // runSecondSoloBenchmark launches threadcount number of goroutines that read and run queries from
 // the query channel, and also where we analyze the results.
-func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCount int) (*Benchmark, error) {
+func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCount int, actualRes bool) (*Benchmark, error) {
 	numQueries := querybench.NumQueries
 	queryChan := make(chan *Query, numQueries)
 
@@ -252,6 +263,7 @@ func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCo
 	q := &queryOp{
 		holder:     holder,
 		queryChan:  queryChan,
+		actualRes:  actualRes,
 		resultChan: make(chan *QResult, numQueries),
 	}
 	go launchThreads(numQueries, threadCount, q, runSecondQueriesOnInstance)
@@ -276,7 +288,7 @@ func runSecondQueriesOnInstance(q *queryOp) {
 		return
 	}
 
-	go runQueryOnInstance(cif, query.Rows, resultChan)
+	go runQueryOnInstance(cif, query.Type, query.Rows, resultChan, q.actualRes)
 	result := <-resultChan
 	if result.err != nil {
 		m.Logger.Printf("error running query on instance: %v", err)
@@ -294,10 +306,16 @@ func runSecondQueriesOnInstance(q *queryOp) {
 		m.Logger.Printf("invalid instance type: %v", q.holder.instance)
 	}
 
-	// we compare columns only because unmarshalling query.Result from JSON makes
-	// query.Result.Keys == []string{} instead of []string(nil)
-	if reflect.DeepEqual(query.Result.Columns, result.result.Row().Columns) {
-		qResult.correct = true
+	if q.actualRes {
+		// we compare columns only because unmarshalling query.Result from JSON makes
+		// query.Result.Keys == []string{} instead of []string(nil)
+		if reflect.DeepEqual(query.Result.Columns, result.result.Row().Columns) {
+			qResult.correct = true
+		}
+	} else {
+		if query.ResultCount == result.resultCount {
+			qResult.correct = true
+		}
 	}
 	q.resultChan <- qResult
 }

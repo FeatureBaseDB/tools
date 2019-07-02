@@ -28,18 +28,19 @@ func newLogger(verbose bool) *log.Logger {
 
 // Main contains the flags dx uses and a logger.
 type Main struct {
-	ThreadCount int
-	CHosts      []string
-	PHosts      []string
-	CPort       int
-	PPort       int
-	SpecsFile   string
-	Verbose     bool
-	Prefix      string
-	NumQueries  []int  // slice of numbers of queries to run
-	NumRows     int64  // number of rows to intersect in a query
-	DataDir     string // data directory to store results for solo command
-	Logger      *log.Logger
+	ThreadCount   int
+	CHosts        []string
+	PHosts        []string
+	CPort         int
+	PPort         int
+	SpecsFile     string
+	Verbose       bool
+	Prefix        string
+	NumQueries    []int  // slice of numbers of queries to run
+	NumRows       int64  // number of rows to intersect in a query
+	DataDir       string // data directory to store results for solo command
+	ActualResults bool   // whether dx should compare actual results from queries vs just the counts
+	Logger        *log.Logger
 }
 
 // NewMain creates a new empty Main object.
@@ -77,8 +78,7 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
 	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
-
-	rc.MarkPersistentFlagRequired("specsfile")
+	rc.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
 
 	m.Logger = newLogger(m.Verbose)
 
@@ -153,9 +153,10 @@ func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
 // a single Pilosa instance. Result will be the type passed
 // around in channels while running multiple goroutines.
 type Result struct {
-	result pilosa.QueryResult
-	time   time.Duration
-	err    error
+	result      pilosa.QueryResult
+	resultCount int64
+	time        time.Duration
+	err         error
 }
 
 // NewResult initializes a new Result struct.

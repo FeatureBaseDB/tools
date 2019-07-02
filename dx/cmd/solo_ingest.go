@@ -104,7 +104,7 @@ func runSoloIngest(config *imagine.Config) (*Result, error) {
 	return result, nil
 }
 
-// writeResultFle writes the result of the solo ingest to the file.
+// writeResultFile writes the result of the solo ingest to the file.
 func writeIngestResultFile(result *Result, instanceType, filename, dataDir string) error {
 	// TODO: make this path absolute
 	if err := os.MkdirAll(dataDir, 0777); err != nil {

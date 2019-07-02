@@ -32,6 +32,14 @@ func NewQueryCommand() *cobra.Command {
 	return ingestCmd
 }
 
+const (
+	queryIntersect	byte = iota
+	queryUnion
+	queryXor
+	queryDifference
+	queryTypeMax	// not actually an executable query
+)
+
 // QResult is the result of querying two instances of Pilosa.
 // TODO: Replace this with Benchmark
 type QResult struct {
@@ -195,7 +203,7 @@ func ExecuteQueries() error {
 	// run benchmarks
 	qBench := make([]*Benchmark, 0, len(m.NumQueries))
 	for _, numQueries := range m.NumQueries {
-		q, err := executeQueries(cHolder, pHolder, numQueries, m.ThreadCount, m.NumRows)
+		q, err := executeQueries(cHolder, pHolder, numQueries, m.ThreadCount, m.NumRows, m.ActualResults)
 		if err != nil {
 			return fmt.Errorf("could not execute query: %v", err)
 		}
@@ -218,9 +226,10 @@ type queryOp struct {
 	resultChan chan *QResult
 	queryChan  chan *Query
 	numRows    int64
+	actualRes  bool
 }
 
-func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRows int64) (*Benchmark, error) {
+func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRows int64, actualRes bool) (*Benchmark, error) {
 	qResultChan := make(chan *QResult, numQueries)
 	// TODO: check for pass by reference
 	q := &queryOp{
@@ -228,6 +237,7 @@ func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRo
 		pHolder:    pHolder,
 		resultChan: qResultChan,
 		numRows:    numRows,
+		actualRes:	actualRes,
 	}
 	go launchThreads(numQueries, threadCount, q, runQuery)
 
@@ -338,9 +348,10 @@ func runQuery(q *queryOp) {
 		m.Logger.Printf("could not generate reandom rows: %v", err)
 		return
 	}
+	queryType := randomQueryType()
 
-	go runQueryOnInstance(cCIF, rows, cResultChan)
-	go runQueryOnInstance(pCIF, rows, pResultChan)
+	go runQueryOnInstance(cCIF, queryType, rows, cResultChan, q.actualRes)
+	go runQueryOnInstance(pCIF, queryType, rows, pResultChan, q.actualRes)
 
 	cResult := <-cResultChan
 	pResult := <-pResultChan
@@ -353,11 +364,18 @@ func runQuery(q *queryOp) {
 		qResultChan <- qResult
 		return
 	}
-
-	if reflect.DeepEqual(cResult.result, pResult.result) {
-		qResult.correct = true
+	if q.actualRes {
+		if reflect.DeepEqual(cResult.result, pResult.result) {
+			qResult.correct = true
+		} else {
+			m.Logger.Printf("different results:\ncandidate:\n%v\nprimary\n%v\n", cResult.result, pResult.result)
+		}
 	} else {
-		m.Logger.Printf("different results:\ncandidate:\n%v\nprimary\n%v\n", cResult.result, pResult.result)
+		if cResult.resultCount == pResult.resultCount {
+			qResult.correct = true
+		} else {
+			m.Logger.Printf("different result counts: candidate: %v, primary %v", cResult.resultCount, pResult.resultCount)
+		}
 	}
 
 	qResultChan <- qResult
@@ -379,7 +397,11 @@ func generateRandomRows(min, max, numRows int64) ([]int64, error) {
 	return rows, nil
 }
 
-func runQueryOnInstance(cif *CIF, rows []int64, resultChan chan *Result) {
+func randomQueryType() byte {
+	return byte(rand.Intn(int(queryTypeMax)))
+}
+
+func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan *Result, actualRes bool) {
 	result := NewResult()
 
 	// build query
@@ -387,7 +409,22 @@ func runQueryOnInstance(cif *CIF, rows []int64, resultChan chan *Result) {
 	for _, rowNum := range rows {
 		rowQueries = append(rowQueries, cif.Field.Row(rowNum))
 	}
-	rowQ := cif.Index.Intersect(rowQueries...)
+
+	var rowQ *pilosa.PQLRowQuery
+	switch queryType {
+	case queryIntersect:
+		rowQ = cif.Index.Intersect(rowQueries...)
+	case queryUnion:
+		rowQ = cif.Index.Union(rowQueries...)
+	case queryXor:
+		rowQ = cif.Index.Xor(rowQueries...)
+	case queryDifference:
+		rowQ = cif.Index.Difference(rowQueries...)
+	default:
+		result.err = fmt.Errorf("invalid query type: %v", queryType)
+		resultChan <- result
+		return
+	}
 
 	// run query
 	now := time.Now()
@@ -399,7 +436,11 @@ func runQueryOnInstance(cif *CIF, rows []int64, resultChan chan *Result) {
 	}
 
 	result.time = time.Since(now)
-	result.result = response.Result()
 
+	if actualRes {
+		result.result = response.Result()
+	} else {
+		result.resultCount = int64(len(response.Result().Row().Columns))
+	}
 	resultChan <- result
 }
