@@ -60,6 +60,9 @@ func NewRootCmd() *cobra.Command {
 		Use:   "dx",
 		Short: "compare differences between two Pilosa instances",
 		Long:  `Compare differences between candidate Pilosa instance and last known-good Pilosa version.`,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			m.Logger = newLogger(m.Verbose)
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			fmt.Println("dx is a tool used to measure the differences between two Pilosa instances. The following checks whether the two instances specified by the flags are running.")
@@ -79,8 +82,6 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rc.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
-
-	m.Logger = newLogger(m.Verbose)
 
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
