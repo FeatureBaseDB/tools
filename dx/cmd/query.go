@@ -33,11 +33,11 @@ func NewQueryCommand() *cobra.Command {
 }
 
 const (
-	queryIntersect	byte = iota
+	queryIntersect byte = iota
 	queryUnion
 	queryXor
 	queryDifference
-	queryTypeMax	// not actually an executable query
+	queryTypeMax // not actually an executable query
 )
 
 // QResult is the result of querying two instances of Pilosa.
@@ -237,7 +237,7 @@ func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRo
 		pHolder:    pHolder,
 		resultChan: qResultChan,
 		numRows:    numRows,
-		actualRes:	actualRes,
+		actualRes:  actualRes,
 	}
 	go launchThreads(numQueries, threadCount, q, runQuery)
 
@@ -427,6 +427,7 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 	}
 
 	// run query
+	fmt.Printf("making query: %s\n", rowQ)
 	now := time.Now()
 	response, err := cif.Client.Query(rowQ)
 	if err != nil {

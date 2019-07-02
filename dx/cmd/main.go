@@ -12,13 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func main() {
-	if err := NewRootCmd().Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
 func newLogger(verbose bool) *log.Logger {
 	if verbose {
 		return log.New(os.Stderr, "", log.LstdFlags)
@@ -86,8 +79,6 @@ func NewRootCmd() *cobra.Command {
 	rc.AddCommand(NewIngestCommand())
 	rc.AddCommand(NewQueryCommand())
 	rc.AddCommand(NewSoloCommand())
-
-	rc.SetOutput(os.Stderr)
 
 	return rc
 }
