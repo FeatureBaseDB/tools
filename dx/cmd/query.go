@@ -410,7 +410,7 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 		rowQueries = append(rowQueries, cif.Field.Row(rowNum))
 	}
 
-	var rowQ *pilosa.PQLRowQuery
+	var rowQ pilosa.PQLQuery
 	switch queryType {
 	case queryIntersect:
 		rowQ = cif.Index.Intersect(rowQueries...)
@@ -424,6 +424,10 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 		result.err = fmt.Errorf("invalid query type: %v", queryType)
 		resultChan <- result
 		return
+	}
+
+	if !actualRes {
+		rowQ = cif.Index.Count(rowQ.(*pilosa.PQLRowQuery))
 	}
 
 	// run query
@@ -441,7 +445,7 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 	if actualRes {
 		result.result = response.Result()
 	} else {
-		result.resultCount = int64(len(response.Result().Row().Columns))
+		result.resultCount = response.Result().Count()
 	}
 	resultChan <- result
 }
