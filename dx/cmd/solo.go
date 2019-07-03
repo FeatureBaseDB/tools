@@ -94,6 +94,12 @@ func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 
 // hashSpecs gets the sha256 hash of the specs file that will be the name of the results file.
 func hashSpecs(specsFile string) (string, error) {
+	if specsFile == "" {
+		hashByteArr := sha256.Sum256([]byte(specsFile))
+		hashString := string(hashByteArr[:])
+	return hashString, nil
+	}
+	
 	file, err := os.Open(specsFile)
 	if err != nil {
 		return "", errors.Wrap(err, "could not open specs file")
