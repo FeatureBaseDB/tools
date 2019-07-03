@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pilosa/go-pilosa"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )
@@ -73,7 +74,7 @@ func newQueryBenchmark(numQueries int) *QueryBenchmark {
 type Query struct {
 	IndexName   string           `json:"index"`
 	FieldName   string           `json:"field"`
-	Type		byte             `json:"query"`
+	Type        byte             `json:"query"`
 	Rows        []int64          `json:"rows"`
 	Result      pilosa.RowResult `json:"result"`
 	ResultCount int64            `json:"resultcount"`
@@ -200,7 +201,7 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 	query := &Query{
 		IndexName: indexName,
 		FieldName: fieldName,
-		Type: queryType,
+		Type:      queryType,
 		Rows:      rows,
 		Time:      TimeDuration{Duration: result.time},
 	}
@@ -322,6 +323,11 @@ func runSecondQueriesOnInstance(q *queryOp) {
 
 // writeQueryResulFile writes the results of a SoloBenchmark to a JSON file whose name is the hash of the specs.
 func writeQueryResultFile(bench *SoloBenchmark, instanceType, filename, dataDir string) error {
+	err := os.MkdirAll(dataDir, 0777)
+	if err != nil {
+		return errors.Wrap(err, "making data dir")
+	}
+
 	jsonBytes, err := json.Marshal(bench)
 	if err != nil {
 		return fmt.Errorf("could not marshal results to JSON: %v", err)
