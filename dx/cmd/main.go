@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pilosa/go-pilosa"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +62,7 @@ func NewRootCmd() *cobra.Command {
 			fmt.Println("dx is a tool used to measure the differences between two Pilosa instances. The following checks whether the two instances specified by the flags are running.")
 
 			if err := printServers(); err != nil {
-				fmt.Println(err)
+				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 		},
@@ -86,20 +87,20 @@ func NewRootCmd() *cobra.Command {
 func printServers() error {
 	candidate, err := initializeClient(m.CHosts, m.CPort)
 	if err != nil {
-		return fmt.Errorf("could not create candidate client: %v", err)
+		return errors.Wrap(err, "could not create candidate client")
 	}
 	fmt.Printf("\nCandidate\non host/s %v and port %v\n", strings.Join(m.CHosts, ","), m.CPort)
 	if err = printServerInfo(candidate); err != nil {
-		return fmt.Errorf("could not print candidate server info: %v", err)
+		return errors.Wrap(err, "could not print candidate server info")
 	}
 
 	primary, err := initializeClient(m.PHosts, m.PPort)
 	if err != nil {
-		return fmt.Errorf("could not create primary client: %v", err)
+		return errors.Wrap(err, "could not create primary client")
 	}
 	fmt.Printf("Primary\non host/s %v and port %v\n", strings.Join(m.PHosts, ","), m.PPort)
 	if err = printServerInfo(primary); err != nil {
-		return fmt.Errorf("could not print primary server info: %v", err)
+		return errors.Wrap(err, "could not print primary server info: %v")
 	}
 	return nil
 }
@@ -108,7 +109,7 @@ func printServers() error {
 func printServerInfo(client *pilosa.Client) error {
 	serverInfo, err := client.Info()
 	if err != nil {
-		return fmt.Errorf("couldn't get server info: %v", err)
+		return errors.Wrap(err, "couldn't get server info")
 	}
 	serverMemMB := serverInfo.Memory / (1024 * 1024)
 	serverMemGB := (serverMemMB + 1023) / 1024
@@ -116,7 +117,7 @@ func printServerInfo(client *pilosa.Client) error {
 	fmt.Printf("server CPU: %s\n[%d physical cores, %d logical cores available]\n", serverInfo.CPUType, serverInfo.CPUPhysicalCores, serverInfo.CPULogicalCores)
 	serverStatus, err := client.Status()
 	if err != nil {
-		return fmt.Errorf("couldn't get cluster status info: %v", err)
+		return errors.Wrap(err, "couldn't get cluster status info")
 	}
 	fmt.Printf("cluster nodes: %d\n\n", len(serverStatus.Nodes))
 	return nil
@@ -128,7 +129,7 @@ func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
 	for _, host := range hosts {
 		uri, err := pilosa.NewURIFromHostPort(host, uint16(port))
 		if err != nil {
-			return nil, fmt.Errorf("could not create Pilosa URI: %v", err)
+			return nil, errors.Wrap(err, "could not create Pilosa URI")
 		}
 		uris = append(uris, uri)
 	}
@@ -136,7 +137,7 @@ func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
 	cluster := pilosa.NewClusterWithHost(uris...)
 	client, err := pilosa.NewClient(cluster)
 	if err != nil {
-		return nil, fmt.Errorf("could not create Pilosa cluster: %v", err)
+		return nil, errors.Wrap(err, "could not create Pilosa cluster")
 	}
 	return client, nil
 }

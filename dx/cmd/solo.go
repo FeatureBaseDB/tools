@@ -3,12 +3,12 @@ package dx
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )
@@ -27,7 +27,7 @@ func otherInstance(instanceType string) (string, error) {
 	case instancePrimary:
 		return instanceCandidate, nil
 	}
-	return "", fmt.Errorf("invalid instance type: %v", instanceType)
+	return "", errors.Errorf("invalid instance type: %v", instanceType)
 }
 
 // NewSoloCommand initializes a solo command for dx. Functionally, `dx solo` does nothing meaningful
@@ -38,9 +38,6 @@ func NewSoloCommand() *cobra.Command {
 		Use:   "solo",
 		Short: "dx on a single cluster",
 		Long:  `Perform ingest or queries on a single cluster at a time.`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Println("running solo")
-		},
 	}
 	soloCmd.PersistentFlags().StringVarP(&m.DataDir, "datadir", "d", "~/.dx/.solo", "Data directory to store results")
 
@@ -56,10 +53,10 @@ func determineInstance(flags *flag.FlagSet) (string, error) {
 	isPrimary := flags.Changed("phosts") || flags.Changed("pport")
 
 	if isCandidate && isPrimary {
-		return "", fmt.Errorf("cannot run dx solo on both candidate and primary at the same time")
+		return "", errors.New("cannot run dx solo on both candidate and primary at the same time")
 	}
 	if !isCandidate && !isPrimary {
-		return "", fmt.Errorf("a flag must be set for at least one of chosts, cport, phosts, pport")
+		return "", errors.New("a flag must be set for at least one of chosts, cport, phosts, pport")
 	}
 
 	if isCandidate {
@@ -77,19 +74,19 @@ func determineInstance(flags *flag.FlagSet) (string, error) {
 func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 	hashFilename, err := hashSpecs(specsFile)
 	if err != nil {
-		return true, true, "", fmt.Errorf("error hashing file: %v", err)
+		return true, true, "", errors.Wrap(err, "error hashing file")
 	}
 
 	ingestPath := filepath.Join(dataDir, hashFilename+cmdIngest)
 	ingestFileExists, err := checkFileExists(ingestPath)
 	if err != nil {
-		return true, true, hashFilename, fmt.Errorf("error checking file existence: %v", err)
+		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")
 	}
 
 	queryPath := filepath.Join(dataDir, hashFilename+cmdQuery+strconv.Itoa(m.ThreadCount))
 	queryFileExists, err := checkFileExists(queryPath)
 	if err != nil {
-		return true, true, hashFilename, fmt.Errorf("error checking file existence: %v", err)
+		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")
 	}
 
 	return !ingestFileExists, !queryFileExists, hashFilename, nil
@@ -99,13 +96,13 @@ func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 func hashSpecs(specsFile string) (string, error) {
 	file, err := os.Open(specsFile)
 	if err != nil {
-		return "", fmt.Errorf("could not open specs file: %v", err)
+		return "", errors.Wrap(err, "could not open specs file")
 	}
 	defer file.Close()
 
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("could not copy file to hash: %v", err)
+		return "", errors.Wrap(err, "could not copy file to hash")
 	}
 
 	hashBytes := hash.Sum(nil)
@@ -117,7 +114,7 @@ func checkFileExists(path string) (bool, error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return false, nil
 	} else if err != nil {
-		return false, fmt.Errorf("error statting path: %v", err)
+		return false, errors.Wrap(err, "error statting path")
 	}
 	return true, nil
 }

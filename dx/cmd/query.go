@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pilosa/go-pilosa"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +22,7 @@ func NewQueryCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteQueries(); err != nil {
-				fmt.Println(err)
+				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
@@ -80,19 +81,19 @@ func initializeHolder(instanceType string, hosts []string, port int, iconfs map[
 	// initialize client
 	client, err := initializeClient(hosts, port)
 	if err != nil {
-		return nil, fmt.Errorf("could not create client: %v", err)
+		return nil, errors.Wrap(err, "could not create client")
 	}
 
 	// initalize schema
 	schema, err := client.Schema()
 	if err != nil {
-		return nil, fmt.Errorf("could not get client schema: %v", err)
+		return nil, errors.Wrap(err, "could not get client schema")
 	}
 
 	// initialize indexes
 	for _, iconf := range newIconfs {
 		if !schema.HasIndex(iconf.name) {
-			return nil, fmt.Errorf("could not find index %v", iconf.name)
+			return nil, errors.Errorf("could not find index %v", iconf.name)
 		}
 		// set pilosa index
 		iconf.index = schema.Index(iconf.name)
@@ -100,7 +101,7 @@ func initializeHolder(instanceType string, hosts []string, port int, iconfs map[
 		// initalize fields
 		for _, fconf := range iconf.fields {
 			if !iconf.index.HasField(fconf.name) {
-				return nil, fmt.Errorf("could not find field %v in index %v", fconf.name, iconf.name)
+				return nil, errors.Errorf("could not find field %v in index %v", fconf.name, iconf.name)
 			}
 			// set pilosa field
 			fconf.field = iconf.index.Field(fconf.name)
@@ -119,14 +120,13 @@ type CIF struct {
 	Client   *pilosa.Client
 	Index    *pilosa.Index
 	Field    *pilosa.Field
-	Columns  uint64
 	Min, Max int64
 }
 
 // randomIF returns a random index and field from a holder.
 func (holder *holder) randomIF() (string, string, error) {
 	if len(holder.iconfs) == 0 {
-		return "", "", fmt.Errorf("index config has zero elements")
+		return "", "", errors.New("index config has zero elements")
 	}
 
 	// random index
@@ -140,7 +140,7 @@ func (holder *holder) randomIF() (string, string, error) {
 	}
 
 	if len(iconf.fields) == 0 {
-		return "", "", fmt.Errorf("index %v has zero fields", iconf.name)
+		return "", "", errors.Errorf("index %v has zero fields", iconf.name)
 	}
 	// random field
 	i = rand.Intn(len(iconf.fields))
@@ -157,28 +157,27 @@ func (holder *holder) randomIF() (string, string, error) {
 
 func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 	if _, found := holder.iconfs[indexName]; !found {
-		return nil, fmt.Errorf("could not create CIF because index %v was not found", indexName)
+		return nil, errors.Errorf("could not create CIF because index %v was not found", indexName)
 	}
 	iconf := holder.iconfs[indexName]
 	if iconf.index == nil {
-		return nil, fmt.Errorf("could not create CIF because index %v is nil", iconf.name)
+		return nil, errors.Errorf("could not create CIF because index %v is nil", iconf.name)
 	}
 
 	if _, found := iconf.fields[fieldName]; !found {
-		return nil, fmt.Errorf("could not create CIF because field %v was not found in index %v", fieldName, indexName)
+		return nil, errors.Errorf("could not create CIF because field %v was not found in index %v", fieldName, indexName)
 	}
 	fconf := iconf.fields[fieldName]
 	if fconf.field == nil {
-		return nil, fmt.Errorf("could not create CIF because field %v is nil", fconf.name)
+		return nil, errors.Errorf("could not create CIF because field %v is nil", fconf.name)
 	}
 
 	return &CIF{
-		Client:  holder.client,
-		Index:   iconf.index,
-		Field:   fconf.field,
-		Columns: iconf.columns,
-		Min:     fconf.min,
-		Max:     fconf.max,
+		Client: holder.client,
+		Index:  iconf.index,
+		Field:  fconf.field,
+		Min:    fconf.min,
+		Max:    fconf.max,
 	}, nil
 }
 
@@ -187,17 +186,17 @@ func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 func ExecuteQueries() error {
 	iconfs, err := getSpecs(m.SpecsFile)
 	if err != nil {
-		return fmt.Errorf("could not parse specs: %v", err)
+		return errors.Wrap(err, "could not parse specs")
 	}
 
 	// initialize holders
 	cHolder, err := initializeHolder(instanceCandidate, m.CHosts, m.CPort, iconfs)
 	if err != nil {
-		return fmt.Errorf("could not create holder for candidate: %v", err)
+		return errors.Wrap(err, "could not create holder for candidate")
 	}
 	pHolder, err := initializeHolder(instancePrimary, m.PHosts, m.PPort, iconfs)
 	if err != nil {
-		return fmt.Errorf("could not create holder for primary: %v", err)
+		return errors.Wrap(err, "could not create holder for primary")
 	}
 
 	// run benchmarks
@@ -205,14 +204,14 @@ func ExecuteQueries() error {
 	for _, numQueries := range m.NumQueries {
 		q, err := executeQueries(cHolder, pHolder, numQueries, m.ThreadCount, m.NumRows, m.ActualResults)
 		if err != nil {
-			return fmt.Errorf("could not execute query: %v", err)
+			return errors.Wrap(err, "could not execute query")
 		}
 		qBench = append(qBench, q)
 	}
 
 	// print results
 	if err := printQueryResults(qBench...); err != nil {
-		return fmt.Errorf("could not print: %v", err)
+		return errors.Wrap(err, "could not print")
 	}
 	return nil
 }
@@ -323,21 +322,21 @@ func runQuery(q *queryOp) {
 	indexName, fieldName, err := cHolder.randomIF()
 	if err != nil {
 		m.Logger.Printf("could not get random index-field from candidate holder: %v", err)
-		qResult.err = fmt.Errorf("could not get random index-field from candidate holder: %v", err)
+		qResult.err = errors.Wrap(err, "could not get random index-field from candidate holder")
 		qResultChan <- qResult
 		return
 	}
 	cCIF, err := cHolder.newCIF(indexName, fieldName)
 	if err != nil {
 		m.Logger.Printf("could not find index %v and field %v from candidate holder: %v", indexName, fieldName, err)
-		qResult.err = fmt.Errorf("could not find index %v and field %v from candidate holder: %v", indexName, fieldName, err)
+		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from candidate holder", indexName, fieldName)
 		qResultChan <- qResult
 		return
 	}
 	pCIF, err := pHolder.newCIF(indexName, fieldName)
 	if err != nil {
 		m.Logger.Printf("could not find index %v and field %v from primary holder: %v", indexName, fieldName, err)
-		qResult.err = fmt.Errorf("could not find index %v and field %v from primary holder: %v", indexName, fieldName, err)
+		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from primary holder", indexName, fieldName)
 		qResultChan <- qResult
 		return
 	}
@@ -359,7 +358,8 @@ func runQuery(q *queryOp) {
 	qResult.candidateTime = cResult.time
 	qResult.primaryTime = pResult.time
 	if cResult.err != nil || pResult.err != nil {
-		m.Logger.Printf("error querying: candidate error: %v, primary error: %v\n", cResult.err, pResult.err)
+		// log detailed error
+		m.Logger.Printf("error querying: candidate error: %+v, primary error: %+v\n", cResult.err, pResult.err)
 		qResult.err = fmt.Errorf("error querying: candidate error: %v, primary error: %v", cResult.err, pResult.err)
 		qResultChan <- qResult
 		return
@@ -383,7 +383,7 @@ func runQuery(q *queryOp) {
 
 func generateRandomRows(min, max, numRows int64) ([]int64, error) {
 	if min > max {
-		return nil, fmt.Errorf("min %v must be less than max %v", min, max)
+		return nil, errors.Errorf("min %v must be less than max %v", min, max)
 	}
 	rows := make([]int64, 0, numRows)
 	for i := int64(0); i < numRows; i++ {
@@ -421,7 +421,7 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 	case queryDifference:
 		rowQ = cif.Index.Difference(rowQueries...)
 	default:
-		result.err = fmt.Errorf("invalid query type: %v", queryType)
+		result.err = errors.Errorf("invalid query type: %v", queryType)
 		resultChan <- result
 		return
 	}
@@ -435,7 +435,7 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 	now := time.Now()
 	response, err := cif.Client.Query(rowQ)
 	if err != nil {
-		result.err = fmt.Errorf("could not query: %v", err)
+		result.err = errors.Wrapf(err, "could not query: %v", rowQ)
 		resultChan <- result
 		return
 	}

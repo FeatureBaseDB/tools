@@ -6,6 +6,7 @@ import (
 	"time"
 
 	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,7 @@ func NewIngestCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteIngest(); err != nil {
-				fmt.Println(err)
+				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
@@ -56,7 +57,7 @@ func ExecuteIngest() error {
 		TimeDelta: timeDelta,
 	}
 	if err := printIngestResults(b); err != nil {
-		return fmt.Errorf("could not print results: %v", err)
+		return errors.Wrap(err, "could not print results")
 	}
 	return nil
 }
@@ -67,20 +68,20 @@ func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
 
 	err := conf.ReadSpecs()
 	if err != nil {
-		result.err = fmt.Errorf("config/spec error: %v", err)
+		result.err = errors.Wrap(err, "config/spec error")
 		resultChan <- result
 		return
 	}
 
 	client, err := initializeClient(conf.Hosts, conf.Port)
 	if err != nil {
-		result.err = fmt.Errorf("could not create Pilosa client: %v", err)
+		result.err = errors.Wrap(err, "could not create Pilosa client")
 		resultChan <- result
 		return
 	}
 
 	if err = conf.UpdateIndexes(client); err != nil {
-		result.err = fmt.Errorf("could not update indexes: %v", err)
+		result.err = errors.Wrap(err, "could not update indexes")
 		resultChan <- result
 		return
 	}
@@ -88,7 +89,7 @@ func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
 	now := time.Now()
 	err = conf.ApplyWorkloads(client)
 	if err != nil {
-		result.err = fmt.Errorf("applying workloads: %v", err)
+		result.err = errors.Wrap(err, "applying workloads")
 		resultChan <- result
 		return
 	}

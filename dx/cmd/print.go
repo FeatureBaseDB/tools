@@ -2,6 +2,7 @@ package dx
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"text/tabwriter"
 )
@@ -20,7 +21,7 @@ func printIngestResults(b *Benchmark) error {
 	}
 	fmt.Fprintln(w)
 	if err := w.Flush(); err != nil {
-		return fmt.Errorf("could not flush writer: %v", err)
+		return errors.Wrap(err, "could not flush writer")
 	}
 	return nil
 }
@@ -41,7 +42,7 @@ func printQueryResults(qBench ...*Benchmark) error {
 		fmt.Fprintln(w)
 	}
 	if err := w.Flush(); err != nil {
-		return fmt.Errorf("could not flush writer: %v", err)
+		return errors.Wrap(err, "could not flush writer")
 	}
 	return nil
 }

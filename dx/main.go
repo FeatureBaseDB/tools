@@ -9,7 +9,7 @@ import (
 
 func main() {
 	if err := dx.NewRootCmd().Execute(); err != nil {
-		fmt.Println(err)
+		fmt.Printf("%+v", err)
 		os.Exit(1)
 	}
 }

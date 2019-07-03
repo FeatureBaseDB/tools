@@ -26,7 +26,7 @@ func NewSoloQueryCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteSoloQueries(cmd.Flags()); err != nil {
-				fmt.Println(err)
+				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
@@ -90,7 +90,7 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 	}
 	_, isFirstQuery, hashFilename, err := checkBenchIsFirst(m.SpecsFile, m.DataDir)
 	if err != nil {
-		return fmt.Errorf("error checking if prior bench exists: %v", err)
+		return errors.Wrap(err, "error checking if prior bench exists")
 	}
 	// append `query` and threadcount to the file name
 	hashFilename = hashFilename + cmdQuery + strconv.Itoa(m.ThreadCount)
@@ -98,7 +98,7 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 	// initialize holder from specs
 	iconfs, err := getSpecs(m.SpecsFile)
 	if err != nil {
-		return fmt.Errorf("could not parse specs: %v", err)
+		return errors.Wrap(err, "could not parse specs")
 	}
 	var holder *holder
 	switch instanceType {
@@ -107,23 +107,23 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 	case instancePrimary:
 		holder, err = initializeHolder(instancePrimary, m.PHosts, m.PPort, iconfs)
 	default:
-		err = fmt.Errorf("invalid instance type: %v", instanceType)
+		err = errors.Errorf("invalid instance type: %v", instanceType)
 	}
 	if err != nil {
-		return fmt.Errorf("could not create holder for instance: %v", err)
+		return errors.Wrap(err, "could not create holder for instance")
 	}
 
 	// previous result file for specs does not exist. Running dx solo for the first time.
 	if isFirstQuery {
 		if err = executeFirstSoloQueries(holder, hashFilename, m.DataDir, m.NumQueries, m.ThreadCount, m.NumRows, m.ActualResults); err != nil {
-			return fmt.Errorf("could not execute first solo queries: %v", err)
+			return errors.Wrap(err, "could not execute first solo queries")
 		}
 		return nil
 	}
 
 	// previous result file for specs exist. Running dx solo for the second time.
 	if err = executeSecondSoloQueries(holder, hashFilename, m.DataDir); err != nil {
-		return fmt.Errorf("could not execute second solo queries: %v", err)
+		return errors.Wrap(err, "could not execute second solo queries")
 	}
 	return nil
 }
@@ -137,13 +137,13 @@ func executeFirstSoloQueries(holder *holder, filename, dataDir string, numBenchm
 	for _, numQueries := range numBenchmarks {
 		querybench, err := runFirstSoloQueries(holder, numQueries, threadCount, numRows, actualRes)
 		if err != nil {
-			return fmt.Errorf("could not run first solo queries: %v", err)
+			return errors.Wrap(err, "could not run first solo queries")
 		}
 		solobench.Benchmarks = append(solobench.Benchmarks, querybench)
 		solobench.NumBenchmarks++
 	}
 	if err := writeQueryResultFile(solobench, holder.instance, filename, dataDir); err != nil {
-		return fmt.Errorf("could not write solo queries results to file: %v", err)
+		return errors.Wrap(err, "could not write solo queries results to file")
 	}
 	return nil
 }
@@ -220,14 +220,14 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 func executeSecondSoloQueries(holder *holder, filename, dataDir string) error {
 	solobench, err := readQueryResultFile(holder.instance, filename, dataDir)
 	if err != nil {
-		return fmt.Errorf("could not read query result file: %v", err)
+		return errors.Wrap(err, "could not read query result file")
 	}
 	if solobench.Command != cmdQuery {
-		return fmt.Errorf("running dx solo query, but previous result shows command: %v", solobench.Command)
+		return errors.Errorf("running dx solo query, but previous result shows command: %v", solobench.Command)
 	}
 	otherInstanceType, _ := otherInstance(holder.instance)
 	if solobench.Instance != otherInstanceType {
-		return fmt.Errorf("running dx solo query on instance %v, but previous result file was already on %v", holder.instance, solobench.Instance)
+		return errors.Errorf("running dx solo query on instance %v, but previous result file was already on %v", holder.instance, solobench.Instance)
 	}
 	benchmarks := make([]*Benchmark, 0, solobench.NumBenchmarks)
 
@@ -240,13 +240,13 @@ func executeSecondSoloQueries(holder *holder, filename, dataDir string) error {
 	}
 
 	if err = printQueryResults(benchmarks...); err != nil {
-		return fmt.Errorf("error printing benchmarks: %v", err)
+		return errors.Wrap(err, "error printing benchmarks")
 	}
 
 	// everything was successful, so it is now safe to delete the previous result file
 	path := filepath.Join(dataDir, filename)
 	if err = os.Remove(path); err != nil {
-		return fmt.Errorf("everything ran successfully, but previous results file could not be deleted: %v", err)
+		return errors.Wrap(err, "everything ran successfully, but previous results file could not be deleted")
 	}
 
 	return nil
@@ -271,7 +271,7 @@ func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCo
 
 	benchmark, err := analyzeQueryResults(q.resultChan, numQueries)
 	if err != nil {
-		return nil, fmt.Errorf("error analyzing results: %v", err)
+		return nil, errors.Wrap(err, "error analyzing results")
 	}
 	return benchmark, nil
 }
@@ -330,11 +330,11 @@ func writeQueryResultFile(bench *SoloBenchmark, instanceType, filename, dataDir 
 
 	jsonBytes, err := json.Marshal(bench)
 	if err != nil {
-		return fmt.Errorf("could not marshal results to JSON: %v", err)
+		return errors.Wrap(err, "could not marshal results to JSON")
 	}
 	path := filepath.Join(dataDir, filename)
 	if err = ioutil.WriteFile(path, jsonBytes, 0666); err != nil {
-		return fmt.Errorf("could not write JSON to file: %v", err)
+		return errors.Wrap(err, "could not write JSON to file")
 	}
 	return nil
 }
@@ -345,13 +345,13 @@ func readQueryResultFile(instanceType string, filename, dataDir string) (*SoloBe
 
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("could not open previous result file: %v", err)
+		return nil, errors.Wrap(err, "could not open previous result file")
 	}
 	defer file.Close()
 
 	jsonBytes, err := ioutil.ReadAll(file)
 	if err != nil {
-		return nil, fmt.Errorf("could not read previous result file: %v", err)
+		return nil, errors.Wrap(err, "could not read previous result file")
 	}
 	var soloBench SoloBenchmark
 	json.Unmarshal(jsonBytes, &soloBench)

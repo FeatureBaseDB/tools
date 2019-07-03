@@ -1,29 +1,26 @@
 package dx
 
 import (
-	"fmt"
-
 	"github.com/pilosa/go-pilosa"
 	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pkg/errors"
 )
 
 type indexConfig struct {
-	name    string
-	index   *pilosa.Index
-	fields  map[string]*fieldConfig
-	columns uint64
+	name   string
+	index  *pilosa.Index
+	fields map[string]*fieldConfig
 }
 
-func newIndexConfig(name string, columns uint64) *indexConfig {
+func newIndexConfig(name string) *indexConfig {
 	return &indexConfig{
-		name:    name,
-		fields:  make(map[string]*fieldConfig),
-		columns: columns,
+		name:   name,
+		fields: make(map[string]*fieldConfig),
 	}
 }
 
 func (iconf *indexConfig) deepcopy() *indexConfig {
-	newIconf := newIndexConfig(iconf.name, iconf.columns)
+	newIconf := newIndexConfig(iconf.name)
 	for fieldName, fconf := range iconf.fields {
 		newIconf.fields[fieldName] = &fieldConfig{
 			name: fconf.name,
@@ -55,13 +52,13 @@ func getSpecs(specsFile string) (map[string]*indexConfig, error) {
 	tomlSpec, err := imagine.ReadSpec(specsFile)
 	if err != nil {
 		m.Logger.Printf("could not parse specs file: %v", err)
-		return nil, fmt.Errorf("could not parse specs file: %v", err)
+		return nil, errors.Wrap(err, "could not parse specs file")
 	}
 	configs := make(map[string]*indexConfig)
 	// add each index and field
 	for indexName, indexSpec := range tomlSpec.Indexes {
 		prefixedName := m.Prefix + indexName
-		iconf := newIndexConfig(prefixedName, indexSpec.Columns)
+		iconf := newIndexConfig(prefixedName)
 		iconf.fields = make(map[string]*fieldConfig)
 		for _, fieldSpec := range indexSpec.Fields {
 			fconf := &fieldConfig{

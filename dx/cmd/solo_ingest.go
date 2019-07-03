@@ -9,6 +9,7 @@ import (
 	"time"
 
 	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )
@@ -22,7 +23,7 @@ func NewSoloIngestCommand() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteSoloIngest(cmd.Flags()); err != nil {
-				fmt.Println(err)
+				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
@@ -40,12 +41,12 @@ func ExecuteSoloIngest(flags *flag.FlagSet) error {
 	}
 	otherInstanceType, err := otherInstance(instanceType)
 	if err != nil {
-		return fmt.Errorf("invalid instance type from flags: %v", err)
+		return errors.Wrap(err, "invalid instance type from flags")
 	}
 
 	isFirstIngest, _, hashFilename, err := checkBenchIsFirst(m.SpecsFile, m.DataDir)
 	if err != nil {
-		return fmt.Errorf("error checking if prior bench exists: %v", err)
+		return errors.Wrap(err, "error checking if prior bench exists")
 	}
 	// append `ingest` to file name
 	hashFilename = hashFilename + cmdIngest
@@ -56,7 +57,7 @@ func ExecuteSoloIngest(flags *flag.FlagSet) error {
 func executeSoloIngest(config *imagine.Config, isFirstIngest bool, instanceType, otherInstanceType, filename, dataDir string) error {
 	result, err := runSoloIngest(config)
 	if err != nil {
-		return fmt.Errorf("error running solo ingest: %v", err)
+		return errors.Wrap(err, "error running solo ingest")
 	}
 
 	// This is the first ingest benchmark for the specs, so we save the result.
@@ -68,7 +69,7 @@ func executeSoloIngest(config *imagine.Config, isFirstIngest bool, instanceType,
 	// A prior benchmark exists, so we read from that and compare the results.
 	bench, err := readIngestResultFile(otherInstanceType, filename, dataDir)
 	if err != nil {
-		return fmt.Errorf("error reading result file: %v", err)
+		return errors.Wrap(err, "error reading result file")
 	}
 
 	switch instanceType {
@@ -80,13 +81,13 @@ func executeSoloIngest(config *imagine.Config, isFirstIngest bool, instanceType,
 
 	bench.TimeDelta = float64(bench.CTime-bench.PTime) / float64(bench.PTime)
 	if err = printIngestResults(bench); err != nil {
-		return fmt.Errorf("could not print ingest comparison: %v", err)
+		return errors.Wrap(err, "could not print ingest comparison")
 	}
 
 	// everything ran successfully, so we can safely delete the previous result file
 	path := filepath.Join(dataDir, filename)
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("everything ran successfully, but the previous result file could not be deleted: %v", err)
+		return errors.Wrap(err, "everything ran successfully, but the previous result file could not be deleted")
 	}
 
 	return nil
@@ -98,7 +99,7 @@ func runSoloIngest(config *imagine.Config) (*Result, error) {
 
 	result := <-resultChan
 	if result.err != nil {
-		return nil, fmt.Errorf("could not ingest: %v", result.err)
+		return nil, errors.Wrap(result.err, "could not ingest")
 	}
 
 	return result, nil
@@ -108,17 +109,17 @@ func runSoloIngest(config *imagine.Config) (*Result, error) {
 func writeIngestResultFile(result *Result, instanceType, filename, dataDir string) error {
 	// TODO: make this path absolute
 	if err := os.MkdirAll(dataDir, 0777); err != nil {
-		return fmt.Errorf("error making data directory: %v", err)
+		return errors.Wrap(err, "error making data directory")
 	}
 	file, err := os.Create(filepath.Join(dataDir, filename))
 	if err != nil {
-		return fmt.Errorf("error creating results file: %v", err)
+		return errors.Wrap(err, "error creating results file")
 	}
 	defer file.Close()
 
 	_, err = file.WriteString(fmt.Sprintf("%v,%v,%v", cmdIngest, instanceType, result.time))
 	if err != nil {
-		return fmt.Errorf("could not write results file: %v", err)
+		return errors.Wrap(err, "could not write results file")
 	}
 	// TODO: print single ingest result
 	return file.Sync()
@@ -129,30 +130,30 @@ func readIngestResultFile(instanceType string, filename, dataDir string) (*Bench
 
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("could not open previous result file: %v", err)
+		return nil, errors.Wrap(err, "could not open previous result file")
 	}
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	_ = scanner.Scan()
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error scanning result file: %v", err)
+		return nil, errors.Wrap(err, "error scanning result file")
 	}
 
 	text := scanner.Text()
 	words := strings.Split(text, ",")
 	if len(words) < 3 {
-		return nil, fmt.Errorf("invalid number of values in result file")
+		return nil, errors.New("invalid number of values in result file")
 	}
 	if words[0] != cmdIngest {
-		return nil, fmt.Errorf("results file should be tagged with ingest, got %v", words[0])
+		return nil, errors.Errorf("results file should be tagged with ingest, got %v", words[0])
 	}
 	if words[1] != instanceType {
-		return nil, fmt.Errorf("results file already has instance type %v", words[1])
+		return nil, errors.Errorf("results file already has instance type %v", words[1])
 	}
 	duration, err := time.ParseDuration(words[2])
 	if err != nil {
-		return nil, fmt.Errorf("error parsing duration from results file: %v", err)
+		return nil, errors.Wrap(err, "error parsing duration from results file")
 	}
 
 	bench := &Benchmark{}
@@ -169,7 +170,7 @@ func readIngestResultFile(instanceType string, filename, dataDir string) (*Bench
 func newConfigFromFlags(flags *flag.FlagSet, specsFile []string) (*imagine.Config, string, error) {
 	instanceType, err := determineInstance(flags)
 	if err != nil {
-		return nil, "", fmt.Errorf("could not create config: %v", err)
+		return nil, "", errors.Wrap(err, "could not create config")
 	}
 
 	switch instanceType {
@@ -178,5 +179,5 @@ func newConfigFromFlags(flags *flag.FlagSet, specsFile []string) (*imagine.Confi
 	case instancePrimary:
 		return newPrimaryConfig(specsFile), instanceType, nil
 	}
-	return nil, "", fmt.Errorf("unknown instance type: %v", instanceType)
+	return nil, "", errors.Errorf("unknown instance type: %v", instanceType)
 }
