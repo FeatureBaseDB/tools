@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pilosa/tools/imagine"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )

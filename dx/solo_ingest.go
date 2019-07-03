@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pilosa/tools/imagine"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"

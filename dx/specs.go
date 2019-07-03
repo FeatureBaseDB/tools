@@ -2,7 +2,7 @@ package dx
 
 import (
 	"github.com/pilosa/go-pilosa"
-	imagine "github.com/pilosa/tools/imagine/pkg"
+	"github.com/pilosa/tools/imagine"
 	"github.com/pkg/errors"
 )
 
