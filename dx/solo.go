@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -33,16 +32,22 @@ func otherInstance(instanceType string) (string, error) {
 // NewSoloCommand initializes a solo command for dx. Functionally, `dx solo` does nothing meaningful
 // except to print out server info, but the solo command is useful to signal to `dx` that the operation
 // being ran is not happening concurrently on both machines.
-func NewSoloCommand() *cobra.Command {
+func NewSoloCommand(m *Main) *cobra.Command {
 	soloCmd := &cobra.Command{
 		Use:   "solo",
 		Short: "dx on a single cluster",
 		Long:  `Perform ingest or queries on a single cluster at a time.`,
 	}
-	soloCmd.PersistentFlags().StringVarP(&m.DataDir, "datadir", "d", "~/.dx/.solo", "Data directory to store results")
 
-	soloCmd.AddCommand(NewSoloIngestCommand())
-	soloCmd.AddCommand(NewSoloQueryCommand())
+	var path string
+	home, err := os.UserHomeDir()
+	if err == nil {
+		path = filepath.Join(home, "dx", "solo")
+	}
+	soloCmd.PersistentFlags().StringVarP(&m.DataDir, "datadir", "d", path, "Data directory to store results")
+
+	soloCmd.AddCommand(NewSoloIngestCommand(m))
+	soloCmd.AddCommand(NewSoloQueryCommand(m))
 
 	return soloCmd
 }
@@ -83,7 +88,8 @@ func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
 		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")
 	}
 
-	queryPath := filepath.Join(dataDir, hashFilename+cmdQuery+strconv.Itoa(m.ThreadCount))
+	queryPath := filepath.Join(dataDir, hashFilename+cmdQuery)
+	// queryPath := filepath.Join(dataDir, hashFilename+cmdQuery+strconv.Itoa(m.ThreadCount))
 	queryFileExists, err := checkFileExists(queryPath)
 	if err != nil {
 		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")

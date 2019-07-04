@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -18,14 +19,14 @@ import (
 )
 
 // NewSoloQueryCommand initializes a new query command for dx.
-func NewSoloQueryCommand() *cobra.Command {
+func NewSoloQueryCommand(m *Main) *cobra.Command {
 	ingestCmd := &cobra.Command{
 		Use:   "query",
 		Short: "perform random queries",
 		Long:  `Perform randomly generated queries on a single instances of Pilosa.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if err := ExecuteSoloQueries(cmd.Flags()); err != nil {
+			if err := ExecuteSoloQueries(m, cmd.Flags()); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
@@ -83,7 +84,7 @@ type Query struct {
 
 // ExecuteSoloQueries executes queries on a single Pilosa instance. This is where the configuration
 // is determined before being passed on to the appropriate functions to handle.
-func ExecuteSoloQueries(flags *flag.FlagSet) error {
+func ExecuteSoloQueries(m *Main, flags *flag.FlagSet) error {
 	instanceType, err := determineInstance(flags)
 	if err != nil {
 		return err
@@ -96,7 +97,7 @@ func ExecuteSoloQueries(flags *flag.FlagSet) error {
 	hashFilename = hashFilename + cmdQuery + strconv.Itoa(m.ThreadCount)
 
 	// initialize holder from specs
-	iconfs, err := getSpecs(m.SpecsFile)
+	iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
 	if err != nil {
 		return errors.Wrap(err, "could not parse specs")
 	}
@@ -176,17 +177,17 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 
 	indexName, fieldName, err := q.holder.randomIF()
 	if err != nil {
-		m.Logger.Printf("could not generate random index and field from holder: %v", err)
+		log.Printf("could not generate random index and field from holder: %v", err)
 		return
 	}
 	cif, err := q.holder.newCIF(indexName, fieldName)
 	if err != nil {
-		m.Logger.Printf("could not create index %v and field %v from holder: %v", indexName, fieldName, err)
+		log.Printf("could not create index %v and field %v from holder: %v", indexName, fieldName, err)
 		return
 	}
 	rows, err := generateRandomRows(cif.Min, cif.Max, q.numRows)
 	if err != nil {
-		m.Logger.Printf("could not generate random rows: %v", err)
+		log.Printf("could not generate random rows: %v", err)
 		return
 	}
 	queryType := randomQueryType()
@@ -195,7 +196,7 @@ func runFirstSoloQueriesOnInstance(q *queryOp) {
 	result := <-resultChan
 
 	if result.err != nil {
-		m.Logger.Printf("error running query on instance: %v", result.err)
+		log.Printf("error running query on instance: %v", result.err)
 		return
 	}
 	query := &Query{
@@ -285,14 +286,14 @@ func runSecondQueriesOnInstance(q *queryOp) {
 	query := <-q.queryChan
 	cif, err := q.holder.newCIF(query.IndexName, query.FieldName)
 	if err != nil {
-		m.Logger.Printf("could not create index %v and field %v from holder", query.IndexName, query.FieldName)
+		log.Printf("could not create index %v and field %v from holder", query.IndexName, query.FieldName)
 		return
 	}
 
 	go runQueryOnInstance(cif, query.Type, query.Rows, resultChan, q.actualRes)
 	result := <-resultChan
 	if result.err != nil {
-		m.Logger.Printf("error running query on instance: %v", err)
+		log.Printf("error running query on instance: %v", err)
 		return
 	}
 
@@ -304,7 +305,7 @@ func runSecondQueriesOnInstance(q *queryOp) {
 		qResult.candidateTime = query.Time.Duration
 		qResult.primaryTime = result.time
 	default:
-		m.Logger.Printf("invalid instance type: %v", q.holder.instance)
+		log.Printf("invalid instance type: %v", q.holder.instance)
 	}
 
 	if q.actualRes {

@@ -2,6 +2,7 @@ package dx
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"os"
 	"reflect"
@@ -14,21 +15,21 @@ import (
 )
 
 // NewQueryCommand initializes a new ingest command for dx.
-func NewQueryCommand() *cobra.Command {
+func NewQueryCommand(m *Main) *cobra.Command {
 	ingestCmd := &cobra.Command{
 		Use:   "query",
 		Short: "perform random queries",
 		Long:  `Perform randomly generated queries against both instances of Pilosa.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if err := ExecuteQueries(); err != nil {
+			if err := ExecuteQueries(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
 		},
 	}
-	ingestCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100000, 1000000, 10000000, 100000000}, "Number of queries to run")
+	ingestCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
 	ingestCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
 	return ingestCmd
 }
@@ -183,8 +184,8 @@ func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 
 // ExecuteQueries executes the random queries on both Pilosa instances repeatedly
 // according to the values specified in m.NumQueries.
-func ExecuteQueries() error {
-	iconfs, err := getSpecs(m.SpecsFile)
+func ExecuteQueries(m *Main) error {
+	iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
 	if err != nil {
 		return errors.Wrap(err, "could not parse specs")
 	}
@@ -321,21 +322,21 @@ func runQuery(q *queryOp) {
 	// initialize CIFs
 	indexName, fieldName, err := cHolder.randomIF()
 	if err != nil {
-		m.Logger.Printf("could not get random index-field from candidate holder: %v", err)
+		log.Printf("could not get random index-field from candidate holder: %v", err)
 		qResult.err = errors.Wrap(err, "could not get random index-field from candidate holder")
 		qResultChan <- qResult
 		return
 	}
 	cCIF, err := cHolder.newCIF(indexName, fieldName)
 	if err != nil {
-		m.Logger.Printf("could not find index %v and field %v from candidate holder: %v", indexName, fieldName, err)
+		log.Printf("could not find index %v and field %v from candidate holder: %v", indexName, fieldName, err)
 		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from candidate holder", indexName, fieldName)
 		qResultChan <- qResult
 		return
 	}
 	pCIF, err := pHolder.newCIF(indexName, fieldName)
 	if err != nil {
-		m.Logger.Printf("could not find index %v and field %v from primary holder: %v", indexName, fieldName, err)
+		log.Printf("could not find index %v and field %v from primary holder: %v", indexName, fieldName, err)
 		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from primary holder", indexName, fieldName)
 		qResultChan <- qResult
 		return
@@ -344,7 +345,7 @@ func runQuery(q *queryOp) {
 	// generate random row numbers to query in both instances
 	rows, err := generateRandomRows(cCIF.Min, cCIF.Max, numRows)
 	if err != nil {
-		m.Logger.Printf("could not generate reandom rows: %v", err)
+		log.Printf("could not generate reandom rows: %v", err)
 		return
 	}
 	queryType := randomQueryType()
@@ -359,7 +360,7 @@ func runQuery(q *queryOp) {
 	qResult.primaryTime = pResult.time
 	if cResult.err != nil || pResult.err != nil {
 		// log detailed error
-		m.Logger.Printf("error querying: candidate error: %+v, primary error: %+v\n", cResult.err, pResult.err)
+		log.Printf("error querying: candidate error: %+v, primary error: %+v\n", cResult.err, pResult.err)
 		qResult.err = fmt.Errorf("error querying: candidate error: %v, primary error: %v", cResult.err, pResult.err)
 		qResultChan <- qResult
 		return
@@ -368,13 +369,13 @@ func runQuery(q *queryOp) {
 		if reflect.DeepEqual(cResult.result, pResult.result) {
 			qResult.correct = true
 		} else {
-			m.Logger.Printf("different results:\ncandidate:\n%v\nprimary\n%v\n", cResult.result, pResult.result)
+			log.Printf("different results:\ncandidate:\n%v\nprimary\n%v\n", cResult.result, pResult.result)
 		}
 	} else {
 		if cResult.resultCount == pResult.resultCount {
 			qResult.correct = true
 		} else {
-			m.Logger.Printf("different result counts: candidate: %v, primary %v", cResult.resultCount, pResult.resultCount)
+			log.Printf("different result counts: candidate: %v, primary %v", cResult.resultCount, pResult.resultCount)
 		}
 	}
 
@@ -430,8 +431,6 @@ func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan 
 		rowQ = cif.Index.Count(rowQ.(*pilosa.PQLRowQuery))
 	}
 
-	// run query
-	fmt.Printf("making query: %s\n", rowQ)
 	now := time.Now()
 	response, err := cif.Client.Query(rowQ)
 	if err != nil {

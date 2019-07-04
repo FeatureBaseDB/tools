@@ -15,14 +15,14 @@ import (
 )
 
 // NewSoloIngestCommand initializes a solo ingest command.
-func NewSoloIngestCommand() *cobra.Command {
+func NewSoloIngestCommand(m *Main) *cobra.Command {
 	sIngestCmd := &cobra.Command{
 		Use:   "ingest",
 		Short: "ingest on a single cluster",
 		Long:  `Perform ingest on a single cluster at a time.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if err := ExecuteSoloIngest(cmd.Flags()); err != nil {
+			if err := ExecuteSoloIngest(m, cmd.Flags()); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
@@ -33,9 +33,8 @@ func NewSoloIngestCommand() *cobra.Command {
 }
 
 // ExecuteSoloIngest executes the ingest on a single Pilosa instance.
-func ExecuteSoloIngest(flags *flag.FlagSet) error {
-	specsFiles := []string{m.SpecsFile}
-	config, instanceType, err := newConfigFromFlags(flags, specsFiles)
+func ExecuteSoloIngest(m *Main, flags *flag.FlagSet) error {
+	config, instanceType, err := newConfigFromFlags(m, flags)
 	if err != nil {
 		return err
 	}
@@ -167,7 +166,7 @@ func readIngestResultFile(instanceType string, filename, dataDir string) (*Bench
 	return bench, nil
 }
 
-func newConfigFromFlags(flags *flag.FlagSet, specsFile []string) (*imagine.Config, string, error) {
+func newConfigFromFlags(m *Main, flags *flag.FlagSet) (*imagine.Config, string, error) {
 	instanceType, err := determineInstance(flags)
 	if err != nil {
 		return nil, "", errors.Wrap(err, "could not create config")
@@ -175,9 +174,9 @@ func newConfigFromFlags(flags *flag.FlagSet, specsFile []string) (*imagine.Confi
 
 	switch instanceType {
 	case instanceCandidate:
-		return newCandidateConfig(specsFile), instanceType, nil
+		return newCandidateConfig(m), instanceType, nil
 	case instancePrimary:
-		return newPrimaryConfig(specsFile), instanceType, nil
+		return newPrimaryConfig(m), instanceType, nil
 	}
 	return nil, "", errors.Errorf("unknown instance type: %v", instanceType)
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/imagine"
 	"github.com/pkg/errors"
+	"log"
 )
 
 type indexConfig struct {
@@ -48,16 +49,16 @@ type fieldConfig struct {
 
 // TODO: validation for duplicate indexes
 // TODO: suppport multiple specsFiles
-func getSpecs(specsFile string) (map[string]*indexConfig, error) {
+func getSpecs(prefix, specsFile string) (map[string]*indexConfig, error) {
 	tomlSpec, err := imagine.ReadSpec(specsFile)
 	if err != nil {
-		m.Logger.Printf("could not parse specs file: %v", err)
+		log.Printf("could not parse specs file: %v", err)
 		return nil, errors.Wrap(err, "could not parse specs file")
 	}
 	configs := make(map[string]*indexConfig)
 	// add each index and field
 	for indexName, indexSpec := range tomlSpec.Indexes {
-		prefixedName := m.Prefix + indexName
+		prefixedName := prefix + indexName
 		iconf := newIndexConfig(prefixedName)
 		iconf.fields = make(map[string]*fieldConfig)
 		for _, fieldSpec := range indexSpec.Fields {

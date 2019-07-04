@@ -11,14 +11,14 @@ import (
 )
 
 // NewIngestCommand initializes a new ingest command for dx.
-func NewIngestCommand() *cobra.Command {
+func NewIngestCommand(m *Main) *cobra.Command {
 	ingestCmd := &cobra.Command{
 		Use:   "ingest",
 		Short: "ingest randomly generated data",
 		Long:  `Ingest randomly generated data from imagine tool in both instances of Pilosa.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if err := ExecuteIngest(); err != nil {
+			if err := ExecuteIngest(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
@@ -29,13 +29,12 @@ func NewIngestCommand() *cobra.Command {
 }
 
 // ExecuteIngest executes the ingest on both Pilosa instances.
-func ExecuteIngest() error {
+func ExecuteIngest(m *Main) error {
 	cResultChan := make(chan *Result, 1)
 	pResultChan := make(chan *Result, 1)
 
-	specsFiles := []string{m.SpecsFile}
-	go runIngestOnInstance(newCandidateConfig(specsFiles), cResultChan)
-	go runIngestOnInstance(newPrimaryConfig(specsFiles), pResultChan)
+	go runIngestOnInstance(newCandidateConfig(m), cResultChan)
+	go runIngestOnInstance(newPrimaryConfig(m), pResultChan)
 
 	cResult := <-cResultChan
 	pResult := <-pResultChan
@@ -98,20 +97,22 @@ func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
 	resultChan <- result
 }
 
-func newCandidateConfig(specsFiles []string) *imagine.Config {
-	return newConfig(m.CHosts, m.CPort, specsFiles)
+func newCandidateConfig(m *Main) *imagine.Config {
+	specsFiles := []string{m.SpecsFile}
+	return newConfig(m.CHosts, m.CPort, specsFiles, m.Prefix, m.ThreadCount)
 }
 
-func newPrimaryConfig(specsFiles []string) *imagine.Config {
-	return newConfig(m.PHosts, m.PPort, specsFiles)
+func newPrimaryConfig(m *Main) *imagine.Config {
+	specsFiles := []string{m.SpecsFile}
+	return newConfig(m.PHosts, m.PPort, specsFiles, m.Prefix, m.ThreadCount)
 }
 
-func newConfig(hosts []string, port int, specsFiles []string) *imagine.Config {
+func newConfig(hosts []string, port int, specsFiles []string, prefix string, threadCount int) *imagine.Config {
 	conf := &imagine.Config{
 		Hosts:       hosts,
 		Port:        port,
-		Prefix:      m.Prefix,
-		ThreadCount: m.ThreadCount,
+		Prefix:      prefix,
+		ThreadCount: threadCount,
 	}
 	conf.NewSpecsFiles(specsFiles)
 

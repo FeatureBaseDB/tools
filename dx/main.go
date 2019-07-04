@@ -13,13 +13,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newLogger(verbose bool) *log.Logger {
-	if verbose {
-		return log.New(os.Stderr, "", log.LstdFlags)
-	}
-	return log.New(ioutil.Discard, "", log.LstdFlags)
-}
-
 // Main contains the flags dx uses and a logger.
 type Main struct {
 	ThreadCount   int
@@ -34,7 +27,8 @@ type Main struct {
 	NumRows       int64  // number of rows to intersect in a query
 	DataDir       string // data directory to store results for solo command
 	ActualResults bool   // whether dx should compare actual results from queries vs just the counts
-	Logger        *log.Logger
+	Hosts         []string
+	Port          int
 }
 
 // NewMain creates a new empty Main object.
@@ -44,24 +38,27 @@ func NewMain() *Main {
 	}
 }
 
-// m is the only global variable and contains necessary flags and the logger.
-// The default values for the fields of m are set through cobra NewRootCmd().
-var m = NewMain()
-
 // NewRootCmd creates an instance of the cobra root command for dx.
 func NewRootCmd() *cobra.Command {
+	// m is persisted to all subcommands
+	m := NewMain()
+
 	rc := &cobra.Command{
 		Use:   "dx",
 		Short: "compare differences between two Pilosa instances",
 		Long:  `Compare differences between candidate Pilosa instance and last known-good Pilosa version.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			m.Logger = newLogger(m.Verbose)
+			if m.Verbose {
+				log.SetOutput(os.Stderr)
+			} else {
+				log.SetOutput(ioutil.Discard)
+			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 
 			fmt.Println("dx is a tool used to measure the differences between two Pilosa instances. The following checks whether the two instances specified by the flags are running.")
 
-			if err := printServers(); err != nil {
+			if err := printServers(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
@@ -77,14 +74,14 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rc.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
 
-	rc.AddCommand(NewIngestCommand())
-	rc.AddCommand(NewQueryCommand())
-	rc.AddCommand(NewSoloCommand())
+	rc.AddCommand(NewIngestCommand(m))
+	rc.AddCommand(NewQueryCommand(m))
+	rc.AddCommand(NewSoloCommand(m))
 
 	return rc
 }
 
-func printServers() error {
+func printServers(m *Main) error {
 	candidate, err := initializeClient(m.CHosts, m.CPort)
 	if err != nil {
 		return errors.Wrap(err, "could not create candidate client")
