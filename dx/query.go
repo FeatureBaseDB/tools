@@ -16,7 +16,7 @@ import (
 
 // NewQueryCommand initializes a new ingest command for dx.
 func NewQueryCommand(m *Main) *cobra.Command {
-	ingestCmd := &cobra.Command{
+	queryCmd := &cobra.Command{
 		Use:   "query",
 		Short: "perform random queries",
 		Long:  `Perform randomly generated queries against both instances of Pilosa.`,
@@ -29,9 +29,10 @@ func NewQueryCommand(m *Main) *cobra.Command {
 
 		},
 	}
-	ingestCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
-	ingestCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
-	return ingestCmd
+	queryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
+	queryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
+	queryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
+	return queryCmd
 }
 
 const (
@@ -58,6 +59,25 @@ func newQResult() *QResult {
 		candidateTime: 0,
 		primaryTime:   0,
 	}
+}
+
+type indexConfig struct {
+	name   string
+	index  *pilosa.Index
+	fields map[string]*fieldConfig
+}
+
+func newIndexConfig(name string) *indexConfig {
+	return &indexConfig{
+		name:   name,
+		fields: make(map[string]*fieldConfig),
+	}
+}
+
+type fieldConfig struct {
+	name     string
+	field    *pilosa.Field
+	min, max int64
 }
 
 // holder contains the client and all indexes and fields
@@ -98,8 +118,8 @@ func defaultHolder(hosts []string, port int) (*holder, error) {
 			indexConfig.fields[fieldName] = &fieldConfig{
 				name:  fieldName,
 				field: field,
-				min:   int64(field.MinRow()),
-				max:   int64(field.MaxRow()),
+				// min:   int64(field.MinRow()),
+				// max:   int64(field.MaxRow()),
 			}
 		}
 
@@ -111,10 +131,7 @@ func defaultHolder(hosts []string, port int) (*holder, error) {
 	}, nil
 }
 
-func initializeHolder(hosts []string, port int, iconfs map[string]*indexConfig) (*holder, error) {
-	// make sure newIconfs and iconfs do not point to same array
-	newIconfs := deepcopy(iconfs)
-
+func defaultHolderWithIndexes(hosts []string, port int, indexNames []string) (*holder, error) {
 	// initialize client
 	client, err := initializeClient(hosts, port)
 	if err != nil {
@@ -127,26 +144,32 @@ func initializeHolder(hosts []string, port int, iconfs map[string]*indexConfig) 
 		return nil, errors.Wrap(err, "could not get client schema")
 	}
 
-	// initialize indexes
-	for _, iconf := range newIconfs {
-		if !schema.HasIndex(iconf.name) {
-			return nil, errors.Errorf("could not find index %v", iconf.name)
-		}
-		// set pilosa index
-		iconf.index = schema.Index(iconf.name)
+	iconfs := make(map[string]*indexConfig)
 
-		// initalize fields
-		for _, fconf := range iconf.fields {
-			if !iconf.index.HasField(fconf.name) {
-				return nil, errors.Errorf("could not find field %v in index %v", fconf.name, iconf.name)
-			}
-			// set pilosa field
-			fconf.field = iconf.index.Field(fconf.name)
+	// get indexes and fields
+	for _, indexName := range indexNames {
+		if !schema.HasIndex(indexName) {
+			return nil, errors.Errorf("schema does not have index %s", indexName)
 		}
+		index := schema.Index(indexName)
+		indexConfig := newIndexConfig(indexName)
+		indexConfig.index = index
+
+		for fieldName, field := range index.Fields() {
+			indexConfig.fields[fieldName] = &fieldConfig{
+				name:  fieldName,
+				field: field,
+				// min:   int64(field.MinRow()),
+				// max:   int64(field.MaxRow()),
+			}
+		}
+
+		iconfs[indexName] = indexConfig
 	}
+
 	return &holder{
 		client: client,
-		iconfs: newIconfs,
+		iconfs: iconfs,
 	}, nil
 }
 
@@ -223,29 +246,23 @@ func ExecuteQueries(m *Main) error {
 	var cHolder, pHolder *holder
 	var err error
 
-	if m.SpecsFile == "" {
+	if m.Indexes == nil {
 		cHolder, err = defaultHolder(m.CHosts, m.CPort)
 		if err != nil {
 			return errors.Wrap(err, "could not create holder for candidate")
 		}
-		pHolder, err := defaultHolder(m.PHosts, m.PPort)
+		pHolder, err = defaultHolder(m.PHosts, m.PPort)
 		if err != nil {
 			return errors.Wrap(err, "could not create holder for primary")
 		}
 	} else {
-		iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
+		cHolder, err = defaultHolderWithIndexes(m.CHosts, m.CPort, m.Indexes)
 		if err != nil {
-			return errors.Wrap(err, "could not parse specs")
+			return errors.Wrap(err, "could not create holder for candidate with the indexes")
 		}
-
-		// initialize holders
-		cHolder, err := initializeHolder(m.CHosts, m.CPort, iconfs)
+		pHolder, err = defaultHolderWithIndexes(m.PHosts, m.PPort, m.Indexes)
 		if err != nil {
-			return errors.Wrap(err, "could not create holder for candidate")
-		}
-		pHolder, err := initializeHolder(m.PHosts, m.PPort, iconfs)
-		if err != nil {
-			return errors.Wrap(err, "could not create holder for primary")
+			return errors.Wrap(err, "could not create holder for primary with the indexes")
 		}
 	}
 

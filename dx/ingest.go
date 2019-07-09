@@ -25,6 +25,9 @@ func NewIngestCommand(m *Main) *cobra.Command {
 
 		},
 	}
+
+	ingestCmd.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
+
 	return ingestCmd
 }
 

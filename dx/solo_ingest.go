@@ -29,6 +29,9 @@ func NewSoloIngestCommand(m *Main) *cobra.Command {
 
 		},
 	}
+
+	sIngestCmd.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
+
 	return sIngestCmd
 }
 
@@ -80,7 +83,7 @@ func runSoloIngest(config *imagine.Config) (*SoloBenchmark, error) {
 		return nil, errors.Wrap(result.err, "could not ingest")
 	}
 
-	bench := &SoloBenchmark {
+	bench := &SoloBenchmark{
 		Type: cmdIngest,
 		Time: TimeDuration{Duration: result.time},
 	}

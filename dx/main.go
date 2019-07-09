@@ -31,6 +31,7 @@ type Main struct {
 	Hosts         []string
 	Port          int
 	QueryTemplate string
+	Indexes       []string
 }
 
 // NewMain creates a new empty Main object.
@@ -71,7 +72,6 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().StringSliceVar(&m.PHosts, "phosts", []string{"localhost"}, "Hosts of primary instance")
 	rc.PersistentFlags().IntVar(&m.CPort, "cport", 10101, "Port of candidate instance")
 	rc.PersistentFlags().IntVar(&m.PPort, "pport", 10101, "Port of primary instance")
-	rc.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
 	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
 	rc.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
