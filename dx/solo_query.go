@@ -34,7 +34,7 @@ func NewSoloQueryCommand(m *Main) *cobra.Command {
 	sQueryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
 	sQueryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
 	sQueryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
-	sQueryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "query-template", "query_template", "File name of query template to use")
+	sQueryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "query-template", "query-template", "File name of query template to use")
 	sQueryCmd.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", true, "Compare actual results of queries instead of counts")
 
 	return sQueryCmd

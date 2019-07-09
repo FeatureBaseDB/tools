@@ -30,30 +30,27 @@ func NewSoloIngestCommand(m *Main) *cobra.Command {
 		},
 	}
 
-	sIngestCmd.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to specs file")
+	sIngestCmd.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to imagine specs file")
 
 	return sIngestCmd
 }
 
 // ExecuteSoloIngest executes the ingest on a single Pilosa instance.
 func ExecuteSoloIngest(m *Main) error {
-	specsFile := []string{m.SpecsFile}
-	config := newConfig(m.Hosts, m.Port, specsFile, m.Prefix, m.ThreadCount)
-
-	if m.SpecsFile == "" {
-		m.SpecsFile = "specs.toml"
-	}
-	isFirstIngest, err := checkBenchIsFirst(m.SpecsFile, m.DataDir)
+	isFirstIngest, err := checkBenchIsFirst("specs.toml", m.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "error checking if prior bench exists")
 	}
 
+	path := filepath.Join(m.DataDir, "specs.toml")
 	if isFirstIngest {
-		path := filepath.Join(m.DataDir, "specs.toml")
 		if err = copyFile(path, m.SpecsFile); err != nil {
 			return errors.Wrap(err, "error copying specs file to data directory")
 		}
 	}
+
+	specsFile := []string{path}
+	config := newConfig(m.Hosts, m.Port, specsFile, m.Prefix, m.ThreadCount)
 
 	if m.Filename == "" {
 		m.Filename = cmdIngest + "-" + time.Now().Format(time.RFC3339Nano)
