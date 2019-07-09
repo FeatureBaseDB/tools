@@ -67,6 +67,7 @@ func NewRootCmd() *cobra.Command {
 			}
 		},
 	}
+
 	rc.PersistentFlags().IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
 	rc.PersistentFlags().StringSliceVar(&m.CHosts, "chosts", []string{"localhost"}, "Hosts of candidate instance")
 	rc.PersistentFlags().StringSliceVar(&m.PHosts, "phosts", []string{"localhost"}, "Hosts of primary instance")
@@ -74,7 +75,6 @@ func NewRootCmd() *cobra.Command {
 	rc.PersistentFlags().IntVar(&m.PPort, "pport", 10101, "Port of primary instance")
 	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
-	rc.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
 
 	rc.AddCommand(NewIngestCommand(m))
 	rc.AddCommand(NewQueryCommand(m))

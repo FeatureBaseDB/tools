@@ -29,9 +29,12 @@ func NewQueryCommand(m *Main) *cobra.Command {
 
 		},
 	}
+
 	queryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
 	queryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
 	queryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
+	queryCmd.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
+
 	return queryCmd
 }
 
