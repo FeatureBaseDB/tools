@@ -7,255 +7,180 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/pilosa/go-pilosa"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	flag "github.com/spf13/pflag"
 )
 
 // NewSoloQueryCommand initializes a new query command for dx.
 func NewSoloQueryCommand(m *Main) *cobra.Command {
-	ingestCmd := &cobra.Command{
+	sQueryCmd := &cobra.Command{
 		Use:   "query",
 		Short: "perform random queries",
 		Long:  `Perform randomly generated queries on a single instances of Pilosa.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
-			if err := ExecuteSoloQueries(m, cmd.Flags()); err != nil {
+			if err := ExecuteSoloQueries(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 
 		},
 	}
-	ingestCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100000, 1000000, 10000000, 100000000}, "Number of queries to run")
-	ingestCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
-	return ingestCmd
+
+	// TODO: add flag specifying indexes to run queries on only
+	sQueryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
+	sQueryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
+	sQueryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "query-template", "query_template", "File name of query template to use")
+	return sQueryCmd
 }
 
 // SoloBenchmark represents the final result of a dx solo query benchmark.
 type SoloBenchmark struct {
-	Command       string            `json:"type"`
-	Instance      string            `json:"instance"`
-	NumBenchmarks int               `json:"numBenchmarks"`
-	Benchmarks    []*QueryBenchmark `json:"benchmarks"`
-	ThreadCount   int               `json:"threadcount"`
-	ActualResults bool              `json:"actualresults"`
+	Type          string            `json:"type"`
+	Time          TimeDuration      `json:"time,omitempty"`
+	NumBenchmarks *int              `json:"numBenchmarks,omitempty"`
+	Benchmarks    []*QueryBenchmark `json:"benchmarks,omitempty"`
+	ThreadCount   *int              `json:"threadcount,omitempty"`
+	ActualResults *bool             `json:"actualresults,omitempty"`
 }
 
-func newSoloBenchmark(benchType, instance string, threadCount int) *SoloBenchmark {
+func newSoloBenchmark(benchType string, threadCount int) *SoloBenchmark {
 	return &SoloBenchmark{
-		Command:     benchType,
-		Instance:    instance,
+		Type:        benchType,
 		Benchmarks:  make([]*QueryBenchmark, 0),
-		ThreadCount: threadCount,
+		ThreadCount: &threadCount,
 	}
 }
 
 // QueryBenchmark represents a single query benchmark.
 type QueryBenchmark struct {
-	NumQueries int          `json:"numQueries"`
-	Time       TimeDuration `json:"time"`
-	Queries    []*Query     `json:"queries"`
+	NumQueries int            `json:"numQueries"`
+	Time       TimeDuration   `json:"time"`
+	Queries    map[int]*Query `json:"queries"`
 }
 
 func newQueryBenchmark(numQueries int) *QueryBenchmark {
 	return &QueryBenchmark{
 		NumQueries: numQueries,
-		Queries:    make([]*Query, 0),
+		Queries:    make(map[int]*Query),
 	}
 }
 
 // Query contains the information related to a single query.
 type Query struct {
-	IndexName   string           `json:"index"`
-	FieldName   string           `json:"field"`
-	Type        byte             `json:"query"`
-	Rows        []int64          `json:"rows"`
-	Result      pilosa.RowResult `json:"result"`
-	ResultCount int64            `json:"resultcount"`
-	Time        TimeDuration     `json:"time"`
+	ID          int               `json:"id"`
+	IndexName   string            `json:"index"`
+	FieldName   string            `json:"field"`
+	Type        byte              `json:"query"`
+	Rows        []int64           `json:"rows"`
+	Result      *pilosa.RowResult `json:"result,omitempty"`
+	ResultCount *int64            `json:"resultcount,omitempty"`
+	Time        TimeDuration      `json:"time"`
+	Error       error             `json:"-"`
 }
 
-// ExecuteSoloQueries executes queries on a single Pilosa instance. This is where the configuration
-// is determined before being passed on to the appropriate functions to handle.
-func ExecuteSoloQueries(m *Main, flags *flag.FlagSet) error {
-	instanceType, err := determineInstance(flags)
+// ExecuteSoloQueries executes queries on a single Pilosa instance. If QueryTemplate does not exist, it will generate that
+// first before running the generated queries.
+func ExecuteSoloQueries(m *Main) error {
+	holder, err := defaultHolder(m.Hosts, m.Port)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "could not create holder")
 	}
-	_, isFirstQuery, hashFilename, err := checkBenchIsFirst(m.SpecsFile, m.DataDir)
+
+	isFirstQuery, err := checkBenchIsFirst(m.QueryTemplate, m.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "error checking if prior bench exists")
 	}
-	// append `query` and threadcount to the file name
-	hashFilename = hashFilename + cmdQuery + strconv.Itoa(m.ThreadCount)
 
-	// initialize holder from specs
-	iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
-	if err != nil {
-		return errors.Wrap(err, "could not parse specs")
-	}
-	var holder *holder
-	switch instanceType {
-	case instanceCandidate:
-		holder, err = initializeHolder(instanceCandidate, m.CHosts, m.CPort, iconfs)
-	case instancePrimary:
-		holder, err = initializeHolder(instancePrimary, m.PHosts, m.PPort, iconfs)
-	default:
-		err = errors.Errorf("invalid instance type: %v", instanceType)
-	}
-	if err != nil {
-		return errors.Wrap(err, "could not create holder for instance")
-	}
-
-	// previous result file for specs does not exist. Running dx solo for the first time.
 	if isFirstQuery {
-		if err = executeFirstSoloQueries(holder, hashFilename, m.DataDir, m.NumQueries, m.ThreadCount, m.NumRows, m.ActualResults); err != nil {
-			return errors.Wrap(err, "could not execute first solo queries")
+		if err = generateQueriesTemplate(holder, m.QueryTemplate, m.DataDir, m.NumQueries, m.ThreadCount, m.NumRows, m.ActualResults); err != nil {
+			return errors.Wrap(err, "could not generate random queries template")
 		}
-		return nil
 	}
 
-	// previous result file for specs exist. Running dx solo for the second time.
-	if err = executeSecondSoloQueries(holder, hashFilename, m.DataDir); err != nil {
-		return errors.Wrap(err, "could not execute second solo queries")
+	if m.Filename == "" {
+		m.Filename = cmdQuery + "-" + time.Now().Format(time.RFC3339Nano)
+	}
+
+	if err = executeSoloQueries(holder, m.QueryTemplate, m.DataDir); err != nil {
+		return errors.Wrap(err, "could not execute solo queries")
 	}
 	return nil
 }
 
-// executeFirstSoloQueries is the entry point for executing queries on a single instance for the first time.
-// Queries are randomly generated, and the queries and results are recorded in a JSON file whose name is the
-// sha256 hash of the specs file + `query`.
-func executeFirstSoloQueries(holder *holder, filename, dataDir string, numBenchmarks []int, threadCount int, numRows int64, actualRes bool) error {
-	solobench := newSoloBenchmark(cmdQuery, holder.instance, threadCount)
-	solobench.ActualResults = actualRes
+// generateQueriesTemplate generates a query template for dx solo query to run on future instances. The template is saved to dataDir with
+// file name specified by the variable queryTemplate.
+func generateQueriesTemplate(holder *holder, queryTemplate, dataDir string, numBenchmarks []int, threadCount int, numRows int64, actualRes bool) error {
+	solobench := newSoloBenchmark(cmdQuery, threadCount)
+	solobench.ActualResults = &actualRes
 	for _, numQueries := range numBenchmarks {
-		querybench, err := runFirstSoloQueries(holder, numQueries, threadCount, numRows, actualRes)
-		if err != nil {
-			return errors.Wrap(err, "could not run first solo queries")
+		querybench := newQueryBenchmark(numQueries)
+
+		// generate queries
+		for i := 0; i < numQueries; i++ {
+			indexName, fieldName, err := holder.randomIF()
+			if err != nil {
+				return errors.Wrap(err, "could not generate random index and field from holder")
+			}
+			cif, err := holder.newCIF(indexName, fieldName)
+			if err != nil {
+				return errors.Wrapf(err, "could not create index %v and field %v from holder", indexName, fieldName)
+			}
+			rows, err := generateRandomRows(cif.Min, cif.Max, numRows)
+			if err != nil {
+				return errors.Wrap(err, "could not generate random rows")
+			}
+			queryType := randomQueryType()
+
+			query := &Query{
+				ID:        i,
+				IndexName: indexName,
+				FieldName: fieldName,
+				Type:      queryType,
+				Rows:      rows,
+			}
+			querybench.Queries[i] = query
 		}
+
 		solobench.Benchmarks = append(solobench.Benchmarks, querybench)
-		solobench.NumBenchmarks++
 	}
-	if err := writeQueryResultFile(solobench, holder.instance, filename, dataDir); err != nil {
-		return errors.Wrap(err, "could not write solo queries results to file")
+
+	// write the query template to file
+	if err := writeQueryResultFile(solobench, queryTemplate, dataDir); err != nil {
+		return errors.Wrap(err, "could not write queries template to file")
 	}
 	return nil
 }
 
-// runFirstSoloQueries launches threadcount number of goroutines that do the actual generation and running
-// of queries, and returns these results.
-func runFirstSoloQueries(holder *holder, numQueries, threadCount int, numRows int64, actualRes bool) (*QueryBenchmark, error) {
-	qBench := newQueryBenchmark(numQueries)
-
-	queryChan := make(chan *Query, numQueries)
-	q := &queryOp{
-		holder:    holder,
-		queryChan: queryChan,
-		numRows:   numRows,
-		actualRes: actualRes,
-	}
-	go launchThreads(numQueries, threadCount, q, runFirstSoloQueriesOnInstance)
-
-	for query := range q.queryChan {
-		qBench.Time.Duration += query.Time.Duration
-		qBench.Queries = append(qBench.Queries, query)
-	}
-
-	return qBench, nil
-}
-
-// runFirstSoloQueriesOnInstance generates and runs a single query.
-func runFirstSoloQueriesOnInstance(q *queryOp) {
-	resultChan := make(chan *Result, 1)
-
-	indexName, fieldName, err := q.holder.randomIF()
-	if err != nil {
-		log.Printf("could not generate random index and field from holder: %v", err)
-		return
-	}
-	cif, err := q.holder.newCIF(indexName, fieldName)
-	if err != nil {
-		log.Printf("could not create index %v and field %v from holder: %v", indexName, fieldName, err)
-		return
-	}
-	rows, err := generateRandomRows(cif.Min, cif.Max, q.numRows)
-	if err != nil {
-		log.Printf("could not generate random rows: %v", err)
-		return
-	}
-	queryType := randomQueryType()
-
-	go runQueryOnInstance(cif, queryType, rows, resultChan, q.actualRes)
-	result := <-resultChan
-
-	if result.err != nil {
-		log.Printf("error running query on instance: %v", result.err)
-		return
-	}
-	query := &Query{
-		IndexName: indexName,
-		FieldName: fieldName,
-		Type:      queryType,
-		Rows:      rows,
-		Time:      TimeDuration{Duration: result.time},
-	}
-	if q.actualRes {
-		query.Result = result.result.Row()
-	} else {
-		query.ResultCount = result.resultCount
-	}
-
-	q.queryChan <- query
-}
-
-// executeSecondSoloQueries is the entry point for executing queries on a single instance for the second time.
-// A previous result file must already be present, and this is parsed to determine which queries the function
-// will run. The second results are compared to the recorded ones and passed on to printing.
-func executeSecondSoloQueries(holder *holder, filename, dataDir string) error {
-	solobench, err := readQueryResultFile(holder.instance, filename, dataDir)
+// executeSoloQueries reads the query template file and executes those queries.
+func executeSoloQueries(holder *holder, filename, dataDir string) error {
+	solobench, err := readResultFile(filename, dataDir)
 	if err != nil {
 		return errors.Wrap(err, "could not read query result file")
 	}
-	if solobench.Command != cmdQuery {
-		return errors.Errorf("running dx solo query, but previous result shows command: %v", solobench.Command)
+	if solobench.Type != cmdQuery {
+		return errors.Errorf("running dx solo query, but query template shows command: %v", solobench.Type)
 	}
-	otherInstanceType, _ := otherInstance(holder.instance)
-	if solobench.Instance != otherInstanceType {
-		return errors.Errorf("running dx solo query on instance %v, but previous result file was already on %v", holder.instance, solobench.Instance)
-	}
-	benchmarks := make([]*Benchmark, 0, solobench.NumBenchmarks)
 
 	for _, querybench := range solobench.Benchmarks {
-		bench, err := runSecondSoloBenchmark(holder, querybench, solobench.ThreadCount, solobench.ActualResults)
-		if err != nil {
-			return err
+		if err := runSoloBenchmark(holder, querybench, *solobench.ThreadCount, *solobench.ActualResults); err != nil {
+			return errors.Wrap(err, "could not run queries from the queries template")
 		}
-		benchmarks = append(benchmarks, bench)
 	}
 
-	if err = printQueryResults(benchmarks...); err != nil {
-		return errors.Wrap(err, "error printing benchmarks")
-	}
-
-	// everything was successful, so it is now safe to delete the previous result file
-	path := filepath.Join(dataDir, filename)
-	if err = os.Remove(path); err != nil {
-		return errors.Wrap(err, "everything ran successfully, but previous results file could not be deleted")
+	// write modified solobench to file
+	if err = writeQueryResultFile(solobench, filename, dataDir); err != nil {
+		return errors.Wrap(err, "could not write result to file")
 	}
 
 	return nil
 }
 
-// runSecondSoloBenchmark launches threadcount number of goroutines that read and run queries from
-// the query channel, and also where we analyze the results.
-func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCount int, actualRes bool) (*Benchmark, error) {
+// runSoloBenchmark launches threadcount number of goroutines to run the queries, modifying querybench in place.
+func runSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCount int, actualRes bool) error {
 	numQueries := querybench.NumQueries
 	queryChan := make(chan *Query, numQueries)
 
@@ -263,24 +188,20 @@ func runSecondSoloBenchmark(holder *holder, querybench *QueryBenchmark, threadCo
 		queryChan <- query
 	}
 	q := &queryOp{
-		holder:     holder,
-		queryChan:  queryChan,
-		actualRes:  actualRes,
-		resultChan: make(chan *QResult, numQueries),
+		holder:    holder,
+		queryChan: queryChan,
+		actualRes: actualRes,
 	}
-	go launchThreads(numQueries, threadCount, q, runSecondQueriesOnInstance)
+	go launchThreads(numQueries, threadCount, q, runQueriesOnInstance)
 
-	benchmark, err := analyzeQueryResults(q.resultChan, numQueries)
-	if err != nil {
-		return nil, errors.Wrap(err, "error analyzing results")
+	for query := range q.queryChan {
+		querybench.Time.Duration += query.Time.Duration
 	}
-	return benchmark, nil
+	return nil
 }
 
-// runSecondQueriesOnInstance runs a query received from the query channel. The result of this query
-// is compared to the previous recorded result.
-func runSecondQueriesOnInstance(q *queryOp) {
-	qResult := newQResult()
+// runQueriesOnInstance runs a query received from the query channel, modifying that query in place.
+func runQueriesOnInstance(q *queryOp) {
 	resultChan := make(chan *Result, 1)
 
 	query := <-q.queryChan
@@ -297,42 +218,27 @@ func runSecondQueriesOnInstance(q *queryOp) {
 		return
 	}
 
-	switch q.holder.instance {
-	case instanceCandidate:
-		qResult.candidateTime = result.time
-		qResult.primaryTime = query.Time.Duration
-	case instancePrimary:
-		qResult.candidateTime = query.Time.Duration
-		qResult.primaryTime = result.time
-	default:
-		log.Printf("invalid instance type: %v", q.holder.instance)
-	}
-
+	// save the results of query in place
 	if q.actualRes {
-		// we compare columns only because unmarshalling query.Result from JSON makes
-		// query.Result.Keys == []string{} instead of []string(nil)
-		if reflect.DeepEqual(query.Result.Columns, result.result.Row().Columns) {
-			qResult.correct = true
-		}
+		rowResult := result.result.Row()
+		query.Result = &rowResult
 	} else {
-		if query.ResultCount == result.resultCount {
-			qResult.correct = true
-		}
+		query.ResultCount = &result.resultCount
 	}
-	q.resultChan <- qResult
+	query.Time.Duration = result.time
 }
 
-// writeQueryResulFile writes the results of a SoloBenchmark to a JSON file whose name is the hash of the specs.
-func writeQueryResultFile(bench *SoloBenchmark, instanceType, filename, dataDir string) error {
-	err := os.MkdirAll(dataDir, 0777)
-	if err != nil {
-		return errors.Wrap(err, "making data dir")
+// writeQueryResulFile writes the results of a SoloBenchmark to a JSON file.
+func writeQueryResultFile(bench *SoloBenchmark, filename, dataDir string) error {
+	if err := os.MkdirAll(dataDir, 0777); err != nil {
+		return errors.Wrap(err, "error making data directory")
 	}
 
 	jsonBytes, err := json.Marshal(bench)
 	if err != nil {
 		return errors.Wrap(err, "could not marshal results to JSON")
 	}
+
 	path := filepath.Join(dataDir, filename)
 	if err = ioutil.WriteFile(path, jsonBytes, 0666); err != nil {
 		return errors.Wrap(err, "could not write JSON to file")
@@ -340,8 +246,8 @@ func writeQueryResultFile(bench *SoloBenchmark, instanceType, filename, dataDir 
 	return nil
 }
 
-// readQueryResultFile reads the results of a SoloBenchmark from a file.
-func readQueryResultFile(instanceType string, filename, dataDir string) (*SoloBenchmark, error) {
+// readResultFile reads the results of a SoloBenchmark from a file.
+func readResultFile(filename, dataDir string) (*SoloBenchmark, error) {
 	path := filepath.Join(dataDir, filename)
 
 	file, err := os.Open(path)
@@ -358,20 +264,4 @@ func readQueryResultFile(instanceType string, filename, dataDir string) (*SoloBe
 	json.Unmarshal(jsonBytes, &soloBench)
 
 	return &soloBench, nil
-}
-
-// TimeDuration wraps time.Duration for encoding to JSON
-type TimeDuration struct {
-	Duration time.Duration
-}
-
-// UnmarshalJSON to satisfy
-func (d *TimeDuration) UnmarshalJSON(b []byte) (err error) {
-	d.Duration, err = time.ParseDuration(strings.Trim(string(b), `"`))
-	return
-}
-
-// MarshalJSON to satisfy
-func (d *TimeDuration) MarshalJSON() (b []byte, err error) {
-	return []byte(fmt.Sprintf(`"%v"`, d.Duration)), nil
 }

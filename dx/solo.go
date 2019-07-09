@@ -1,33 +1,20 @@
 package dx
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"io"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
-	flag "github.com/spf13/pflag"
 )
 
 const (
-	instanceCandidate string = "candidate"
-	instancePrimary   string = "primary"
-	cmdIngest         string = "ingest"
-	cmdQuery          string = "query"
+	cmdIngest string = "ingest"
+	cmdQuery  string = "query"
 )
-
-func otherInstance(instanceType string) (string, error) {
-	switch instanceType {
-	case instanceCandidate:
-		return instancePrimary, nil
-	case instancePrimary:
-		return instanceCandidate, nil
-	}
-	return "", errors.Errorf("invalid instance type: %v", instanceType)
-}
 
 // NewSoloCommand initializes a solo command for dx. Functionally, `dx solo` does nothing meaningful
 // except to print out server info, but the solo command is useful to signal to `dx` that the operation
@@ -44,82 +31,29 @@ func NewSoloCommand(m *Main) *cobra.Command {
 	if err == nil {
 		path = filepath.Join(home, "dx", "solo")
 	}
+
+	soloCmd.PersistentFlags().StringVarP(&m.Filename, "filename", "f", "", "Name of file to save result in")
 	soloCmd.PersistentFlags().StringVarP(&m.DataDir, "datadir", "d", path, "Data directory to store results")
+	soloCmd.PersistentFlags().StringSliceVar(&m.Hosts, "hosts", []string{"localhost"}, "Hosts of Pilosa cluster")
+	soloCmd.PersistentFlags().IntVar(&m.Port, "port", 10101, "Port of Pilosa cluster")
 
 	soloCmd.AddCommand(NewSoloIngestCommand(m))
 	soloCmd.AddCommand(NewSoloQueryCommand(m))
+	soloCmd.AddCommand(NewSoloCompareCommand(m))
 
 	return soloCmd
 }
 
-// determineInstance checks whether the solo command is being ran on candidate or primary.
-func determineInstance(flags *flag.FlagSet) (string, error) {
-	isCandidate := flags.Changed("chosts") || flags.Changed("cport")
-	isPrimary := flags.Changed("phosts") || flags.Changed("pport")
-
-	if isCandidate && isPrimary {
-		return "", errors.New("cannot run dx solo on both candidate and primary at the same time")
-	}
-	if !isCandidate && !isPrimary {
-		return "", errors.New("a flag must be set for at least one of chosts, cport, phosts, pport")
-	}
-
-	if isCandidate {
-		return instanceCandidate, nil
-	}
-	return instancePrimary, nil
-}
-
-// TODO: get smarter about whether file exists but another type of dx command was used
-// TODO: add threadCount to name
-
 // checkBenchIsFirst checks whether the benchmark being ran using a specs file
 // is the first by checking for the previous result in dataDir and returns
 // isFirst, the hash string, and any error that might occur.
-func checkBenchIsFirst(specsFile, dataDir string) (bool, bool, string, error) {
-	hashFilename, err := hashSpecs(specsFile)
+func checkBenchIsFirst(filename, dataDir string) (bool, error) {
+	path := filepath.Join(dataDir, filename)
+	fileExists, err := checkFileExists(path)
 	if err != nil {
-		return true, true, "", errors.Wrap(err, "error hashing file")
+		return true, errors.Wrapf(err, "could not check if file %v exists", filename)
 	}
-
-	ingestPath := filepath.Join(dataDir, hashFilename+cmdIngest)
-	ingestFileExists, err := checkFileExists(ingestPath)
-	if err != nil {
-		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")
-	}
-
-	queryPath := filepath.Join(dataDir, hashFilename+cmdQuery)
-	// queryPath := filepath.Join(dataDir, hashFilename+cmdQuery+strconv.Itoa(m.ThreadCount))
-	queryFileExists, err := checkFileExists(queryPath)
-	if err != nil {
-		return true, true, hashFilename, errors.Wrap(err, "error checking file existence")
-	}
-
-	return !ingestFileExists, !queryFileExists, hashFilename, nil
-}
-
-// hashSpecs gets the sha256 hash of the specs file that will be the name of the results file.
-func hashSpecs(specsFile string) (string, error) {
-	if specsFile == "" {
-		hashByteArr := sha256.Sum256([]byte(specsFile))
-		hashString := string(hashByteArr[:])
-	return hashString, nil
-	}
-	
-	file, err := os.Open(specsFile)
-	if err != nil {
-		return "", errors.Wrap(err, "could not open specs file")
-	}
-	defer file.Close()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", errors.Wrap(err, "could not copy file to hash")
-	}
-
-	hashBytes := hash.Sum(nil)
-	hashString := hex.EncodeToString(hashBytes)
-	return hashString, nil
+	return !fileExists, nil
 }
 
 func checkFileExists(path string) (bool, error) {
@@ -129,4 +63,20 @@ func checkFileExists(path string) (bool, error) {
 		return false, errors.Wrap(err, "error statting path")
 	}
 	return true, nil
+}
+
+// TimeDuration wraps time.Duration to encode to JSON.
+type TimeDuration struct {
+	Duration time.Duration
+}
+
+// UnmarshalJSON to satisfy
+func (d *TimeDuration) UnmarshalJSON(b []byte) (err error) {
+	d.Duration, err = time.ParseDuration(strings.Trim(string(b), `"`))
+	return
+}
+
+// MarshalJSON to satisfy
+func (d *TimeDuration) MarshalJSON() (b []byte, err error) {
+	return []byte(fmt.Sprintf(`"%v"`, d.Duration)), nil
 }

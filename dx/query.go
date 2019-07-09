@@ -64,9 +64,8 @@ func newQResult() *QResult {
 // that we are interested in within a cluster.
 // this is unrelated to *pilosa.Holder.
 type holder struct {
-	instance string
-	client   *pilosa.Client
-	iconfs   map[string]*indexConfig
+	client *pilosa.Client
+	iconfs map[string]*indexConfig
 }
 
 func newHolder(iconfs map[string]*indexConfig) *holder {
@@ -75,7 +74,44 @@ func newHolder(iconfs map[string]*indexConfig) *holder {
 	}
 }
 
-func initializeHolder(instanceType string, hosts []string, port int, iconfs map[string]*indexConfig) (*holder, error) {
+func defaultHolder(hosts []string, port int) (*holder, error) {
+	// initialize client
+	client, err := initializeClient(hosts, port)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not create client")
+	}
+
+	// initalize schema
+	schema, err := client.Schema()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not get client schema")
+	}
+
+	iconfs := make(map[string]*indexConfig)
+
+	// get indexes and fields
+	for indexName, index := range schema.Indexes() {
+		indexConfig := newIndexConfig(indexName)
+		indexConfig.index = index
+
+		for fieldName, field := range index.Fields() {
+			indexConfig.fields[fieldName] = &fieldConfig{
+				name:  fieldName,
+				field: field,
+				min:   int64(field.MinRow()),
+				max:   int64(field.MaxRow()),
+			}
+		}
+
+		iconfs[indexName] = indexConfig
+	}
+	return &holder{
+		client: client,
+		iconfs: iconfs,
+	}, nil
+}
+
+func initializeHolder(hosts []string, port int, iconfs map[string]*indexConfig) (*holder, error) {
 	// make sure newIconfs and iconfs do not point to same array
 	newIconfs := deepcopy(iconfs)
 
@@ -109,9 +145,8 @@ func initializeHolder(instanceType string, hosts []string, port int, iconfs map[
 		}
 	}
 	return &holder{
-		instance: instanceType,
-		client:   client,
-		iconfs:   newIconfs,
+		client: client,
+		iconfs: newIconfs,
 	}, nil
 }
 
@@ -191,11 +226,11 @@ func ExecuteQueries(m *Main) error {
 	}
 
 	// initialize holders
-	cHolder, err := initializeHolder(instanceCandidate, m.CHosts, m.CPort, iconfs)
+	cHolder, err := initializeHolder(m.CHosts, m.CPort, iconfs)
 	if err != nil {
 		return errors.Wrap(err, "could not create holder for candidate")
 	}
-	pHolder, err := initializeHolder(instancePrimary, m.PHosts, m.PPort, iconfs)
+	pHolder, err := initializeHolder(m.PHosts, m.PPort, iconfs)
 	if err != nil {
 		return errors.Wrap(err, "could not create holder for primary")
 	}

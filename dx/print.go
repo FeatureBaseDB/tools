@@ -26,6 +26,8 @@ func printIngestResults(b *Benchmark) error {
 	return nil
 }
 
+// TODO: Print thread count
+
 // printQueryResults prints the results of dx query.
 func printQueryResults(qBench ...*Benchmark) error {
 	w := new(tabwriter.Writer)

@@ -23,12 +23,14 @@ type Main struct {
 	SpecsFile     string
 	Verbose       bool
 	Prefix        string
-	NumQueries    []int  // slice of numbers of queries to run
-	NumRows       int64  // number of rows to intersect in a query
-	DataDir       string // data directory to store results for solo command
-	ActualResults bool   // whether dx should compare actual results from queries vs just the counts
+	NumQueries    []int
+	NumRows       int64
+	Filename      string
+	DataDir       string
+	ActualResults bool
 	Hosts         []string
 	Port          int
+	QueryTemplate string
 }
 
 // NewMain creates a new empty Main object.
