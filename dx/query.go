@@ -85,7 +85,7 @@ type fieldConfig struct {
 
 // holder contains the client and all indexes and fields
 // that we are interested in within a cluster.
-// this is unrelated to *pilosa.Holder.
+// This is unrelated to *pilosa.Holder.
 type holder struct {
 	client *pilosa.Client
 	iconfs map[string]*indexConfig
@@ -97,6 +97,7 @@ func newHolder(iconfs map[string]*indexConfig) *holder {
 	}
 }
 
+// defaultHolder creates a holder wtih all the indexes and fields in the specified cluster.
 func defaultHolder(hosts []string, port int) (*holder, error) {
 	// initialize client
 	client, err := initializeClient(hosts, port)
@@ -134,6 +135,7 @@ func defaultHolder(hosts []string, port int) (*holder, error) {
 	}, nil
 }
 
+// defaultHolderWithIndexes creates a holder with the given index names within the cluster.
 func defaultHolderWithIndexes(hosts []string, port int, indexNames []string) (*holder, error) {
 	// initialize client
 	client, err := initializeClient(hosts, port)
@@ -176,7 +178,7 @@ func defaultHolderWithIndexes(hosts []string, port int, indexNames []string) (*h
 	}, nil
 }
 
-// CIF contains the pilosa client, indexes, and fields
+// CIF contains the pilosa client, index, and field
 // that we are interested in for a particular query.
 type CIF struct {
 	Client   *pilosa.Client
@@ -217,6 +219,7 @@ func (holder *holder) randomIF() (string, string, error) {
 	return iconf.name, fconf.name, nil
 }
 
+// newCIF creates a holder with the given index and field names.
 func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 	if _, found := holder.iconfs[indexName]; !found {
 		return nil, errors.Errorf("could not create CIF because index %v was not found", indexName)
@@ -287,7 +290,6 @@ func ExecuteQueries(m *Main) error {
 }
 
 // queryOp is a hacky solution to allow launchThreads to be reused in query and solo query
-// TODO: refactor
 type queryOp struct {
 	holder     *holder
 	cHolder    *holder
@@ -300,7 +302,6 @@ type queryOp struct {
 
 func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRows int64, actualRes bool) (*Benchmark, error) {
 	qResultChan := make(chan *QResult, numQueries)
-	// TODO: check for pass by reference
 	q := &queryOp{
 		cHolder:    cHolder,
 		pHolder:    pHolder,
@@ -345,7 +346,7 @@ func analyzeQueryResults(resultChan chan *QResult, numQueries int) (*Benchmark, 
 	}, nil
 }
 
-// this is where we allocate threadCount number of goroutines
+// launchthreaeds is where we allocate threadCount number of goroutines
 // to execute the numQueries number of queries. workQueue does
 // not contain meaningful values and only exists to distribute
 // the workload among the channels.
@@ -467,10 +468,12 @@ func generateRandomRows(min, max, numRows int64) ([]int64, error) {
 	return rows, nil
 }
 
+// randomQueryType generates a random query type.
 func randomQueryType() byte {
 	return byte(rand.Intn(int(queryTypeMax)))
 }
 
+// runQueryOnInstance runs a given query on a single instance, passing the result to resultChan.
 func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan *Result, actualRes bool) {
 	result := NewResult()
 

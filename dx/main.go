@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Main contains the flags dx uses and a logger.
+// Main contains the flags dx uses.
 type Main struct {
 	ThreadCount   int
 	CHosts        []string
@@ -34,7 +34,7 @@ type Main struct {
 	Indexes       []string
 }
 
-// NewMain creates a new empty Main object.
+// NewMain creates a new Main object.
 func NewMain() *Main {
 	return &Main{
 		Prefix: "dx-",

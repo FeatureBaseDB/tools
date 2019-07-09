@@ -16,8 +16,8 @@ const (
 	cmdQuery  string = "query"
 )
 
-// NewSoloCommand initializes a solo command for dx. Functionally, `dx solo` does nothing meaningful
-// except to print out server info, but the solo command is useful to signal to `dx` that the operation
+// NewSoloCommand initializes a solo command for dx. Functionally, `dx solo` does nothing meaningful, 
+// but the solo command is useful to signal to `dx` that the operation
 // being ran is not happening concurrently on both machines.
 func NewSoloCommand(m *Main) *cobra.Command {
 	soloCmd := &cobra.Command{
@@ -44,9 +44,8 @@ func NewSoloCommand(m *Main) *cobra.Command {
 	return soloCmd
 }
 
-// checkBenchIsFirst checks whether the benchmark being ran using a specs file
-// is the first by checking for the previous result in dataDir and returns
-// isFirst, the hash string, and any error that might occur.
+// checkBenchIsFirst checks whether the benchmark being ran is the first by checking
+// whether a filename in dataDir exists, which would mean that a prior bench exists.
 func checkBenchIsFirst(filename, dataDir string) (bool, error) {
 	path := filepath.Join(dataDir, filename)
 	fileExists, err := checkFileExists(path)

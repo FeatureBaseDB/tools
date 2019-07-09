@@ -83,6 +83,7 @@ func ExecuteCompare(file1, file2 string) error {
 	return nil
 }
 
+// compareIngest prints out a comparison between the two benchmarks.
 func compareIngest(bench1, bench2 *SoloBenchmark) error {
 	timeDelta := float64(bench1.Time.Duration-bench2.Time.Duration) / float64(bench1.Time.Duration)
 	b := &Benchmark{
@@ -97,6 +98,7 @@ func compareIngest(bench1, bench2 *SoloBenchmark) error {
 	return nil
 }
 
+// compareQueries analyzes and prints out a comparison between the two benchmarks.
 func compareQueries(bench1, bench2 *SoloBenchmark) error {
 	var totalBenches int
 	if *bench1.NumBenchmarks <= *bench2.NumBenchmarks {
@@ -160,6 +162,8 @@ func compareQueryBenchmarks(querybench1, querybench2 *QueryBenchmark) (*Benchmar
 	}, nil
 }
 
+// queryResultsAreEqual checks whether the results or resultcounts of both queries are equal.
+// If both queries have non-matching result type, default to result count and compare that.
 func queryResultsAreEqual(query1, query2 *Query) bool {
 	// one of query1.Result and query1.ResultCount is not nil
 	if query1.Result == nil {

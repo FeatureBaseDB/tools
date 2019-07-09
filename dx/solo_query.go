@@ -85,8 +85,8 @@ type Query struct {
 	Error       error             `json:"-"`
 }
 
-// ExecuteSoloQueries executes queries on a single Pilosa instance. If QueryTemplate does not exist, it will generate that
-// first before running the generated queries.
+// ExecuteSoloQueries executes queries on a single Pilosa instance. If QueryTemplate does not exist, 
+// it will generate one before running the generated queries.
 func ExecuteSoloQueries(m *Main) error {
 	var holder *holder
 	var err error
