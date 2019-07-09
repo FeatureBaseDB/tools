@@ -220,19 +220,33 @@ func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
 // ExecuteQueries executes the random queries on both Pilosa instances repeatedly
 // according to the values specified in m.NumQueries.
 func ExecuteQueries(m *Main) error {
-	iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
-	if err != nil {
-		return errors.Wrap(err, "could not parse specs")
-	}
+	var cHolder, pHolder *holder
+	var err error
 
-	// initialize holders
-	cHolder, err := initializeHolder(m.CHosts, m.CPort, iconfs)
-	if err != nil {
-		return errors.Wrap(err, "could not create holder for candidate")
-	}
-	pHolder, err := initializeHolder(m.PHosts, m.PPort, iconfs)
-	if err != nil {
-		return errors.Wrap(err, "could not create holder for primary")
+	if m.SpecsFile == "" {
+		cHolder, err = defaultHolder(m.CHosts, m.CPort)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder for candidate")
+		}
+		pHolder, err := defaultHolder(m.PHosts, m.PPort)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder for primary")
+		}
+	} else {
+		iconfs, err := getSpecs(m.Prefix, m.SpecsFile)
+		if err != nil {
+			return errors.Wrap(err, "could not parse specs")
+		}
+
+		// initialize holders
+		cHolder, err := initializeHolder(m.CHosts, m.CPort, iconfs)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder for candidate")
+		}
+		pHolder, err := initializeHolder(m.PHosts, m.PPort, iconfs)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder for primary")
+		}
 	}
 
 	// run benchmarks
