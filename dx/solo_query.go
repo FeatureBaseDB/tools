@@ -33,6 +33,7 @@ func NewSoloQueryCommand(m *Main) *cobra.Command {
 	// TODO: add flag specifying indexes to run queries on only
 	sQueryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
 	sQueryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform intersect query on")
+	sQueryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
 	sQueryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "query-template", "query_template", "File name of query template to use")
 	return sQueryCmd
 }
@@ -85,10 +86,21 @@ type Query struct {
 // ExecuteSoloQueries executes queries on a single Pilosa instance. If QueryTemplate does not exist, it will generate that
 // first before running the generated queries.
 func ExecuteSoloQueries(m *Main) error {
-	holder, err := defaultHolder(m.Hosts, m.Port)
-	if err != nil {
-		return errors.Wrap(err, "could not create holder")
+	var holder *holder
+	var err error
+
+	if m.Indexes == nil {
+		holder, err = defaultHolder(m.Hosts, m.Port)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder")
+		}
+	} else {
+		holder, err = defaultHolderWithIndexes(m.Hosts, m.Port, m.Indexes)
+		if err != nil {
+			return errors.Wrap(err, "could not create holder")
+		}
 	}
+	
 
 	isFirstQuery, err := checkBenchIsFirst(m.QueryTemplate, m.DataDir)
 	if err != nil {
