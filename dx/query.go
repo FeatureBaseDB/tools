@@ -351,7 +351,7 @@ func analyzeQueryResults(resultChan chan *QResult, numQueries int) (*Benchmark, 
 // not contain meaningful values and only exists to distribute
 // the workload among the channels.
 func launchThreads(numQueries, threadCount int, q *queryOp, fn func(*queryOp)) {
-	workQueue := make(chan bool, numQueries)
+	workQueue := make(chan struct{}, numQueries)
 	var wg sync.WaitGroup
 
 	for i := 0; i < threadCount; i++ {
@@ -364,7 +364,7 @@ func launchThreads(numQueries, threadCount int, q *queryOp, fn func(*queryOp)) {
 		}()
 	}
 	for i := 0; i < numQueries; i++ {
-		workQueue <- true
+		workQueue <- struct{}{}
 	}
 	close(workQueue)
 	go func() {
