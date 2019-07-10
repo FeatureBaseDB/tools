@@ -35,8 +35,7 @@ const (
 
 // Config describes the overall configuration of the tool.
 type Config struct {
-	Hosts        []string `help:"comma separated host names for Pilosa servers"`
-	Port         int      `help:"host port for Pilosa server"`
+	Hosts        []string `help:"comma separated list of \"host:port\" pairs of the Pilosa cluster"`
 	Verify       string   `help:"index structure validation: purge/error/update/create"`
 	verifyType   verifyType
 	Generate     bool `help:"generate data as specified by workloads"`
@@ -66,9 +65,6 @@ func (conf *Config) Run() error {
 	// no error-checking if nothing to check errors on
 	if conf == nil {
 		return nil
-	}
-	if int(uint16(conf.Port)) != conf.Port {
-		return fmt.Errorf("port %d out of range", conf.Port)
 	}
 	if conf.ThreadCount < 0 {
 		return fmt.Errorf("invalid thread count %d [must be a positive number]", conf.ThreadCount)
@@ -140,8 +136,7 @@ func (conf *Config) ReadSpecs() error {
 // which can be overridden by command line options.
 func NewConfig() *Config {
 	return &Config{
-		Hosts:       []string{"localhost"},
-		Port:        10101,
+		Hosts:       []string{"localhost:10101"},
 		Generate:    true,
 		Verify:      "update",
 		Prefix:      "imaginary-",
@@ -181,7 +176,7 @@ func (conf *Config) Execute() {
 
 	uris := make([]*pilosa.URI, 0, len(conf.Hosts))
 	for _, host := range conf.Hosts {
-		uri, err := pilosa.NewURIFromHostPort(host, uint16(conf.Port))
+		uri, err := pilosa.NewURIFromAddress(host)
 		if err != nil {
 			log.Fatalf("could not create Pilosa URI: %v", err)
 		}
