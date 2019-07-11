@@ -1,11 +1,14 @@
 package dx
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"reflect"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,12 +17,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewQueryCommand initializes a new ingest command for dx.
+// NewQueryCommand initializes a query command.
 func NewQueryCommand(m *Main) *cobra.Command {
 	queryCmd := &cobra.Command{
 		Use:   "query",
-		Short: "perform random queries",
-		Long:  `Perform randomly generated queries against both instances of Pilosa.`,
+		Short: "query the cluster/s",
+		Long:  `Perform queries on the cluster/s.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteQueries(m); err != nil {
@@ -30,7 +33,7 @@ func NewQueryCommand(m *Main) *cobra.Command {
 		},
 	}
 
-	queryCmd.PersistentFlags().IntSliceVarP(&m.NumQueries, "queries", "q", []int{100}, "Number of queries to run")
+	queryCmd.PersistentFlags().Int64VarP(&m.NumQueries, "queries", "q", 100, "Number of queries to run")
 	queryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
 	queryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
 	queryCmd.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
@@ -38,420 +41,218 @@ func NewQueryCommand(m *Main) *cobra.Command {
 	return queryCmd
 }
 
-const (
-	queryIntersect byte = iota
-	queryUnion
-	queryXor
-	queryDifference
-	queryTypeMax // not actually an executable query
-)
-
-// QResult is the result of querying two instances of Pilosa.
-// TODO: Replace this with Benchmark
-type QResult struct {
-	correct       bool // if both results are the same
-	candidateTime time.Duration
-	primaryTime   time.Duration
-	err           error
+// Query contains the information related to a single query.
+type Query struct {
+	ID          int64             `json:"id"`
+	Type        queryType         `json:"query"`
+	IndexName   string            `json:"index"`
+	FieldName   string            `json:"field"`
+	Rows        []int64           `json:"rows"`
+	Time        TimeDuration      `json:"time"`
+	Result      *pilosa.RowResult `json:"result,omitempty"`
+	ResultCount *int64            `json:"resultcount,omitempty"`
+	Error       error             `json:"-"`
 }
 
-// newQResult returns a new QResult.
-func newQResult() *QResult {
-	return &QResult{
-		correct:       false,
-		candidateTime: 0,
-		primaryTime:   0,
-	}
-}
-
-type indexConfig struct {
-	name   string
-	index  *pilosa.Index
-	fields map[string]*fieldConfig
-}
-
-func newIndexConfig(name string) *indexConfig {
-	return &indexConfig{
-		name:   name,
-		fields: make(map[string]*fieldConfig),
-	}
-}
-
-type fieldConfig struct {
-	name     string
-	field    *pilosa.Field
-	min, max int64
-}
-
-// holder contains the client and all indexes and fields
-// that we are interested in within a cluster.
-// This is unrelated to *pilosa.Holder.
-type holder struct {
-	client *pilosa.Client
-	iconfs map[string]*indexConfig
-}
-
-func newHolder(iconfs map[string]*indexConfig) *holder {
-	return &holder{
-		iconfs: iconfs,
-	}
-}
-
-// defaultHolder creates a holder wtih all the indexes and fields in the specified cluster.
-func defaultHolder(hosts []string, port int) (*holder, error) {
-	// initialize client
-	client, err := initializeClient(hosts, port)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not create client")
-	}
-
-	// initalize schema
-	schema, err := client.Schema()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get client schema")
-	}
-
-	iconfs := make(map[string]*indexConfig)
-
-	// get indexes and fields
-	for indexName, index := range schema.Indexes() {
-		indexConfig := newIndexConfig(indexName)
-		indexConfig.index = index
-
-		for fieldName, field := range index.Fields() {
-			indexConfig.fields[fieldName] = &fieldConfig{
-				name:  fieldName,
-				field: field,
-				// min:   int64(field.MinRow()),
-				// max:   int64(field.MaxRow()),
-			}
-		}
-
-		iconfs[indexName] = indexConfig
-	}
-	return &holder{
-		client: client,
-		iconfs: iconfs,
-	}, nil
-}
-
-// defaultHolderWithIndexes creates a holder with the given index names within the cluster.
-func defaultHolderWithIndexes(hosts []string, port int, indexNames []string) (*holder, error) {
-	// initialize client
-	client, err := initializeClient(hosts, port)
-	if err != nil {
-		return nil, errors.Wrap(err, "could not create client")
-	}
-
-	// initalize schema
-	schema, err := client.Schema()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get client schema")
-	}
-
-	iconfs := make(map[string]*indexConfig)
-
-	// get indexes and fields
-	for _, indexName := range indexNames {
-		if !schema.HasIndex(indexName) {
-			return nil, errors.Errorf("schema does not have index %s", indexName)
-		}
-		index := schema.Index(indexName)
-		indexConfig := newIndexConfig(indexName)
-		indexConfig.index = index
-
-		for fieldName, field := range index.Fields() {
-			indexConfig.fields[fieldName] = &fieldConfig{
-				name:  fieldName,
-				field: field,
-				// min:   int64(field.MinRow()),
-				// max:   int64(field.MaxRow()),
-			}
-		}
-
-		iconfs[indexName] = indexConfig
-	}
-
-	return &holder{
-		client: client,
-		iconfs: iconfs,
-	}, nil
-}
-
-// CIF contains the pilosa client, index, and field
-// that we are interested in for a particular query.
-type CIF struct {
-	Client   *pilosa.Client
-	Index    *pilosa.Index
-	Field    *pilosa.Field
-	Min, Max int64
-}
-
-// randomIF returns a random index and field from a holder.
-func (holder *holder) randomIF() (string, string, error) {
-	if len(holder.iconfs) == 0 {
-		return "", "", errors.New("index config has zero elements")
-	}
-
-	// random index
-	i := rand.Intn(len(holder.iconfs))
-	var iconf *indexConfig
-	for _, iconf = range holder.iconfs {
-		if i == 0 {
-			break
-		}
-		i--
-	}
-
-	if len(iconf.fields) == 0 {
-		return "", "", errors.Errorf("index %v has zero fields", iconf.name)
-	}
-	// random field
-	i = rand.Intn(len(iconf.fields))
-	var fconf *fieldConfig
-	for _, fconf = range iconf.fields {
-		if i == 0 {
-			break
-		}
-		i--
-	}
-
-	return iconf.name, fconf.name, nil
-}
-
-// newCIF creates a holder with the given index and field names.
-func (holder *holder) newCIF(indexName, fieldName string) (*CIF, error) {
-	if _, found := holder.iconfs[indexName]; !found {
-		return nil, errors.Errorf("could not create CIF because index %v was not found", indexName)
-	}
-	iconf := holder.iconfs[indexName]
-	if iconf.index == nil {
-		return nil, errors.Errorf("could not create CIF because index %v is nil", iconf.name)
-	}
-
-	if _, found := iconf.fields[fieldName]; !found {
-		return nil, errors.Errorf("could not create CIF because field %v was not found in index %v", fieldName, indexName)
-	}
-	fconf := iconf.fields[fieldName]
-	if fconf.field == nil {
-		return nil, errors.Errorf("could not create CIF because field %v is nil", fconf.name)
-	}
-
-	return &CIF{
-		Client: holder.client,
-		Index:  iconf.index,
-		Field:  fconf.field,
-		Min:    fconf.min,
-		Max:    fconf.max,
-	}, nil
-}
-
-// ExecuteQueries executes the random queries on both Pilosa instances repeatedly
-// according to the values specified in m.NumQueries.
+// ExecuteQueries executes queries on the cluster/s.
 func ExecuteQueries(m *Main) error {
-	var cHolder, pHolder *holder
-	var err error
-
-	if m.Indexes == nil {
-		cHolder, err = defaultHolder(m.CHosts, m.CPort)
-		if err != nil {
-			return errors.Wrap(err, "could not create holder for candidate")
-		}
-		pHolder, err = defaultHolder(m.PHosts, m.PPort)
-		if err != nil {
-			return errors.Wrap(err, "could not create holder for primary")
-		}
-	} else {
-		cHolder, err = defaultHolderWithIndexes(m.CHosts, m.CPort, m.Indexes)
-		if err != nil {
-			return errors.Wrap(err, "could not create holder for candidate with the indexes")
-		}
-		pHolder, err = defaultHolderWithIndexes(m.PHosts, m.PPort, m.Indexes)
-		if err != nil {
-			return errors.Wrap(err, "could not create holder for primary with the indexes")
-		}
+	path, err := makeFolder(cmdQuery, m.DataDir)
+	if err != nil {
+		return errors.Wrap(err, "error creating folder for query results")
 	}
 
-	// run benchmarks
-	qBench := make([]*Benchmark, 0, len(m.NumQueries))
-	for _, numQueries := range m.NumQueries {
-		q, err := executeQueries(cHolder, pHolder, numQueries, m.ThreadCount, m.NumRows, m.ActualResults)
-		if err != nil {
-			return errors.Wrap(err, "could not execute query")
-		}
-		qBench = append(qBench, q)
+	// use first cluster to determine indexes and fields
+	clients, err := initializeClients(m.Hosts)
+	if err != nil {
+		return errors.Wrap(err, "error initializing client for first cluster")
+	}
+	indexSpec, err := defaultIndexSpecFromIndexes(clients[0], m.Indexes)
+	if err != nil {
+		return errors.Wrap(err, "error getting index spec from first cluster")
 	}
 
-	// print results
-	if err := printQueryResults(qBench...); err != nil {
-		return errors.Wrap(err, "could not print")
-	}
-	return nil
-}
-
-// queryOp is a hacky solution to allow launchThreads to be reused in query and solo query
-type queryOp struct {
-	holder     *holder
-	cHolder    *holder
-	pHolder    *holder
-	resultChan chan *QResult
-	queryChan  chan *Query
-	numRows    int64
-	actualRes  bool
-}
-
-func executeQueries(cHolder, pHolder *holder, numQueries, threadCount int, numRows int64, actualRes bool) (*Benchmark, error) {
-	qResultChan := make(chan *QResult, numQueries)
-	q := &queryOp{
-		cHolder:    cHolder,
-		pHolder:    pHolder,
-		resultChan: qResultChan,
-		numRows:    numRows,
-		actualRes:  actualRes,
-	}
-	go launchThreads(numQueries, threadCount, q, runQuery)
-
-	return analyzeQueryResults(qResultChan, numQueries)
-}
-
-func analyzeQueryResults(resultChan chan *QResult, numQueries int) (*Benchmark, error) {
-	var cTotal time.Duration
-	var pTotal time.Duration
-	var numCorrect int64
-
-	// validQueries is the number of queries that successfully ran.
-	// This is not equivalent to the number of queries with correct results.
-	validQueries := numQueries
-
-	for qResult := range resultChan {
-		if qResult.err != nil {
-			validQueries--
-		} else {
-			cTotal += qResult.candidateTime
-			pTotal += qResult.primaryTime
-			if qResult.correct {
-				numCorrect++
-			}
-		}
+	// queryChan is where the generated queries are passed into
+	queryChan := make(chan Query)
+	// qResultChans has a channel per client that takes the results of each query from queryChan on that client
+	qResultChans := make([]chan Query, 0, len(clients))
+	for i := 0; i < len(clients); i++ {
+		qResultChannel := make(chan Query)
+		qResultChans = append(qResultChans, qResultChannel)
 	}
 
-	accuracy := float64(numCorrect) / float64(validQueries)
-	timeDelta := float64(cTotal-pTotal) / float64(pTotal)
-	return &Benchmark{
-		Size:      int64(validQueries),
-		Accuracy:  accuracy,
-		CTime:     cTotal,
-		PTime:     pTotal,
-		TimeDelta: timeDelta,
-	}, nil
-}
+	go populateQueryChan(queryChan, indexSpec, m.NumQueries, m.NumRows)
 
-// launchthreaeds is where we allocate threadCount number of goroutines
-// to execute the numQueries number of queries. workQueue does
-// not contain meaningful values and only exists to distribute
-// the workload among the channels.
-func launchThreads(numQueries, threadCount int, q *queryOp, fn func(*queryOp)) {
-	workQueue := make(chan struct{}, numQueries)
 	var wg sync.WaitGroup
-
-	for i := 0; i < threadCount; i++ {
+	for i := 0; i < m.ThreadCount; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for range workQueue {
-				fn(q)
-			}
+			runQueries(clients, queryChan, qResultChans, m.ActualResults)
 		}()
 	}
-	for i := 0; i < numQueries; i++ {
-		workQueue <- struct{}{}
-	}
-	close(workQueue)
+
+	wg.Add(1)
 	go func() {
-		wg.Wait()
-		if q.resultChan != nil {
-			close(q.resultChan)
-		}
-		if q.queryChan != nil {
-			close(q.queryChan)
-		}
+		defer wg.Done()
+		processResults(qResultChans, path, m.ThreadCount)
 	}()
+
+	wg.Wait()
+
+	return nil
 }
 
-// runQuery runs a query on both Pilosa instances.
-func runQuery(q *queryOp) {
-	cHolder, pHolder := q.cHolder, q.pHolder
-	qResultChan := q.resultChan
-	numRows := q.numRows
-
-	qResult := newQResult()
-
-	cResultChan := make(chan *Result, 1)
-	pResultChan := make(chan *Result, 1)
-
-	// initialize CIFs
-	indexName, fieldName, err := cHolder.randomIF()
-	if err != nil {
-		log.Printf("could not get random index-field from candidate holder: %v", err)
-		qResult.err = errors.Wrap(err, "could not get random index-field from candidate holder")
-		qResultChan <- qResult
-		return
-	}
-	cCIF, err := cHolder.newCIF(indexName, fieldName)
-	if err != nil {
-		log.Printf("could not find index %v and field %v from candidate holder: %v", indexName, fieldName, err)
-		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from candidate holder", indexName, fieldName)
-		qResultChan <- qResult
-		return
-	}
-	pCIF, err := pHolder.newCIF(indexName, fieldName)
-	if err != nil {
-		log.Printf("could not find index %v and field %v from primary holder: %v", indexName, fieldName, err)
-		qResult.err = errors.Wrapf(err, "could not find index %v and field %v from primary holder", indexName, fieldName)
-		qResultChan <- qResult
-		return
+// runQueries runs queries from the query channel on all clusters,
+// sending the results from the nth cluster to the nth channel in qResultChan.
+func runQueries(clients []*pilosa.Client, queryChan chan Query, qResultChans []chan Query, actualResults bool) {
+	if len(clients) != len(qResultChans) {
+		panic("the number of clients does not match the number of channels for the results from these clients!")
 	}
 
-	// generate random row numbers to query in both instances
-	rows, err := generateRandomRows(cCIF.Min, cCIF.Max, numRows)
-	if err != nil {
-		log.Printf("could not generate reandom rows: %v", err)
-		return
-	}
-	queryType := randomQueryType()
+	for query := range queryChan {
+		var wg sync.WaitGroup
 
-	go runQueryOnInstance(cCIF, queryType, rows, cResultChan, q.actualRes)
-	go runQueryOnInstance(pCIF, queryType, rows, pResultChan, q.actualRes)
-
-	cResult := <-cResultChan
-	pResult := <-pResultChan
-
-	qResult.candidateTime = cResult.time
-	qResult.primaryTime = pResult.time
-	if cResult.err != nil || pResult.err != nil {
-		// log detailed error
-		log.Printf("error querying: candidate error: %+v, primary error: %+v\n", cResult.err, pResult.err)
-		qResult.err = fmt.Errorf("error querying: candidate error: %v, primary error: %v", cResult.err, pResult.err)
-		qResultChan <- qResult
-		return
-	}
-	if q.actualRes {
-		if reflect.DeepEqual(cResult.result, pResult.result) {
-			qResult.correct = true
-		} else {
-			log.Printf("different results:\ncandidate:\n%v\nprimary\n%v\n", cResult.result, pResult.result)
+		for i, client := range clients {
+			wg.Add(1)
+			go func(i int, client *pilosa.Client) {
+				defer wg.Done()
+				runQueryOnCluster(client, query, qResultChans[i], actualResults)
+			}(i, client)
 		}
+		wg.Wait()
+	}
+
+	// there are no more queries left, so close the result channels
+	for _, qResultChan := range qResultChans {
+		close(qResultChan)
+	}
+}
+
+// runQueryOnCluster runs a single query on a single cluster, sending the result to qResultChan.
+func runQueryOnCluster(client *pilosa.Client, query Query, qResultChan chan Query, actualResults bool) {
+	index, field, err := getIndexField(client, query.IndexName, query.FieldName)
+	if err != nil {
+		query.Error = errors.Errorf("error getting index %v and field %v for query with ID %v", query.IndexName, query.FieldName, query.ID)
+		qResultChan <- query
+		return
+	}
+
+	// build query
+	rowQueries := make([]*pilosa.PQLRowQuery, 0, len(query.Rows))
+	for _, rowNum := range query.Rows {
+		rowQueries = append(rowQueries, field.Row(rowNum))
+	}
+
+	var rowQ pilosa.PQLQuery
+	switch query.Type {
+	case intersect:
+		rowQ = index.Intersect(rowQueries...)
+	case union:
+		rowQ = index.Union(rowQueries...)
+	case xor:
+		rowQ = index.Xor(rowQueries...)
+	case difference:
+		rowQ = index.Difference(rowQueries...)
+	default:
+		query.Error = errors.Errorf("invalid query type: %v", query.Type)
+		qResultChan <- query
+		return
+	}
+
+	if !actualResults {
+		rowQ = index.Count(rowQ.(*pilosa.PQLRowQuery))
+	}
+
+	now := time.Now()
+	response, err := client.Query(rowQ)
+	if err != nil {
+		query.Error = errors.Wrapf(err, "could not query: %v", rowQ)
+		qResultChan <- query
+		return
+	}
+
+	query.Time.Duration = time.Since(now)
+
+	if actualResults {
+		result := response.Result().Row()
+		query.Result = &result
 	} else {
-		if cResult.resultCount == pResult.resultCount {
-			qResult.correct = true
-		} else {
-			log.Printf("different result counts: candidate: %v, primary %v", cResult.resultCount, pResult.resultCount)
-		}
+		resultCount := response.Result().Count()
+		query.ResultCount = &resultCount
 	}
-
-	qResultChan <- qResult
+	qResultChan <- query
 }
 
+// populateQueryChan populates the query channel with numQueries number of queries according to the specified specs
+// and then closes the query channel.
+func populateQueryChan(queryChan chan Query, indexSpec IndexSpec, numQueries int64, numRows int64) {
+	for i := int64(0); i < numQueries; i++ {
+		indexName, fieldName, err := indexSpec.randomIndexField()
+		if err != nil {
+			log.Fatalf("error getting random index and field from index spec: %+v", err)
+		}
+		min := indexSpec[indexName][fieldName].min
+		max := indexSpec[indexName][fieldName].max
+		rows, err := generateRandomRows(min, max, numRows)
+		if err != nil {
+			log.Fatalf("error generating random rows: %+v", err)
+		}
+		queryT := randomQueryType()
+
+		query := Query{
+			ID:        i,
+			Type:      queryT,
+			IndexName: indexName,
+			FieldName: fieldName,
+			Rows:      rows,
+		}
+
+		queryChan <- query
+	}
+	// numQueries queries have been passed, so channel can be closed
+	close(queryChan)
+}
+
+// processResults writes the results of the nth channel to a file named n.
+func processResults(qResultChans []chan Query, dir string, threadcount int) {
+	var wg sync.WaitGroup
+	for i, qResultChan := range qResultChans {
+		wg.Add(1)
+
+		go func(i int, qResultChan chan Query) {
+			defer wg.Done()
+			filename := strconv.Itoa(i)
+			writeQueryResults(qResultChan, filename, dir, threadcount)
+		}(i, qResultChan)
+	}
+	wg.Wait()
+}
+
+// writeQueryResults writes the query results from the channel to the file.
+func writeQueryResults(qResultChan chan Query, filename, dir string, threadcount int) {
+	path := filepath.Join(dir, filename)
+	fileWriter, err := os.Create(path)
+	if err != nil {
+		log.Fatalf("could not create file %v: %+v", path, err)
+	}
+
+	encoder := json.NewEncoder(fileWriter)
+
+	for q := range qResultChan {
+		bench := &Benchmark{
+			Type:        cmdQuery,
+			Time:        q.Time,
+			ThreadCount: threadcount,
+			Query:       &q,
+		}
+
+		if err = encoder.Encode(bench); err != nil {
+			log.Printf("error encoding %+v to %v: %v", q, filename, err)
+		}
+	}
+}
+
+// generateRandomRows generates numRows number of rows in the range of [min, max].
 func generateRandomRows(min, max, numRows int64) ([]int64, error) {
 	if min > max {
 		return nil, errors.Errorf("min %v must be less than max %v", min, max)
@@ -459,64 +260,197 @@ func generateRandomRows(min, max, numRows int64) ([]int64, error) {
 	rows := make([]int64, 0, numRows)
 	for i := int64(0); i < numRows; i++ {
 		// make sure row nums are in range
-		rowNum := min
-		if min < max {
-			rowNum += rand.Int63n(max - min)
-		}
+		rowNum := min + rand.Int63n(max-min+1)
 		rows = append(rows, rowNum)
 	}
 	return rows, nil
 }
 
-// randomQueryType generates a random query type.
-func randomQueryType() byte {
-	return byte(rand.Intn(int(queryTypeMax)))
+type queryType byte
+
+const (
+	intersect queryType = iota
+	union
+	xor
+	difference
+	queryTypeCeiling // not an actual query
+)
+
+func (q queryType) String() string {
+	switch q {
+	case intersect:
+		return "intersect"
+	case union:
+		return "union"
+	case xor:
+		return "xor"
+	case difference:
+		return "difference"
+	default:
+		return "invalid"
+	}
 }
 
-// runQueryOnInstance runs a given query on a single instance, passing the result to resultChan.
-func runQueryOnInstance(cif *CIF, queryType byte, rows []int64, resultChan chan *Result, actualRes bool) {
-	result := NewResult()
+// randomQueryType returns a random query type.
+func randomQueryType() queryType {
+	return queryType(rand.Intn(int(queryTypeCeiling)))
+}
 
-	// build query
-	rowQueries := make([]*pilosa.PQLRowQuery, 0, len(rows))
-	for _, rowNum := range rows {
-		rowQueries = append(rowQueries, cif.Field.Row(rowNum))
+// IndexSpec maps indexes to the fields they contain.
+type IndexSpec map[string]FieldSpec
+
+// newIndexSpec initializes an empty IndexSpec struct.
+func newIndexSpec() IndexSpec {
+	return IndexSpec(make(map[string]FieldSpec))
+}
+
+// randomIndexField returns a random index and field from an indexSpec.
+func (indexSpec IndexSpec) randomIndexField() (string, string, error) {
+	if len(indexSpec) == 0 {
+		return "", "", errors.New("index spec has no values")
 	}
 
-	var rowQ pilosa.PQLQuery
-	switch queryType {
-	case queryIntersect:
-		rowQ = cif.Index.Intersect(rowQueries...)
-	case queryUnion:
-		rowQ = cif.Index.Union(rowQueries...)
-	case queryXor:
-		rowQ = cif.Index.Xor(rowQueries...)
-	case queryDifference:
-		rowQ = cif.Index.Difference(rowQueries...)
-	default:
-		result.err = errors.Errorf("invalid query type: %v", queryType)
-		resultChan <- result
-		return
+	// random index
+	i := rand.Intn(len(indexSpec))
+	var indexName string
+	for indexName = range indexSpec {
+		if i == 0 {
+			break
+		}
+		i--
 	}
 
-	if !actualRes {
-		rowQ = cif.Index.Count(rowQ.(*pilosa.PQLRowQuery))
+	fieldSpec := indexSpec[indexName]
+	if len(fieldSpec) == 0 {
+		return "", "", errors.Errorf("index %v has zero fields", indexName)
+	}
+	// random field
+	i = rand.Intn(len(fieldSpec))
+	var fieldName string
+	for fieldName = range fieldSpec {
+		if i == 0 {
+			break
+		}
+		i--
 	}
 
-	now := time.Now()
-	response, err := cif.Client.Query(rowQ)
+	return indexName, fieldName, nil
+}
+
+// defaultIndexSpec creates an indexSpec mapping all indexes in the cluster to their fields.
+func defaultIndexSpec(client *pilosa.Client) (IndexSpec, error) {
+	schema, err := client.Schema()
 	if err != nil {
-		result.err = errors.Wrapf(err, "could not query: %v", rowQ)
-		resultChan <- result
-		return
+		return nil, errors.Wrap(err, "error getting client schema")
 	}
 
-	result.time = time.Since(now)
+	indexSpec := newIndexSpec()
 
-	if actualRes {
-		result.result = response.Result()
-	} else {
-		result.resultCount = response.Result().Count()
+	for indexName, index := range schema.Indexes() {
+		fieldSpec := newFieldSpec()
+		for fieldName, field := range index.Fields() {
+			min, max, err := getMinMaxRow(client, field)
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting min and max row of field")
+			}
+
+			fieldSpec[fieldName] = pair{
+				min: min,
+				max: max,
+			}
+		}
+
+		indexSpec[indexName] = fieldSpec
 	}
-	resultChan <- result
+	return indexSpec, nil
+}
+
+// defaultIndexSpecFromIndexes creates an indexSpec mapping the given indexes to their fields in the cluster.
+func defaultIndexSpecFromIndexes(client *pilosa.Client, indexes []string) (IndexSpec, error) {
+	schema, err := client.Schema()
+	if err != nil {
+		return nil, errors.Wrap(err, "error getting client schema")
+	}
+
+	indexSpec := newIndexSpec()
+
+	// no indexes specified
+	if indexes == nil || reflect.DeepEqual(indexes, []string{}) {
+		indexSpec, err = defaultIndexSpec(client)
+		if err != nil {
+			return nil, errors.Wrap(err, "error getting default index spec")
+		}
+		return indexSpec, nil
+	}
+
+	// populate indexSpec with the given indexes
+	for _, indexName := range indexes {
+		if !schema.HasIndex(indexName) {
+			return nil, errors.Errorf("schema does not have index %s", indexName)
+		}
+		index := schema.Index(indexName)
+
+		fieldSpec := newFieldSpec()
+		for fieldName, field := range index.Fields() {
+			min, max, err := getMinMaxRow(client, field)
+			if err != nil {
+				return nil, errors.Wrap(err, "error getting min and max row of field")
+			}
+
+			fieldSpec[fieldName] = pair{
+				min: min,
+				max: max,
+			}
+		}
+
+		indexSpec[indexName] = fieldSpec
+	}
+	return indexSpec, nil
+}
+
+// FieldSpec maps fields to their min and max rows.
+type FieldSpec map[string]pair
+
+// newFieldSpec initializes an empty FieldSpec struct.
+func newFieldSpec() FieldSpec {
+	return FieldSpec(make(map[string]pair))
+}
+
+// pair encodes the min and max of a field.
+type pair struct{ min, max int64 }
+
+// getIndexField returns the Pilosa index and field with the given names from the client.
+func getIndexField(client *pilosa.Client, indexName, fieldName string) (*pilosa.Index, *pilosa.Field, error) {
+	schema, err := client.Schema()
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "error getting client schema")
+	}
+
+	if !schema.HasIndex(indexName) {
+		return nil, nil, errors.Errorf("schema does not have index %s", indexName)
+	}
+	index := schema.Index(indexName)
+
+	if !index.HasField(fieldName) {
+		return nil, nil, errors.Errorf("index %s does not have field %s", indexName, fieldName)
+	}
+	field := index.Field(fieldName)
+
+	return index, field, nil
+}
+
+// getMinMaxRow gets the min row and max row of a field.
+func getMinMaxRow(client *pilosa.Client, field *pilosa.Field) (int64, int64, error) {
+	response, err := client.Query(field.MinRow())
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "error getting min row of field")
+	}
+	min := response.Result().CountItem().ID
+	response, err = client.Query(field.MaxRow())
+	if err != nil {
+		return 0, 0, errors.Wrap(err, "error getting max row of field")
+	}
+	max := response.Result().CountItem().ID
+
+	return int64(min), int64(max), nil
 }

@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,23 +14,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	cmdIngest = "ingest"
+	cmdQuery  = "query"
+)
+
 // Main contains the flags dx uses.
 type Main struct {
+	Hosts         []string
 	ThreadCount   int
-	CHosts        []string
-	PHosts        []string
-	CPort         int
-	PPort         int
-	SpecsFile     string
+	SpecsFiles    []string
 	Verbose       bool
 	Prefix        string
-	NumQueries    []int
+	NumQueries    int64
 	NumRows       int64
-	Filename      string
 	DataDir       string
 	ActualResults bool
-	Hosts         []string
-	Port          int
 	QueryTemplate string
 	Indexes       []string
 }
@@ -48,9 +48,10 @@ func NewRootCmd() *cobra.Command {
 
 	rc := &cobra.Command{
 		Use:   "dx",
-		Short: "compare differences between two Pilosa instances",
-		Long:  `Compare differences between candidate Pilosa instance and last known-good Pilosa version.`,
+		Short: "analyze accuracy and performance regression across Pilosa versions",
+		Long:  `Analyze accuracy and performance regression across Pilosa versions by running high-load ingest and queries.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// set logger
 			if m.Verbose {
 				log.SetOutput(os.Stderr)
 			} else {
@@ -59,47 +60,48 @@ func NewRootCmd() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 
-			fmt.Println("dx is a tool used to measure the differences between two Pilosa instances. The following checks whether the two instances specified by the flags are running.")
+			fmt.Printf("dx is a tool used to analyze accuracy and performance regression across Pilosa versions.\nThe following checks whether the clusters specified by the hosts flag are running.\n\n")
 
-			if err := printServers(m); err != nil {
+			if err := printServers(m.Hosts); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
 		},
 	}
 
-	rc.PersistentFlags().IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
-	rc.PersistentFlags().StringSliceVar(&m.CHosts, "chosts", []string{"localhost"}, "Hosts of candidate instance")
-	rc.PersistentFlags().StringSliceVar(&m.PHosts, "phosts", []string{"localhost"}, "Hosts of primary instance")
-	rc.PersistentFlags().IntVar(&m.CPort, "cport", 10101, "Port of candidate instance")
-	rc.PersistentFlags().IntVar(&m.PPort, "pport", 10101, "Port of primary instance")
-	rc.PersistentFlags().StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
-	rc.PersistentFlags().BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
+	// default
+	var usrHomeDirDx string
+	home, err := os.UserHomeDir()
+	if err == nil {
+		usrHomeDirDx = filepath.Join(home, "dx")
+	}
+
+	// TODO: flag for which folder to store run in?
+	flags := rc.PersistentFlags()
+	flags.StringArrayVarP(&m.Hosts, "hosts", "o", []string{"localhost:10101"}, "Comma-separated list of 'host:port' pairs. Repeat this flag for each cluster")
+	flags.IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
+	flags.StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
+	flags.BoolVarP(&m.Verbose, "verbose", "v", true, "Enable verbose logging")
+	flags.StringVarP(&m.DataDir, "datadir", "d", usrHomeDirDx, "Data directory to store results")
 
 	rc.AddCommand(NewIngestCommand(m))
 	rc.AddCommand(NewQueryCommand(m))
-	rc.AddCommand(NewSoloCommand(m))
 
 	return rc
 }
 
-func printServers(m *Main) error {
-	candidate, err := initializeClient(m.CHosts, m.CPort)
-	if err != nil {
-		return errors.Wrap(err, "could not create candidate client")
-	}
-	fmt.Printf("\nCandidate\non host/s %v and port %v\n", strings.Join(m.CHosts, ","), m.CPort)
-	if err = printServerInfo(candidate); err != nil {
-		return errors.Wrap(err, "could not print candidate server info")
-	}
+func printServers(hosts []string) error {
+	for _, clusterHostsString := range hosts {
+		fmt.Printf("Cluster with hosts %v\n", clusterHostsString)
+		clusterHosts := strings.Split(clusterHostsString, ",")
 
-	primary, err := initializeClient(m.PHosts, m.PPort)
-	if err != nil {
-		return errors.Wrap(err, "could not create primary client")
-	}
-	fmt.Printf("Primary\non host/s %v and port %v\n", strings.Join(m.PHosts, ","), m.PPort)
-	if err = printServerInfo(primary); err != nil {
-		return errors.Wrap(err, "could not print primary server info: %v")
+		client, err := initializeClient(clusterHosts...)
+		if err != nil {
+			fmt.Println(fmt.Errorf("error initializing client: %v", err))
+		}
+		if err = printServerInfo(client); err != nil {
+			return errors.Wrap(err, "could not print server info")
+		}
 	}
 	return nil
 }
@@ -122,46 +124,96 @@ func printServerInfo(client *pilosa.Client) error {
 	return nil
 }
 
-// initalizeClient creates a Pilosa cluster from a list of hosts and a common port.
-func initializeClient(hosts []string, port int) (*pilosa.Client, error) {
-	uris := make([]*pilosa.URI, 0, len(hosts))
-	for _, host := range hosts {
-		uri, err := pilosa.NewURIFromHostPort(host, uint16(port))
+// initalizeClient creates the Pilosa clients from a slice of strings, where each string is
+// a comma-separated list of host:port pairs in a cluster. The order in which the clusters
+// appear in hosts is the same order as they appear in output slice.
+func initializeClients(hosts []string) ([]*pilosa.Client, error) {
+	// len(hosts) is the number of clusters
+	clients := make([]*pilosa.Client, 0, len(hosts))
+	for _, clusterHostsString := range hosts {
+		clusterHosts := strings.Split(clusterHostsString, ",")
+
+		client, err := initializeClient(clusterHosts...)
 		if err != nil {
-			return nil, errors.Wrap(err, "could not create Pilosa URI")
+			return nil, errors.Wrap(err, "error creating client for cluster")
+		}
+
+		clients = append(clients, client)
+	}
+	return clients, nil
+}
+
+// initializeClient creates a Pilosa client using a list of hosts from the cluster.
+func initializeClient(clusterHosts ...string) (*pilosa.Client, error) {
+	// initialize uris from this cluster
+	uris := make([]*pilosa.URI, 0, len(clusterHosts))
+	for _, host := range clusterHosts {
+		uri, err := pilosa.NewURIFromAddress(host)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error creating Pilosa URI from host %s", host)
 		}
 		uris = append(uris, uri)
 	}
 
+	// initialize cluster and client from the uris
 	cluster := pilosa.NewClusterWithHost(uris...)
 	client, err := pilosa.NewClient(cluster)
 	if err != nil {
-		return nil, errors.Wrap(err, "could not create Pilosa cluster")
+		return nil, errors.Wrap(err, "error creating Pilosa client from URIs")
 	}
+
 	return client, nil
 }
 
-// Result is the result of running a single goroutine on
-// a single Pilosa instance. Result will be the type passed
-// around in channels while running multiple goroutines.
-type Result struct {
-	result      pilosa.QueryResult
-	resultCount int64
-	time        time.Duration
-	err         error
+// getAllClusterHosts creates a slice for each cluster containing the hosts in that cluster.
+// Ex. ["host1,host2", "host3"] -> [[host1, host2], [host3]]
+func getAllClusterHosts(hosts []string) [][]string {
+	allClusterHosts := make([][]string, 0)
+	for _, clusterHostsString := range hosts {
+		clusterHosts := strings.Split(clusterHostsString, ",")
+		allClusterHosts = append(allClusterHosts, clusterHosts)
+	}
+	return allClusterHosts
 }
 
-// NewResult initializes a new Result struct.
-func NewResult() *Result {
-	return &Result{}
+// makeFolder makes a folder with name "{cmd}-{time now}" in the directory.
+// Ex. ("ingest", "usr/home") -> creates the directory usr/home/ingest-2019-07-10T15/52/44-05/00.
+func makeFolder(cmdType, dir string) (string, error) {
+	timestamp := time.Now().Format(time.RFC3339)
+	folderName := cmdType + "-" + timestamp
+	path := filepath.Join(dir, folderName)
+
+	if err := os.MkdirAll(path, 0777); err != nil {
+		return "", errors.Wrapf(err, "error mkdir for %v", path)
+	}
+	return path, nil
 }
 
-// Benchmark is the result of executing an ingest or query benchmark.
-// This is the result passed on to printing.
+// TimeDuration wraps time.Duration to encode to JSON.
+type TimeDuration struct {
+	Duration time.Duration
+}
+
+// UnmarshalJSON deserializes json to TimeDuration.
+func (d *TimeDuration) UnmarshalJSON(b []byte) (err error) {
+	d.Duration, err = time.ParseDuration(strings.Trim(string(b), `"`))
+	return
+}
+
+// MarshalJSON serializes TimeDuration to json.
+func (d *TimeDuration) MarshalJSON() (b []byte, err error) {
+	return []byte(fmt.Sprintf(`"%v"`, d.Duration)), nil
+}
+
+// Benchmark contains the information related to an ingest or query benchmark.
 type Benchmark struct {
-	Size      int64
-	Accuracy  float64       // only for queries
-	CTime     time.Duration // candidate total time
-	PTime     time.Duration // primary total time
-	TimeDelta float64
+	Type        string       `json:"type"`
+	Time        TimeDuration `json:"time"`
+	ThreadCount int          `json:"threadcount"`
+	Query       *Query       `json:"query,omitempty"`
+}
+
+// NewBenchmark creates an empty benchmark of type cmdType.
+func NewBenchmark(cmdType string) *Benchmark {
+	return &Benchmark{Type: cmdType}
 }

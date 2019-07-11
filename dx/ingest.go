@@ -1,8 +1,14 @@
 package dx
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
+	"path/filepath"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pilosa/tools/imagine"
@@ -10,12 +16,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewIngestCommand initializes a new ingest command for dx.
+// NewIngestCommand initializes an ingest command.
 func NewIngestCommand(m *Main) *cobra.Command {
 	ingestCmd := &cobra.Command{
 		Use:   "ingest",
-		Short: "ingest randomly generated data",
-		Long:  `Ingest randomly generated data from imagine tool in both instances of Pilosa.`,
+		Short: "ingest on cluster/s using imagine",
+		Long:  `Perform ingest the cluster/s using imagine.`,
 		Run: func(cmd *cobra.Command, args []string) {
 
 			if err := ExecuteIngest(m); err != nil {
@@ -26,94 +32,101 @@ func NewIngestCommand(m *Main) *cobra.Command {
 		},
 	}
 
-	ingestCmd.PersistentFlags().StringVar(&m.SpecsFile, "specsfile", "", "Path to imagine specs file")
+	ingestCmd.PersistentFlags().StringSliceVar(&m.SpecsFiles, "specsfiles", nil, "Path to imagine specs file")
+	ingestCmd.MarkFlagRequired("specsfile")
 
 	return ingestCmd
 }
 
-// ExecuteIngest executes the ingest on both Pilosa instances.
+// ExecuteIngest executes an ingest command on the cluster/s, ensuring that the order of clusters
+// specified in the flags corresponds to the filenames that the results are saved in.
 func ExecuteIngest(m *Main) error {
-	cResultChan := make(chan *Result, 1)
-	pResultChan := make(chan *Result, 1)
-
-	go runIngestOnInstance(newCandidateConfig(m), cResultChan)
-	go runIngestOnInstance(newPrimaryConfig(m), pResultChan)
-
-	cResult := <-cResultChan
-	pResult := <-pResultChan
-
-	if cResult.err != nil || pResult.err != nil {
-		if cResult.err != nil {
-			fmt.Printf("could not ingest in candidate: %v\n", cResult.err)
-		}
-		if pResult.err != nil {
-			fmt.Printf("could not ingest in primary: %v\n", pResult.err)
-		}
-		return fmt.Errorf("error ingesting")
+	path, err := makeFolder(cmdIngest, m.DataDir)
+	if err != nil {
+		return errors.Wrap(err, "error creating folder for ingest results")
 	}
-	timeDelta := float64(cResult.time-pResult.time) / float64(pResult.time)
 
-	b := &Benchmark{
-		CTime:     cResult.time,
-		PTime:     pResult.time,
-		TimeDelta: timeDelta,
+	// TODO: copy specs file?
+	configs := make([]*imagine.Config, 0)
+
+	allClusterHosts := getAllClusterHosts(m.Hosts)
+	for _, clusterHosts := range allClusterHosts {
+		config := newConfig(clusterHosts, m.SpecsFiles, m.Prefix, m.ThreadCount)
+		configs = append(configs, config)
 	}
-	if err := printIngestResults(b); err != nil {
-		return errors.Wrap(err, "could not print results")
+
+	var wg sync.WaitGroup
+
+	for i, config := range configs {
+		wg.Add(1)
+		go func(i int, config *imagine.Config) {
+			defer wg.Done()
+			ingestAndWriteResult(i, config, path)
+		}(i, config)
 	}
+
+	wg.Wait()
 	return nil
 }
 
+func ingestAndWriteResult(instanceNum int, config *imagine.Config, path string) {
+	bench, err := ingestOnInstance(config)
+	if err != nil {
+		log.Printf("error ingesting on instance %v: %+v", instanceNum, err)
+	}
+
+	filename := strconv.Itoa(instanceNum)
+	if err := writeResultFile(bench, filename, path); err != nil {
+		log.Printf("error writing result file: %v", err)
+	}
+}
+
 // runIngestOnInstance ingests data based on a config file.
-func runIngestOnInstance(conf *imagine.Config, resultChan chan *Result) {
-	result := NewResult()
+func ingestOnInstance(conf *imagine.Config) (*Benchmark, error) {
+	bench := NewBenchmark(cmdIngest)
+	bench.ThreadCount = conf.ThreadCount
 
 	err := conf.ReadSpecs()
 	if err != nil {
-		result.err = errors.Wrap(err, "config/spec error")
-		resultChan <- result
-		return
+		return nil, errors.Wrap(err, "error reading specs from config")
 	}
 
-	client, err := initializeClient(conf.Hosts, conf.Port)
+	client, err := initializeClient(conf.Hosts...)
 	if err != nil {
-		result.err = errors.Wrap(err, "could not create Pilosa client")
-		resultChan <- result
-		return
+		return nil, errors.Wrap(err, "error creating Pilosa client")
 	}
 
 	if err = conf.UpdateIndexes(client); err != nil {
-		result.err = errors.Wrap(err, "could not update indexes")
-		resultChan <- result
-		return
+		return nil, errors.Wrap(err, "error updating indexes")
 	}
 
 	now := time.Now()
 	err = conf.ApplyWorkloads(client)
 	if err != nil {
-		result.err = errors.Wrap(err, "applying workloads")
-		resultChan <- result
-		return
+		return nil, errors.Wrap(err, "error applying workloads")
 	}
 
-	result.time = time.Since(now)
-	resultChan <- result
+	bench.Time.Duration = time.Since(now)
+	return bench, nil
 }
 
-func newCandidateConfig(m *Main) *imagine.Config {
-	specsFiles := []string{m.SpecsFile}
-	return newConfig(m.CHosts, m.CPort, specsFiles, m.Prefix, m.ThreadCount)
+// writeResultFile writes the results of a SoloBenchmark to a JSON file.
+func writeResultFile(bench *Benchmark, filename, dir string) error {
+	jsonBytes, err := json.Marshal(bench)
+	if err != nil {
+		return errors.Wrap(err, "could not marshal results to JSON")
+	}
+
+	path := filepath.Join(dir, filename)
+	if err = ioutil.WriteFile(path, jsonBytes, 0666); err != nil {
+		return errors.Wrap(err, "could not write JSON to file")
+	}
+	return nil
 }
 
-func newPrimaryConfig(m *Main) *imagine.Config {
-	specsFiles := []string{m.SpecsFile}
-	return newConfig(m.PHosts, m.PPort, specsFiles, m.Prefix, m.ThreadCount)
-}
-
-func newConfig(hosts []string, port int, specsFiles []string, prefix string, threadCount int) *imagine.Config {
+func newConfig(hosts []string, specsFiles []string, prefix string, threadCount int) *imagine.Config {
 	conf := &imagine.Config{
 		Hosts:       hosts,
-		Port:        port,
 		Prefix:      prefix,
 		ThreadCount: threadCount,
 	}
