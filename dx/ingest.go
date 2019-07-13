@@ -83,7 +83,8 @@ func ingestAndWriteResult(instanceNum int, config *imagine.Config, path string) 
 
 // runIngestOnInstance ingests data based on a config file.
 func ingestOnInstance(conf *imagine.Config) (*Benchmark, error) {
-	bench := NewBenchmark(cmdIngest)
+	bench := NewBenchmark()
+	bench.Type = cmdIngest
 	bench.ThreadCount = conf.ThreadCount
 
 	err := conf.ReadSpecs()

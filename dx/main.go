@@ -86,6 +86,7 @@ func NewRootCmd() *cobra.Command {
 
 	rc.AddCommand(NewIngestCommand(m))
 	rc.AddCommand(NewQueryCommand(m))
+	rc.AddCommand(NewCompareCommand())
 
 	return rc
 }
@@ -214,6 +215,6 @@ type Benchmark struct {
 }
 
 // NewBenchmark creates an empty benchmark of type cmdType.
-func NewBenchmark(cmdType string) *Benchmark {
-	return &Benchmark{Type: cmdType}
+func NewBenchmark() *Benchmark {
+	return &Benchmark{}
 }

@@ -80,8 +80,10 @@ func ExecuteQueries(m *Main) error {
 		qResultChans = append(qResultChans, qResultChannel)
 	}
 
+	// make queries
 	go populateQueryChan(queryChan, indexSpec, m.NumQueries, m.NumRows)
 
+	// run queries
 	var wg sync.WaitGroup
 	for i := 0; i < m.ThreadCount; i++ {
 		wg.Add(1)
@@ -91,6 +93,7 @@ func ExecuteQueries(m *Main) error {
 		}()
 	}
 
+	// process results
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
