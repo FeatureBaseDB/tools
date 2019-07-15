@@ -69,6 +69,8 @@ type Comparison struct {
 	TotalTime1     time.Duration
 	TotalTime2     time.Duration
 	TotalTimeDelta float64
+	ThreadCount1   int
+	ThreadCount2   int
 	Accuracy       float64
 	Size           int64
 }
@@ -184,6 +186,9 @@ func compareQueries(benches1, benches2 []*Benchmark) (*Comparison, error) {
 	}
 	accuracy := float64(numCorrect) / float64(validQueries)
 
+	threadCount1 := benches1[0].ThreadCount
+	threadCount2 := benches2[0].ThreadCount
+
 	return &Comparison{
 		Type:           cmdQuery,
 		RunTime1:       runTime1,
@@ -192,6 +197,8 @@ func compareQueries(benches1, benches2 []*Benchmark) (*Comparison, error) {
 		TotalTime1:     totalTime1,
 		TotalTime2:     totalTime2,
 		TotalTimeDelta: totalTimeDelta,
+		ThreadCount1:   threadCount1,
+		ThreadCount2:   threadCount2,
 		Accuracy:       accuracy,
 		Size:           validQueries,
 	}, nil
@@ -209,6 +216,8 @@ func compareIngest(b1, b2 *Benchmark) (*Comparison, error) {
 		RunTime1:     b1.Time.Duration,
 		RunTime2:     b2.Time.Duration,
 		RunTimeDelta: timeDelta,
+		ThreadCount1: b1.ThreadCount,
+		ThreadCount2: b2.ThreadCount,
 	}, nil
 }
 
@@ -295,7 +304,7 @@ func printIngestResults(c *Comparison) error {
 	// print in percentage
 	delta := c.RunTimeDelta * 100
 
-	fmt.Fprintf(w, "ingest\t\tfirst\tsecond\tdelta\t\n")
+	fmt.Fprintf(w, "ingest\t\tfirst-threads%v\tsecond-threads%v\tdelta\t\n", c.ThreadCount1, c.ThreadCount2)
 	fmt.Fprintf(w, "\t\t%v\t%v\t%.1f%%\t\n", c.RunTime1, c.RunTime2, delta)
 	fmt.Fprintln(w)
 	if err := w.Flush(); err != nil {
@@ -308,7 +317,7 @@ func printIngestResults(c *Comparison) error {
 func printQueryResults(c *Comparison) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 10, 5, 5, ' ', tabwriter.AlignRight)
-	fmt.Fprintf(w, "queries\taccuracy\tfirst\tsecond\tdelta\t\n")
+	fmt.Fprintf(w, "queries\taccuracy\tfirst-threads%v\tsecond-threads%v\tdelta\t\n", c.ThreadCount1, c.ThreadCount2)
 
 	// print in percentages
 	accuracy := c.Accuracy * 100
