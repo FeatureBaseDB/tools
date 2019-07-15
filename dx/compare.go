@@ -252,6 +252,9 @@ func queryResultsEqual(query1, query2 *Query) bool {
 // isValidQuery checks if a query is valid. A valid query has at least one of
 // result or resultCount as a non-nil value.
 func isValidQuery(query *Query) bool {
+	if query == nil {
+		return false
+	}
 	if query.Result == nil && query.ResultCount == nil {
 		return false
 	}
