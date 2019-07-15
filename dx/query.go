@@ -227,6 +227,9 @@ func populateQueryChanRandomly(queryChan chan Query, indexSpec IndexSpec, numQue
 // populateQueryChanFromTemplate populates the query channel with queries from the given template.
 func populateQueryChanFromTemplate(benchChan chan *Benchmark, queryChan chan Query) {
 	for bench := range benchChan {
+		if bench.Type != cmdQuery {
+			continue
+		}
 		q := bench.Query
 		query := Query{
 			ID:        q.ID,
