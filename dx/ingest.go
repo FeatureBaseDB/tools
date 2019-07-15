@@ -23,16 +23,15 @@ func NewIngestCommand(m *Main) *cobra.Command {
 		Short: "ingest on cluster/s using imagine",
 		Long:  `Perform ingest the cluster/s using imagine.`,
 		Run: func(cmd *cobra.Command, args []string) {
-
 			if err := ExecuteIngest(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
-
 		},
 	}
 
-	ingestCmd.PersistentFlags().StringSliceVar(&m.SpecsFiles, "specsfiles", nil, "Path to imagine specs file")
+	flags := ingestCmd.PersistentFlags()
+	flags.StringSliceVar(&m.SpecsFiles, "specsfiles", nil, "Path to imagine specs file")
 	ingestCmd.MarkFlagRequired("specsfile")
 
 	return ingestCmd
@@ -49,7 +48,7 @@ func ExecuteIngest(m *Main) error {
 		if !found {
 			return errors.Errorf("%s does not exist", file)
 		}
-	} 
+	}
 
 	path, err := makeFolder(cmdIngest, m.DataDir)
 	if err != nil {

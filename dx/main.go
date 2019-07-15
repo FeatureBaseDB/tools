@@ -60,9 +60,7 @@ func NewRootCmd() *cobra.Command {
 			}
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-
 			fmt.Printf("dx is a tool used to analyze accuracy and performance regression across Pilosa versions.\nThe following checks whether the clusters specified by the hosts flag are running.\n\n")
-
 			if err := printServers(m.Hosts); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)

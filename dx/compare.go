@@ -24,12 +24,10 @@ func NewCompareCommand() *cobra.Command {
 			return validateComparisonArgs(args)
 		},
 		Run: func(cmd *cobra.Command, args []string) {
-
 			if err := ExecuteComparison(args[0], args[1]); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
-
 		},
 	}
 

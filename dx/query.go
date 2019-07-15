@@ -24,20 +24,19 @@ func NewQueryCommand(m *Main) *cobra.Command {
 		Short: "query the cluster/s",
 		Long:  `Perform queries on the cluster/s.`,
 		Run: func(cmd *cobra.Command, args []string) {
-
 			if err := ExecuteQueries(m); err != nil {
 				fmt.Printf("%+v", err)
 				os.Exit(1)
 			}
-
 		},
 	}
 
-	queryCmd.PersistentFlags().Int64VarP(&m.NumQueries, "queries", "q", 100, "Number of queries to run")
-	queryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
-	queryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
-	queryCmd.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
-	queryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "querytemplate", "", "Use the previous result as query template")
+	flags := queryCmd.PersistentFlags()
+	flags.Int64VarP(&m.NumQueries, "queries", "q", 100, "Number of queries to run")
+	flags.Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
+	flags.StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
+	flags.BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
+	flags.StringVar(&m.QueryTemplate, "querytemplate", "", "Use the previous result as query template")
 
 	return queryCmd
 }
@@ -229,7 +228,7 @@ func populateQueryChanRandomly(queryChan chan Query, indexSpec IndexSpec, numQue
 func populateQueryChanFromTemplate(benchChan chan *Benchmark, queryChan chan Query) {
 	for bench := range benchChan {
 		q := bench.Query
-		query := Query {
+		query := Query{
 			ID:        q.ID,
 			Type:      q.Type,
 			IndexName: q.IndexName,
