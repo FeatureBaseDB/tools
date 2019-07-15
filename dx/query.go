@@ -37,6 +37,7 @@ func NewQueryCommand(m *Main) *cobra.Command {
 	queryCmd.PersistentFlags().Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
 	queryCmd.PersistentFlags().StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
 	queryCmd.PersistentFlags().BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
+	queryCmd.PersistentFlags().StringVar(&m.QueryTemplate, "querytemplate", "", "Use the previous result as query template")
 
 	return queryCmd
 }
@@ -81,8 +82,21 @@ func ExecuteQueries(m *Main) error {
 	}
 
 	now := time.Now()
+
 	// make queries
-	go populateQueryChan(queryChan, indexSpec, m.NumQueries, m.NumRows)
+	if m.QueryTemplate == "" {
+		go populateQueryChanRandomly(queryChan, indexSpec, m.NumQueries, m.NumRows)
+	} else {
+		benchChan := make(chan *Benchmark)
+		cmdTypeChan := make(chan string)
+
+		go readResults(m.QueryTemplate, benchChan, cmdTypeChan)
+		if cmdType := <-cmdTypeChan; cmdType != cmdQuery {
+			return errors.Errorf("given template is of type %s, not query", cmdType)
+		}
+
+		go populateQueryChanFromTemplate(benchChan, queryChan)
+	}
 
 	// run queries
 	for i := 0; i < m.ThreadCount; i++ {
@@ -181,9 +195,9 @@ func runQueryOnCluster(client *pilosa.Client, query Query, qResultChan chan Quer
 	qResultChan <- query
 }
 
-// populateQueryChan populates the query channel with numQueries number of queries according to the specified specs
+// populateQueryChanRandomly populates the query channel with numQueries number of queries according to the specified specs
 // and then closes the query channel.
-func populateQueryChan(queryChan chan Query, indexSpec IndexSpec, numQueries int64, numRows int64) {
+func populateQueryChanRandomly(queryChan chan Query, indexSpec IndexSpec, numQueries int64, numRows int64) {
 	for i := int64(0); i < numQueries; i++ {
 		indexName, fieldName, err := indexSpec.randomIndexField()
 		if err != nil {
@@ -207,7 +221,24 @@ func populateQueryChan(queryChan chan Query, indexSpec IndexSpec, numQueries int
 
 		queryChan <- query
 	}
-	// numQueries queries have been passed, so channel can be closed
+	// numQueries queries have been sent, so channel can be closed
+	close(queryChan)
+}
+
+// populateQueryChanFromTemplate populates the query channel with queries from the given template.
+func populateQueryChanFromTemplate(benchChan chan *Benchmark, queryChan chan Query) {
+	for bench := range benchChan {
+		q := bench.Query
+		query := Query {
+			ID:        q.ID,
+			Type:      q.Type,
+			IndexName: q.IndexName,
+			FieldName: q.FieldName,
+			Rows:      q.Rows,
+		}
+		queryChan <- query
+	}
+	// all queries have been sent, so channel can be closed
 	close(queryChan)
 }
 
