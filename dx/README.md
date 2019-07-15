@@ -1,7 +1,6 @@
 #  dx
 
-`dx` is a load-testing tool used to measure the differences between two Pilosa instances. This is typically used to compare a version of Pilosa in development
-(called the **candidate**) and the last known-good version of Pilosa (called the **primary**) for any regressions or improvements.
+`dx` is a load-testing tool used to measure the differences between Pilosa versions. This is typically used to compare a version of Pilosa in development and the last known-good version of Pilosa for any regressions or improvements. Alternately, `dx` can be used to just perform a heavy ingest or query load on a single cluster to see how it performs under load.
 
 ## Invocation
 
@@ -12,102 +11,100 @@ dx [command] [flags]
 `dx` can only be used when the two Pilosa clusters are already running. You can then specify the configuration using the following global flags:
 
 ```
-      --chosts       strings    Hosts of candidate instance (default [localhost])
-      --cport        int        Port of candidate instance (default 10101)
+  -o  --hosts        strings    Comma-separated list of 'host:port' pairs (default localhost:10101)
   -h, --help                    help for dx
-      --phosts       strings    Hosts of primary instance (default [localhost])
-      --pport        int        Port of primary instance (default 10101)
-  -p, --prefix       string     Prefix to use for index (default "dx-")
-      --specsfile    string     Path to specs file (default "specs.toml")
   -t, --threadcount  int        Number of concurrent goroutines to allocate (default 1)
-  -v, --verbose                 Enable verbose logging
+  -v, --verbose      bool       Enable verbose logging (default true)
+  -d, --datadir      string     Data directory to store resuls (default ~/dx)
 ```
+
+Use one `--hosts` flag for each cluster. Ex.
+
+```
+dx [command] --hosts host1,host2 --hosts host3 --hosts host4,host5,host6
+```
+
+is interpreted as cluster0 having hosts host1 and host2, cluster1 having host3, and cluster2 having host4, host5, and host6.
 
 ## Commands
 
 Along with the flags, the following commands are used by `dx` to determine what to do:
 
-* `ingest`  --- ingest randomly generated data in both Pilosa clusters
-* `query`   --- generate and run random queries in both Pilosa clusters
+* `ingest`  --- ingest data from an `imagine` specs file on all clusters
+* `query`   --- generate and run queries on all clusters
+* `compare` --- compare the results from a `dx ingest` or `dx compare` command
 
 ### ingest
 
-The `ingest` command require a specs file (in TOML format) that describes its workload in order to generate data. Otherwise,
-it defaults to the provided `specs.toml` file. Currently, `dx` only supports using a single index called `index`. 
+Aside from the global flags, the following flags can be used for `dx ingest`:
 
-To make changes to the specs, it is recommended that changes only be made to the `field`, `min`, `max`, and `column` 
-values to scale the workload up or down.
+```
+  -h, --help                    help for dx ingest
+  -p, --prefix       string     Prefix to use for index (default "dx-")
+      --specsfiles   strings    Path to imagine specs file
+```
+
+The `ingest` command requires one or more [`imagine` specs file](https://github.com/pilosa/tools/tree/master/imagine) that describes its workload in order to generate data.
 
 Sample ingest:
-```
-> dx ingest --cport=10102 --pport=10103 --threadcount=3
 
-     ingest                       primary           candidate     delta
-       1000               3m53.057057148s     3m48.850570433s     -1.8%
+```
+> dx ingest --specsfiles specs.toml --hosts localhost:10101 --hosts localhost:10102
+```
+
+will result in the two files (named `0` and `1`) written to a folder in `--datadir`. The folder is named "ingest-{timestamp}" (ex. ingest-2019-07-15T12/59/24-05/00). The files contain a single JSON describing the results of the ingest.
+
+```
+{"type":"ingest","time":"635.162153ms","threadcount":1}
 ```
 
 ### query
 
-The `query` command should only be ran after an `ingest`. It also uses a specs file to determine which field and rows to make
-queries on.
-
 Aside from the global flags, the following flags can be used for `dx query`:
 
 ```
-  -q, --queries   ints     Number of queries to run (default [100000,1000000,10000000,100000000])
-  -r, --rows      int      Number of rows to perform intersect query on (default 2)
+  -q, --queries       int      Number of queries to run (default 100)
+  -r, --rows          int      Number of rows to perform intersect query on (default 2)
+  -i, --indexes       strings  Indexes to run queries on
+  -a, --actualresults bool     Save actual results of queries instead of counts (default false)
+      --querytemplate string   Run the queries from a previous result file
 ```
+
+To compare a current query benchmark to an older one, usae `dx query` with the `--querytemplate` set to the old result so that the queries ran on the newer cluster will be the same. If `--querytemplate` is not set, then `dx` automatically generates `--queries` number of queries using the indexes from `indexes`. If `indexes` is also not specified, then `dx` will default to using all of the indexes present in the first cluster.
 
 Sample query:
 ```
-> dx query --cport=10102 --pport=10103 --queries=100,1000,10000 --threadcount=1
-
-     queries     accuracy         primary       candidate     delta
-         100       100.0%     0.651 ms/op     0.649 ms/op     -0.3%
-        1000       100.0%     0.591 ms/op     0.597 ms/op      1.1%
-       10000       100.0%     0.501 ms/op     0.498 ms/op     -0.6%
+> dx query --hosts localhost:10101 --hosts localhost:10102 --hosts localhost:8000 --threadcount=4
 ```
 
-If no commands are specified, `dx` checks that the two servers are running and prints out their information.
+will result in the three files (named `0`, `1`, and `2` in order of the flags) written to the folder "query-{timestamp}" in `--datadir`. The files contain `--queries + 1` number of JSON objects. The objects describe the queries and their results, while the last object describes the total time the whole run took.
+
 ```
-> dx --cport=10102 --pport=10103
+{"type":"query","time":"532.164µs","threadcount":1,"query":{"id":0,"query":1,"index":"dx-users","field":"numbers","rows":[21,51],"time":"532.164µs","resultcount":82}}
+...
+{"type":"query","time":"1.275702ms","threadcount":14,"query":{"id":0,"query":0,"index":"imaginary-users","field":"numbers","rows":[1,0],"time":"1.275702ms","resultcount":7}}
+{"type":"total","time":"164.410886ms","threadcount":4,"query":{"id":-1,"query":0,"index":"","field":"","rows":null,"time":"164.410886ms"}}
+```
 
-dx is a tool used to measure the differences between two Pilosa instances. The 
-following checks whether the two instances specified by the flags are running.
+### compare
 
-Candidate Pilosa
-running on hosts [localhost] and port 10102
+The JSON files output by `dx ingest` and `dx query` are not actually meant to be read by humans. The final step in comparing results between different clusters is `dx compare`.
+
+`dx compare` does not take any flags, but it takes two arguments that specify the paths of the two result files to compare. These two result files must be of the same type, or `dx` will return an error. If the two files are valid, `dx` will automatically determine whether they are of type ingest or query and perform the appropriate comparisons.
+
+### default behavior
+
+If no commands are specified, `dx` checks that the clusters are running and prints out their information.
+```
+> dx
+
+dx is a tool used to analyze accuracy and performance regression across Pilosa versions.
+The following checks whether the clusters specified by the hosts flag are running.
+
+Cluster with hosts localhost:10101
 server memory: 16GB [16384MB]
 server CPU: Intel(R) Core(TM) i7-6567U CPU @ 3.30GHz
 [2 physical cores, 4 logical cores available]
 cluster nodes: 1
 
-Primary Pilosa
-running on hosts [localhost] and port 10103
-server memory: 16GB [16384MB]
-server CPU: Intel(R) Core(TM) i7-6567U CPU @ 3.30GHz
-[2 physical cores, 4 logical cores available]
-cluster nodes: 1
-```
-
-## solo
-
-Sometimes, it may not be possible to run two clusters simultaneously for testing. In that case, `dx solo` commands can be used to run the desired command on a single cluster and temporarily store the results in the data directory specified by the `datadir` flag until a second command with the same specs file is ran.
-
-When a `solo` command is ran, `dx` will check the data directory for a previously stored result file matching the specs file provided. If the result file exists, `dx` will run the command and compare the result with the result stored in the file. Otherwise, if the file does not exist, `dx` will store the result in a file uniquely associated with the contents of the specs file.
-
-Sample workflow (sequentially ran):
-
-```
-> dx solo ingest --specsfile=specs.toml --cport=10101
->>> ingest result is stored in ".dx/.solo/<sha256 hash of specs content>ingest"
-
-> dx solo query --specsfile=specs.toml --cport=10101 --queries=100,100,100,10000,1000,10000,100 --threadcount=4
->>> query result is stored in ".dx/.solo/<sha256 hash of specs content>query<threadcount>"
-
-> dx solo ingest --specsfile=specs.toml --pport=10101
->>> ingest result is compared to previously recorded result and printed out
-
-> dx solo query --specsfile=specs.toml --pport=10101
->>> query result is compared to previously recorded result and printed out
 ```

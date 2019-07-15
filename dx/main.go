@@ -79,7 +79,6 @@ func NewRootCmd() *cobra.Command {
 	flags := rc.PersistentFlags()
 	flags.StringArrayVarP(&m.Hosts, "hosts", "o", []string{"localhost:10101"}, "Comma-separated list of 'host:port' pairs. Repeat this flag for each cluster")
 	flags.IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
-	flags.StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	flags.BoolVarP(&m.Verbose, "verbose", "v", true, "Enable verbose logging")
 	flags.StringVarP(&m.DataDir, "datadir", "d", usrHomeDirDx, "Data directory to store results")
 

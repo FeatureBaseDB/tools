@@ -31,6 +31,7 @@ func NewIngestCommand(m *Main) *cobra.Command {
 	}
 
 	flags := ingestCmd.PersistentFlags()
+	flags.StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
 	flags.StringSliceVar(&m.SpecsFiles, "specsfiles", nil, "Path to imagine specs file")
 	ingestCmd.MarkFlagRequired("specsfile")
 

@@ -35,8 +35,8 @@ func NewQueryCommand(m *Main) *cobra.Command {
 	flags.Int64VarP(&m.NumQueries, "queries", "q", 100, "Number of queries to run")
 	flags.Int64VarP(&m.NumRows, "rows", "r", 2, "Number of rows to perform a query on")
 	flags.StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
-	flags.BoolVarP(&m.ActualResults, "actualresults", "a", false, "Compare actual results of queries instead of counts")
-	flags.StringVar(&m.QueryTemplate, "querytemplate", "", "Use the previous result as query template")
+	flags.BoolVarP(&m.ActualResults, "actualresults", "a", false, "Save actual results of queries instead of counts")
+	flags.StringVar(&m.QueryTemplate, "querytemplate", "", "Run the queries from a previous result file")
 
 	return queryCmd
 }
@@ -66,10 +66,6 @@ func ExecuteQueries(m *Main) error {
 	if err != nil {
 		return errors.Wrap(err, "error initializing client for first cluster")
 	}
-	indexSpec, err := defaultIndexSpecFromIndexes(clients[0], m.Indexes)
-	if err != nil {
-		return errors.Wrap(err, "error getting index spec from first cluster")
-	}
 
 	// queryChan is where the generated queries are passed into
 	queryChan := make(chan Query)
@@ -79,11 +75,15 @@ func ExecuteQueries(m *Main) error {
 		qResultChannel := make(chan Query)
 		qResultChans = append(qResultChans, qResultChannel)
 	}
-
+	
 	now := time.Now()
-
-	// make queries
+	
+	// make queries and populate query channel
 	if m.QueryTemplate == "" {
+		indexSpec, err := defaultIndexSpecFromIndexes(clients[0], m.Indexes)
+		if err != nil {
+			return errors.Wrap(err, "error getting index spec from first cluster")
+		}
 		go populateQueryChanRandomly(queryChan, indexSpec, m.NumQueries, m.NumRows)
 	} else {
 		benchChan := make(chan *Benchmark)
@@ -97,12 +97,12 @@ func ExecuteQueries(m *Main) error {
 		go populateQueryChanFromTemplate(benchChan, queryChan)
 	}
 
-	// run queries
+	// run queries from query channel and send to result channels
 	for i := 0; i < m.ThreadCount; i++ {
 		go runQueries(clients, queryChan, qResultChans, m.ActualResults)
 	}
 
-	// process results
+	// process results from result channels
 	processQueryResults(cmdQuery, qResultChans, path, m.ThreadCount)
 	totalTime := time.Since(now)
 
