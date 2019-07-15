@@ -41,6 +41,16 @@ func NewIngestCommand(m *Main) *cobra.Command {
 // ExecuteIngest executes an ingest command on the cluster/s, ensuring that the order of clusters
 // specified in the flags corresponds to the filenames that the results are saved in.
 func ExecuteIngest(m *Main) error {
+	for _, file := range m.SpecsFiles {
+		found, err := checkFileExists(file)
+		if err != nil {
+			return errors.Wrapf(err, "error checking existence of %v", file)
+		}
+		if !found {
+			return errors.Errorf("%s does not exist", file)
+		}
+	} 
+
 	path, err := makeFolder(cmdIngest, m.DataDir)
 	if err != nil {
 		return errors.Wrap(err, "error creating folder for ingest results")
