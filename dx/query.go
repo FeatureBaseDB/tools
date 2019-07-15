@@ -80,32 +80,27 @@ func ExecuteQueries(m *Main) error {
 		qResultChans = append(qResultChans, qResultChannel)
 	}
 
+	now := time.Now()
 	// make queries
 	go populateQueryChan(queryChan, indexSpec, m.NumQueries, m.NumRows)
 
 	// run queries
-	var wg sync.WaitGroup
 	for i := 0; i < m.ThreadCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			runQueries(clients, queryChan, qResultChans, m.ActualResults)
-		}()
+		go runQueries(clients, queryChan, qResultChans, m.ActualResults)
 	}
 
 	// process results
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		processResults(qResultChans, path, m.ThreadCount)
-	}()
+	processQueryResults(cmdQuery, qResultChans, path, m.ThreadCount)
+	totalTime := time.Since(now)
 
-	wg.Wait()
+	// process total time
+	processTotalTime(totalTime, len(qResultChans), path, m.ThreadCount)
 
 	return nil
+
 }
 
-// runQueries runs queries from the query channel on all clusters,
+// runQueries runs queries with nonnegative IDs from the query channel on all clusters,
 // sending the results from the nth cluster to the nth channel in qResultChan.
 func runQueries(clients []*pilosa.Client, queryChan chan Query, qResultChans []chan Query, actualResults bool) {
 	if len(clients) != len(qResultChans) {
@@ -216,8 +211,8 @@ func populateQueryChan(queryChan chan Query, indexSpec IndexSpec, numQueries int
 	close(queryChan)
 }
 
-// processResults writes the results of the nth channel to a file named n.
-func processResults(qResultChans []chan Query, dir string, threadcount int) {
+// processQueryResults writes the results of the nth channel to a file named n.
+func processQueryResults(cmdType string, qResultChans []chan Query, dir string, threadcount int) {
 	var wg sync.WaitGroup
 	for i, qResultChan := range qResultChans {
 		wg.Add(1)
@@ -225,16 +220,48 @@ func processResults(qResultChans []chan Query, dir string, threadcount int) {
 		go func(i int, qResultChan chan Query) {
 			defer wg.Done()
 			filename := strconv.Itoa(i)
-			writeQueryResults(qResultChan, filename, dir, threadcount)
+			writeQueryResults(cmdType, qResultChan, filename, dir, threadcount)
 		}(i, qResultChan)
 	}
 	wg.Wait()
 }
 
-// writeQueryResults writes the query results from the channel to the file.
-func writeQueryResults(qResultChan chan Query, filename, dir string, threadcount int) {
+// processTotalTime appends the total time at the end of each file in path.
+func processTotalTime(totalTime time.Duration, n int, path string, threadcount int) {
+	// initialize channels
+	totalTimeChans := make([]chan Query, 0)
+	for i := 0; i < n; i++ {
+		totalChan := make(chan Query)
+		totalTimeChans = append(totalTimeChans, totalChan)
+	}
+
+	// initialize final result
+	query := Query{
+		ID:   -1,
+		Time: TimeDuration{Duration: totalTime},
+	}
+	var wg sync.WaitGroup
+
+	// send final result to channels
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			totalTimeChans[i] <- query
+			close(totalTimeChans[i])
+		}(i)
+	}
+
+	// append final results
+	processQueryResults(cmdTotal, totalTimeChans, path, threadcount)
+}
+
+// writeQueryResults writes the query results from the channel to the file. If the file already exists,
+// then the query results are appended to the file. cmdType can only be "query" or "total", which indicates
+// that the query being written is the total benchmark.
+func writeQueryResults(cmdType string, qResultChan chan Query, filename, dir string, threadcount int) {
 	path := filepath.Join(dir, filename)
-	fileWriter, err := os.Create(path)
+	fileWriter, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatalf("could not create file %v: %+v", path, err)
 	}
@@ -243,7 +270,7 @@ func writeQueryResults(qResultChan chan Query, filename, dir string, threadcount
 
 	for q := range qResultChan {
 		bench := &Benchmark{
-			Type:        cmdQuery,
+			Type:        cmdType,
 			Time:        q.Time,
 			ThreadCount: threadcount,
 			Query:       &q,

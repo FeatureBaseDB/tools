@@ -17,6 +17,7 @@ import (
 const (
 	cmdIngest = "ingest"
 	cmdQuery  = "query"
+	cmdTotal  = "total"
 )
 
 // Main contains the flags dx uses.

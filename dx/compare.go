@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"reflect"
-	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -60,6 +59,20 @@ func validateComparisonArgs(args []string) error {
 	return nil
 }
 
+// Comparison struct contains the information of a comparison. RunTime is the total time it took for the run to complete.
+// The TotalTime is the total of all the individual times of each operation, which may have been running in separate goroutines.
+type Comparison struct {
+	Type           string
+	RunTime1       time.Duration
+	RunTime2       time.Duration
+	RunTimeDelta   float64
+	TotalTime1     time.Duration
+	TotalTime2     time.Duration
+	TotalTimeDelta float64
+	Accuracy       float64
+	Size           int64
+}
+
 // ExecuteComparison executes a comparison on the two files.
 func ExecuteComparison(file1, file2 string) error {
 	benchChan1 := make(chan *Benchmark)
@@ -83,59 +96,55 @@ func ExecuteComparison(file1, file2 string) error {
 		b1 := <-benchChan1
 		b2 := <-benchChan2
 
-		// analyze time
-		timeDelta, err := compareTime(b1.Time.Duration, b2.Time.Duration)
+		// compare ingest
+		comparison, err := compareIngest(b1, b2)
 		if err != nil {
-			return errors.Wrap(err, "error comparing time")
+			return errors.Wrap(err, "error comparing ingest")
 		}
 		// print results
-		if err := printIngestResults(b1.Time.Duration, b2.Time.Duration, timeDelta); err != nil {
+		if err := printIngestResults(comparison); err != nil {
 			return errors.Wrap(err, "error printing ingest results")
 		}
 		return nil
 	case cmdQuery:
-
 		// consolidate benches
 		benches1 := make([]*Benchmark, 0)
 		benches2 := make([]*Benchmark, 0)
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for b := range benchChan1 {
-				benches1 = append(benches1, b)
-			}
-		}()
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for b := range benchChan2 {
-				benches2 = append(benches2, b)
-			}
-		}()
+		for b := range benchChan1 {
+			benches1 = append(benches1, b)
+		}
+		for b := range benchChan2 {
+			benches2 = append(benches2, b)
+		}
 
-		wg.Wait()
-		
-		// analyze benchmarks
-		time1, time2, validQueries, timeDelta, accuracy, err := compareQueries(benches1, benches2)
+		// compare queries
+		comparison, err := compareQueries(benches1, benches2)
 		if err != nil {
 			return errors.Wrap(err, "error comparing queries")
 		}
 
 		// print results
-		if err := printQueryResults(time1, time2, validQueries, timeDelta, accuracy); err != nil {
+		if err := printQueryResults(comparison); err != nil {
 			return errors.Wrap(err, "error printing query results")
 		}
 		return nil
+	// even though there is cmdTotal, it must never be at the start of a file, so that is an error.
 	default:
 		return errors.Errorf("invalid command type: %v", cmdType1)
 	}
 }
 
-func compareQueries(benches1, benches2 []*Benchmark) (time.Duration, time.Duration, int64, float64, float64, error) {
+// compareQueries returns the total time of all the individual queries, as well as the total time of the run and additional analysis.
+func compareQueries(benches1, benches2 []*Benchmark) (*Comparison, error) {
+	var runTime1, runTime2 time.Duration
+
 	// queryMap only contains valid queries from benches1
 	queryMap := make(map[int64]*Query)
 	for _, b1 := range benches1 {
+		if b1.Type == cmdTotal {
+			runTime1 = b1.Time.Duration
+			continue
+		}
 		if isValidQuery(b1.Query) {
 			queryMap[b1.Query.ID] = b1.Query
 		}
@@ -145,30 +154,62 @@ func compareQueries(benches1, benches2 []*Benchmark) (time.Duration, time.Durati
 	// This is not equivalent to the number of queries with correct results.
 	var validQueries int64
 	var numCorrect int64
-	var time1, time2 time.Duration
+	var totalTime1, totalTime2 time.Duration
 
 	for _, b2 := range benches2 {
-		query2 := b2.Query
+		if b2.Type == cmdTotal {
+			runTime2 = b2.Time.Duration
+			continue
+		}
 
+		query2 := b2.Query
 		// if query1 is found, it must already be a valid query
 		if query1, found := queryMap[query2.ID]; found {
-
 			if isValidQuery(query2) && queryResultsEqual(query1, query2) {
 				numCorrect++
 			}
-			time1 += query1.Time.Duration
-			time2 += query2.Time.Duration
+			totalTime1 += query1.Time.Duration
+			totalTime2 += query2.Time.Duration
 			validQueries++
 		}
 	}
 
-	timeDelta, err := compareTime(time1, time2)
+	totalTimeDelta, err := compareTime(totalTime1, totalTime2)
 	if err != nil {
-		return 0, 0, 0, 0, 0, errors.Wrap(err, "error comparing time")
+		return nil, errors.Wrap(err, "error comparing time")
+	}
+	runTimeDelta, err := compareTime(runTime1, runTime2)
+	if err != nil {
+		return nil, errors.Wrap(err, "error comparing time")
 	}
 	accuracy := float64(numCorrect) / float64(validQueries)
 
-	return time1, time2, validQueries, timeDelta, accuracy, nil
+	return &Comparison{
+		Type:           cmdQuery,
+		RunTime1:       runTime1,
+		RunTime2:       runTime2,
+		RunTimeDelta:   runTimeDelta,
+		TotalTime1:     totalTime1,
+		TotalTime2:     totalTime2,
+		TotalTimeDelta: totalTimeDelta,
+		Accuracy:       accuracy,
+		Size:           validQueries,
+	}, nil
+}
+
+func compareIngest(b1, b2 *Benchmark) (*Comparison, error) {
+	// analyze time
+	timeDelta, err := compareTime(b1.Time.Duration, b2.Time.Duration)
+	if err != nil {
+		return nil, errors.Wrap(err, "error comparing time")
+	}
+
+	return &Comparison{
+		Type:         cmdIngest,
+		RunTime1:     b1.Time.Duration,
+		RunTime2:     b2.Time.Duration,
+		RunTimeDelta: timeDelta,
+	}, nil
 }
 
 // compareTime takes two durations and returns the delta.
@@ -247,11 +288,15 @@ func readResults(file string, benchChan chan *Benchmark, cmdTypeChan chan string
 }
 
 // printIngestResults prints the results of dx query.
-func printIngestResults(time1, time2 time.Duration, delta float64) error {
+func printIngestResults(c *Comparison) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 10, 5, 5, ' ', tabwriter.AlignRight)
+
+	// print in percentage
+	delta := c.RunTimeDelta * 100
+
 	fmt.Fprintf(w, "ingest\t\tfirst\tsecond\tdelta\t\n")
-	fmt.Fprintf(w, "\t\t%v\t%v\t%.1f%%\t\n", time1, time2, delta)
+	fmt.Fprintf(w, "\t\t%v\t%v\t%.1f%%\t\n", c.RunTime1, c.RunTime2, delta)
 	fmt.Fprintln(w)
 	if err := w.Flush(); err != nil {
 		return errors.Wrap(err, "could not flush writer")
@@ -260,19 +305,21 @@ func printIngestResults(time1, time2 time.Duration, delta float64) error {
 }
 
 // printQueryResults prints the results of dx query.
-func printQueryResults(time1, time2 time.Duration, numQueries int64, delta, accuracy float64) error {
+func printQueryResults(c *Comparison) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 10, 5, 5, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(w, "queries\taccuracy\tfirst\tsecond\tdelta\t\n")
 
 	// print in percentages
-	accuracy = accuracy * 100
-	delta = delta * 100
+	accuracy := c.Accuracy * 100
+	runTimeDelta := c.RunTimeDelta * 100
+	totalTimeDelta := c.TotalTimeDelta * 100
 
 	// average ms/op
-	ave1 := (float64(time1) / float64(numQueries)) / float64(1000000)
-	ave2 := (float64(time2) / float64(numQueries)) / float64(1000000)
-	fmt.Fprintf(w, "%v\t%.1f%%\t%.3f ms/op\t%.3f ms/op\t%.1f%%\t", numQueries, accuracy, ave1, ave2, delta)
+	ave1 := (float64(c.TotalTime1) / float64(c.Size)) / float64(1000000)
+	ave2 := (float64(c.TotalTime2) / float64(c.Size)) / float64(1000000)
+	fmt.Fprintf(w, "%v\t%.1f%%\t%.3f ms/op\t%.3f ms/op\t%.1f%%\t\n", c.Size, accuracy, ave1, ave2, totalTimeDelta)
+	fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%.1f%%\t\n", "TOTAL", "", c.RunTime1, c.RunTime2, runTimeDelta)
 	fmt.Fprintln(w)
 	if err := w.Flush(); err != nil {
 		return errors.Wrap(err, "could not flush writer")
