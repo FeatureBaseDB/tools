@@ -1,9 +1,9 @@
 densityscale = 2097152
 version = "1.0"
 [indexes.index]
-columns = 10000
+columns = 20
 fields = [
-{ name = "field", type = "set", min = 0, max = 1000, density = 0.01, chance = 0.05, density = 1.0, },
+{ name = "field", type = "set", min = 0, max = 5, chance = 0.1, density = 1.0, },
 ]
 [[workloads]]
 name = "sample"
