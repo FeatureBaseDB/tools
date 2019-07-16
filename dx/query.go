@@ -61,7 +61,6 @@ func ExecuteQueries(m *Main) error {
 		return errors.Wrap(err, "error creating folder for query results")
 	}
 
-	// use first cluster to determine indexes and fields
 	clients, err := initializeClients(m.Hosts)
 	if err != nil {
 		return errors.Wrap(err, "error initializing client for first cluster")
@@ -75,9 +74,9 @@ func ExecuteQueries(m *Main) error {
 		qResultChannel := make(chan Query)
 		qResultChans = append(qResultChans, qResultChannel)
 	}
-	
+
 	now := time.Now()
-	
+
 	// make queries and populate query channel
 	if m.QueryTemplate == "" {
 		indexSpec, err := defaultIndexSpecFromIndexes(clients[0], m.Indexes)
