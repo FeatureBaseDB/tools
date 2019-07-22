@@ -542,6 +542,11 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 			return fmt.Errorf("field %s specifies a time quantum but is not a time field", fs.Name)
 		}
 	}
+	if fs.ValueRule == densityTypeZipf {
+		if fs.ZipfV < 1.0 || fs.ZipfS <= 1.0 {
+			return fmt.Errorf("field %s: zipf value distribution requires V >= 1, S > 1", fs.Name)
+		}
+	}
 	return nil
 }
 
