@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/molecula/apophenia"
 	pilosa "github.com/pilosa/go-pilosa"
-	"github.com/pilosa/tools/apophenia"
 )
 
 type genfunc func(*taskSpec, chan taskUpdate, string) (CountingIterator, error)
@@ -102,6 +102,9 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	default:
 		return nil, errors.New("unknown dimension order for set")
 	}
+	if ts.ColumnOffset >= 0 {
+		g.ColumnOffset = int64(ts.ColumnOffset)
+	}
 	g.colGen, err = makeColumnGenerator(ts)
 	if err != nil {
 		return nil, err
@@ -112,6 +115,8 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	}
 	_, cols := g.colGen.Status()
 	_, rows := g.rowGen.Status()
+	// If ColumnOffset was -1, we'll now fix it up, but the generators
+	// won't be using it.
 	g.Prepare(ts, cols, rows)
 	g.densityGen, g.densityPerCol = makeDensityGenerator(fs, *ts.Seed)
 	g.densityScale = *fs.DensityScale
@@ -177,12 +182,13 @@ func newIntGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 func makeColumnGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	switch ts.ColumnOrder {
 	case valueOrderStride:
-		return newStrideGenerator(int64(ts.Stride), int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns)), nil
+		return newStrideGenerator(int64(ts.Stride), int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns), int64(ts.ColumnOffset)), nil
 	case valueOrderLinear:
-		return newIncrementGenerator(0, int64(*ts.Columns)), nil
+		// we want to generate column values from ColumnOffset to ColumnOffset+Columns.
+		return newIncrementGenerator(int64(ts.ColumnOffset), int64(*ts.Columns)+int64(ts.ColumnOffset)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
-		gen, err := newPermutedGenerator(0, int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns), 0, *ts.Seed)
+		gen, err := newPermutedGenerator(0, int64(ts.FieldSpec.Parent.Columns), int64(*ts.Columns), int64(ts.ColumnOffset), 0, *ts.Seed)
 		if err != nil {
 			return nil, err
 		}
@@ -204,12 +210,12 @@ func makeRowGenerator(ts *taskSpec) (sequenceGenerator, error) {
 	fs := ts.FieldSpec
 	switch ts.RowOrder {
 	case valueOrderStride:
-		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max)), nil
+		return newStrideGenerator(int64(ts.Stride), int64(fs.Max), int64(fs.Max), int64(ts.ColumnOffset)), nil
 	case valueOrderLinear:
 		return newIncrementGenerator(int64(fs.Min), int64(fs.Max)), nil
 	case valueOrderPermute:
 		// "row 0" => column permutations, "row 1" => row permutations
-		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, 1, *ts.Seed)
+		gen, err := newPermutedGenerator(0, fs.Max, fs.Max, int64(ts.ColumnOffset), 1, *ts.Seed)
 		if err != nil {
 			return nil, err
 		}
@@ -270,7 +276,7 @@ func (g *incrementGenerator) Next() (value int64, done bool) {
 
 // Status reports on the state of the generator.
 func (g *incrementGenerator) Status() (produced, total int64) {
-	return g.produced, g.max
+	return g.produced, g.max - g.min
 }
 
 // newIncrementGenerator creates an incrementGenerator.
@@ -282,18 +288,18 @@ func newIncrementGenerator(min, max int64) *incrementGenerator {
 // from min+1 to (max+1-stride), and so on, until it has covered the whole
 // range.
 type strideGenerator struct {
-	current, stride, max int64
-	emitted, total       int64
+	current, stride, max, columnOffset int64
+	emitted, total                     int64
 }
 
 // Next returns the next value in a sequence.
 func (g *strideGenerator) Next() (value int64, done bool) {
-	value = g.current
+	value = g.current + g.columnOffset
 	g.current += g.stride
 	if g.current >= g.max {
-		// drop all multiples of ig.stride
+		// drop all multiples of g.stride
 		g.current %= g.stride
-		// do a different batch. if ig.current becomes equal to ig.stride,
+		// do a different batch. if g.current becomes equal to g.stride,
 		// we'll be done -- but that should be caught by the emitted count anyway.
 		g.current++
 	}
@@ -312,20 +318,21 @@ func (g *strideGenerator) Status() (produced, total int64) {
 }
 
 // newStrideGenerator produces a stride generator.
-func newStrideGenerator(stride, max, total int64) *strideGenerator {
-	return &strideGenerator{current: 0, stride: stride, max: max, total: total}
+func newStrideGenerator(stride, max, total, columnOffset int64) *strideGenerator {
+	return &strideGenerator{current: 0, stride: stride, max: max, columnOffset: columnOffset, total: total}
 }
 
 // permutedGenerator generates things in a range in an arbitrary order.
 type permutedGenerator struct {
 	permutation    *apophenia.Permutation
+	columnOffset   int64
 	offset         int64
 	current, total int64
 }
 
 // Next generates a new value from an underlying sequence.
 func (g *permutedGenerator) Next() (value int64, done bool) {
-	value = g.current
+	value = g.current + g.columnOffset
 	g.current++
 	if g.current >= g.total {
 		g.current = 0
@@ -342,10 +349,10 @@ func (g *permutedGenerator) Status() (produced, total int64) {
 }
 
 // newPermutedGenerator creates a permutedGenerator.
-func newPermutedGenerator(min, max, total int64, row uint32, seed int64) (*permutedGenerator, error) {
+func newPermutedGenerator(min, max, total, columnOffset int64, row uint32, seed int64) (*permutedGenerator, error) {
 	var err error
 	seq := apophenia.NewSequence(seed)
-	g := &permutedGenerator{offset: min, total: total}
+	g := &permutedGenerator{offset: min, total: total, columnOffset: columnOffset}
 	g.permutation, err = apophenia.NewPermutation(max-min, row, seq)
 	return g, err
 }
@@ -515,15 +522,17 @@ type fieldValueGenerator struct {
 // as a pilosa.FieldValue.
 func (g *fieldValueGenerator) NextRecord() (rec pilosa.Record, err error) {
 	if g.completed {
-		g.updateChan <- taskUpdate{id: g.updateID, colCount: g.tries, rowCount: 0, done: true}
+		if g.updateChan != nil {
+			g.updateChan <- taskUpdate{id: g.updateID, colCount: g.tries, rowCount: 0, done: true}
+		}
 		return nil, io.EOF
 	}
 	col, val, _, ok := g.Iterate()
 	if !ok {
 		return nil, io.EOF
 	}
-	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
-	return pilosa.FieldValue{ColumnID: uint64(col + g.ColumnOffset), Value: val}, nil
+	g.Generated(uint64(col), uint64(val))
+	return pilosa.FieldValue{ColumnID: uint64(col), Value: val}, nil
 }
 
 type columnValueGenerator struct {
@@ -540,8 +549,8 @@ func (g *columnValueGenerator) NextRecord() (pilosa.Record, error) {
 	if !ok {
 		return nil, io.EOF
 	}
-	g.Generated(uint64(col+g.ColumnOffset), uint64(val))
-	return pilosa.Column{ColumnID: uint64(col + g.ColumnOffset), RowID: uint64(val), Timestamp: g.LatestStamp}, nil
+	g.Generated(uint64(col), uint64(val))
+	return pilosa.Column{ColumnID: uint64(col), RowID: uint64(val), Timestamp: g.LatestStamp}, nil
 }
 
 type densityGenerator interface {
@@ -673,8 +682,8 @@ func (g *rowMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
 		}
 		if bit != 0 {
-			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
-			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row), Timestamp: g.LatestStamp}, nil
+			g.Generated(uint64(g.col), uint64(g.row))
+			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row), Timestamp: g.LatestStamp}, nil
 		}
 
 	}
@@ -709,8 +718,8 @@ func (g *columnMajorValueGenerator) NextRecord() (pilosa.Record, error) {
 			g.updateChan <- taskUpdate{id: g.updateID, colCount: cols, rowCount: rows, done: false}
 		}
 		if bit != 0 {
-			g.Generated(uint64(g.col+g.ColumnOffset), uint64(g.row))
-			return pilosa.Column{ColumnID: uint64(g.col + g.ColumnOffset), RowID: uint64(g.row)}, nil
+			g.Generated(uint64(g.col), uint64(g.row))
+			return pilosa.Column{ColumnID: uint64(g.col), RowID: uint64(g.row)}, nil
 		}
 	}
 	if g.updateChan != nil {
