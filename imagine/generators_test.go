@@ -209,6 +209,8 @@ func TestMutexGen(t *testing.T) {
 			Density:      0.9,
 			ValueRule:    densityTypeZipf,
 			Cache:        cacheTypeLRU,
+			ZipfS:        1.1,
+			ZipfV:        1,
 		},
 		ColumnOrder:    valueOrderLinear,
 		DimensionOrder: dimensionOrderRow,
