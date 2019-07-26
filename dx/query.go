@@ -21,11 +21,15 @@ import (
 func NewQueryCommand(m *Main) *cobra.Command {
 	queryCmd := &cobra.Command{
 		Use:   "query",
-		Short: "query the cluster/s",
-		Long:  `Perform queries on the cluster/s.`,
+		Short: "query the cluster(s)",
+		Long:  `Perform queries on the cluster(s).`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := ExecuteQueries(m); err != nil {
-				fmt.Printf("%+v", err)
+				if m.Verbose {
+					fmt.Printf("%+v\n", err)
+				} else {
+					fmt.Printf("%v\n", err)
+				}
 				os.Exit(1)
 			}
 		},
@@ -193,7 +197,7 @@ func runQueryOnCluster(client *pilosa.Client, query Query, qResultChan chan Quer
 	qResultChan <- query
 }
 
-// populateQueryChanRandomly populates the query channel with numQueries number of queries according to the specified specs
+// populateQueryChanRandomly populates the query channel with numQueries number of queries according to the specified spec
 // and then closes the query channel.
 func populateQueryChanRandomly(queryChan chan Query, indexSpec IndexSpec, numQueries int64, numRows int64) {
 	for i := int64(0); i < numQueries; i++ {

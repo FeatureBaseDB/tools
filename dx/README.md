@@ -8,7 +8,7 @@
 dx [command] [flags]
 ```
 
-`dx` can only be used when the two Pilosa clusters are already running. You can then specify the configuration using the following global flags:
+`dx` can only be used when the Pilosa clusters are already running. You can then specify the configuration using the following global flags:
 
 ```
   -o  --hosts        strings    Comma-separated list of 'host:port' pairs (default localhost:10101)
@@ -30,7 +30,7 @@ is interpreted as cluster0 having hosts host1 and host2, cluster1 having host3, 
 
 Along with the flags, the following commands are used by `dx` to determine what to do:
 
-* `ingest`  --- ingest data from an `imagine` specs file on all clusters
+* `ingest`  --- ingest data from an `imagine` spec file on all clusters
 * `query`   --- generate and run queries on all clusters
 * `compare` --- compare the results from a `dx ingest` or `dx compare` command
 
@@ -41,18 +41,18 @@ Aside from the global flags, the following flags can be used for `dx ingest`:
 ```
   -h, --help                    help for dx ingest
   -p, --prefix       string     Prefix to use for index (default "dx-")
-      --specsfiles   strings    Path to imagine specs file
+      --specfiles   strings    Path to imagine spec file
 ```
 
-The `ingest` command requires one or more [`imagine` specs file](https://github.com/pilosa/tools/tree/master/imagine) that describes its workload in order to generate data.
+The `ingest` command requires one or more [`imagine` spec file](https://github.com/pilosa/tools/tree/master/imagine) that describes its workload in order to generate data.
 
 Sample ingest:
 
 ```
-> dx ingest --specsfiles specs.toml --hosts localhost:10101 --hosts localhost:10102
+> dx ingest --specfiles spec.toml --hosts localhost:10101 --hosts localhost:10102
 ```
 
-will result in the two files (named `0` and `1`) written to a folder in `--datadir`. The folder is named "ingest-{timestamp}" (ex. ingest-2019-07-15T12/59/24-05/00). The files contain a single JSON describing the results of the ingest.
+will result in the two files (named `0` and `1`) written to a folder in `--datadir`. The folder is named "ingest-{timestamp}" (ex. ingest-2019-07-15T12/59/24-05/00). The files contain a single JSON object describing the results of the ingest.
 
 ```
 {"type":"ingest","time":"635.162153ms","threadcount":1}
@@ -65,7 +65,7 @@ Aside from the global flags, the following flags can be used for `dx query`:
 ```
   -q, --queries       int      Number of queries to run (default 100)
   -r, --rows          int      Number of rows to perform intersect query on (default 2)
-  -i, --indexes       strings  Indexes to run queries on
+  -i, --indexes       strings  Indexes to run queries on (default all indexes from first cluster)
   -a, --actualresults bool     Save actual results of queries instead of counts (default false)
       --querytemplate string   Run the queries from a previous result file
 ```

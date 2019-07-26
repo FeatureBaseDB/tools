@@ -21,7 +21,7 @@ func SetupMain() (*Main, string) {
 	m.DataDir = path
 	m.ThreadCount = 2
 	m.NumQueries = 10
-	m.SpecsFiles = []string{filepath.Join("./testdata", "specs", "specs.toml")}
+	m.SpecFiles = []string{filepath.Join("./testdata", "spec", "spec.toml")}
 
 	return m, path
 }

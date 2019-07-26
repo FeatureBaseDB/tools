@@ -24,7 +24,7 @@ const (
 type Main struct {
 	Hosts         []string
 	ThreadCount   int
-	SpecsFiles    []string
+	SpecFiles    []string
 	Verbose       bool
 	Prefix        string
 	NumQueries    int64
@@ -62,7 +62,11 @@ func NewRootCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("dx is a tool used to analyze accuracy and performance regression across Pilosa versions.\nThe following checks whether the clusters specified by the hosts flag are running.\n\n")
 			if err := printServers(m.Hosts); err != nil {
-				fmt.Printf("%+v", err)
+				if m.Verbose {
+					fmt.Printf("%+v\n", err)
+				} else {
+					fmt.Printf("%v\n", err)
+				}
 				os.Exit(1)
 			}
 		},
@@ -79,12 +83,12 @@ func NewRootCmd() *cobra.Command {
 	flags := rc.PersistentFlags()
 	flags.StringArrayVarP(&m.Hosts, "hosts", "o", []string{"localhost:10101"}, "Comma-separated list of 'host:port' pairs. Repeat this flag for each cluster")
 	flags.IntVarP(&m.ThreadCount, "threadcount", "t", 1, "Number of goroutines to allocate")
-	flags.BoolVarP(&m.Verbose, "verbose", "v", true, "Enable verbose logging")
+	flags.BoolVarP(&m.Verbose, "verbose", "v", false, "Enable verbose logging")
 	flags.StringVarP(&m.DataDir, "datadir", "d", usrHomeDirDx, "Data directory to store results")
 
 	rc.AddCommand(NewIngestCommand(m))
 	rc.AddCommand(NewQueryCommand(m))
-	rc.AddCommand(NewCompareCommand())
+	rc.AddCommand(NewCompareCommand(m))
 
 	return rc
 }

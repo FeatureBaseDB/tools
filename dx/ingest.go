@@ -24,7 +24,11 @@ func NewIngestCommand(m *Main) *cobra.Command {
 		Long:  `Perform ingest the cluster/s using imagine.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if err := ExecuteIngest(m); err != nil {
-				fmt.Printf("%+v", err)
+				if m.Verbose {
+					fmt.Printf("%+v\n", err)
+				} else {
+					fmt.Printf("%v\n", err)
+				}
 				os.Exit(1)
 			}
 		},
@@ -32,8 +36,8 @@ func NewIngestCommand(m *Main) *cobra.Command {
 
 	flags := ingestCmd.PersistentFlags()
 	flags.StringVarP(&m.Prefix, "prefix", "p", "dx-", "Prefix to use for index")
-	flags.StringSliceVar(&m.SpecsFiles, "specsfiles", nil, "Path to imagine specs file")
-	ingestCmd.MarkFlagRequired("specsfile")
+	flags.StringSliceVar(&m.SpecFiles, "specfiles", nil, "Path to imagine spec file")
+	ingestCmd.MarkFlagRequired("specfile")
 
 	return ingestCmd
 }
@@ -41,7 +45,7 @@ func NewIngestCommand(m *Main) *cobra.Command {
 // ExecuteIngest executes an ingest command on the cluster/s, ensuring that the order of clusters
 // specified in the flags corresponds to the filenames that the results are saved in.
 func ExecuteIngest(m *Main) error {
-	for _, file := range m.SpecsFiles {
+	for _, file := range m.SpecFiles {
 		found, err := checkFileExists(file)
 		if err != nil {
 			return errors.Wrapf(err, "error checking existence of %v", file)
@@ -56,12 +60,12 @@ func ExecuteIngest(m *Main) error {
 		return errors.Wrap(err, "error creating folder for ingest results")
 	}
 
-	// TODO: copy specs file?
+	// TODO: copy spec file?
 	configs := make([]*imagine.Config, 0)
 
 	allClusterHosts := getAllClusterHosts(m.Hosts)
 	for _, clusterHosts := range allClusterHosts {
-		config := newConfig(clusterHosts, m.SpecsFiles, m.Prefix, m.ThreadCount)
+		config := newConfig(clusterHosts, m.SpecFiles, m.Prefix, m.ThreadCount)
 		configs = append(configs, config)
 	}
 
@@ -99,7 +103,7 @@ func ingestOnInstance(conf *imagine.Config) (*Benchmark, error) {
 
 	err := conf.ReadSpecs()
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading specs from config")
+		return nil, errors.Wrap(err, "error reading spec from config")
 	}
 
 	client, err := initializeClient(conf.Hosts...)
@@ -135,13 +139,13 @@ func writeResultFile(bench *Benchmark, filename, dir string) error {
 	return nil
 }
 
-func newConfig(hosts []string, specsFiles []string, prefix string, threadCount int) *imagine.Config {
+func newConfig(hosts []string, specFiles []string, prefix string, threadCount int) *imagine.Config {
 	conf := &imagine.Config{
 		Hosts:       hosts,
 		Prefix:      prefix,
 		ThreadCount: threadCount,
 	}
-	conf.NewSpecsFiles(specsFiles)
+	conf.NewSpecsFiles(specFiles)
 
 	return conf
 }
