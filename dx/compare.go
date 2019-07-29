@@ -158,6 +158,10 @@ func compareQueries(benches1, benches2 []*Benchmark) (*Comparison, error) {
 		}
 		if isValidQuery(b1.Query) {
 			queryMap[b1.Query.ID] = b1.Query
+		} else {
+			queryT := b1.Query.Type.String()
+			log.Printf("invalid query from first file: ID: %v, %s %v from index: %s field: %s\n",
+				b1.Query.ID, queryT, b1.Query.Rows, b1.Query.IndexName, b1.Query.FieldName)
 		}
 	}
 
@@ -174,14 +178,34 @@ func compareQueries(benches1, benches2 []*Benchmark) (*Comparison, error) {
 		}
 
 		query2 := b2.Query
-		// if query1 is found, it must already be a valid query
+		// here we assume that same IDs mean the same queries.
+		// if query1 is found, it must already be a valid query.
 		if query1, found := queryMap[query2.ID]; found {
-			if isValidQuery(query2) && queryResultsEqual(query1, query2) {
-				numCorrect++
+			if isValidQuery(query2) {
+				if queryResultsEqual(query1, query2) {
+					numCorrect++
+				} else {
+					// valid query2 but unequal results
+					queryT := query2.Type.String()
+					log.Printf("unequal results: ID: %v, %s %v from index: %s field: %s. Got results %v and %v, and result counts %v and %v\n",
+						query1.ID, queryT, query1.Rows, query1.IndexName, query1.FieldName, query1.Result, query2.Result, query1.ResultCount, query2.ResultCount)
+				}
+			} else {
+				// invalid query2
+				queryT := query2.Type.String()
+				log.Printf("invalid query from second file: ID: %v, %s %v from index: %s field: %s\n",
+					query2.ID, queryT, query2.Rows, query2.IndexName, query2.FieldName)
 			}
+
+			// regardless of validity or equality of resuls, add time for valid queries.
 			totalTime1 += query1.Time.Duration
 			totalTime2 += query2.Time.Duration
 			validQueries++
+		} else {
+			// first result does not contain this query
+			queryT := query2.Type.String()
+			log.Printf("query found in second file but not in first: ID: %v, %s %v from index: %s field: %s\n",
+				query2.ID, queryT, query2.Rows, query2.IndexName, query2.FieldName)
 		}
 	}
 
