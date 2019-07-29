@@ -80,6 +80,7 @@ func ExecuteIngest(m *Main) error {
 	}
 
 	wg.Wait()
+	fmt.Printf("result(s) successfully saved in %s\n", path)
 	return nil
 }
 

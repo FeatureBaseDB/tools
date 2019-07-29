@@ -112,6 +112,7 @@ func ExecuteQueries(m *Main) error {
 	// process total time
 	processTotalTime(totalTime, len(qResultChans), path, m.ThreadCount)
 
+	fmt.Printf("result(s) successfully saved in %s\n", path)
 	return nil
 
 }
