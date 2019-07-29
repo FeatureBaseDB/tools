@@ -41,6 +41,7 @@ func NewQueryCommand(m *Main) *cobra.Command {
 	flags.StringSliceVarP(&m.Indexes, "indexes", "i", nil, "Indexes to run queries on")
 	flags.BoolVarP(&m.ActualResults, "actualresults", "a", false, "Save actual results of queries instead of counts")
 	flags.StringVar(&m.QueryTemplate, "querytemplate", "", "Run the queries from a previous result file")
+	flags.Int64Var(&m.Seed, "seed", 1, "Seed for generating random rows and columns")
 
 	return queryCmd
 }
@@ -87,6 +88,8 @@ func ExecuteQueries(m *Main) error {
 		if err != nil {
 			return errors.Wrap(err, "error getting index spec from first cluster")
 		}
+		// initialize random with seed
+		rand.Seed(m.Seed)
 		go populateQueryChanRandomly(queryChan, indexSpec, m.NumQueries, m.NumRows)
 	} else {
 		benchChan := make(chan *Benchmark)

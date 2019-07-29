@@ -14,7 +14,7 @@ dx [command] [flags]
   -o  --hosts        strings    Comma-separated list of 'host:port' pairs (default localhost:10101)
   -h, --help                    help for dx
   -t, --threadcount  int        Number of concurrent goroutines to allocate (default 1)
-  -v, --verbose      bool       Enable verbose logging (default true)
+  -v, --verbose      bool       Enable verbose logging (default false)
   -d, --datadir      string     Data directory to store resuls (default ~/dx)
 ```
 
@@ -68,6 +68,7 @@ Aside from the global flags, the following flags can be used for `dx query`:
   -i, --indexes       strings  Indexes to run queries on (default all indexes from first cluster)
   -a, --actualresults bool     Save actual results of queries instead of counts (default false)
       --querytemplate string   Run the queries from a previous result file
+      --seed          int      Seed for generating random rows and columns (default 1)
 ```
 
 To compare a current query benchmark to an older one, usae `dx query` with the `--querytemplate` set to the old result so that the queries ran on the newer cluster will be the same. If `--querytemplate` is not set, then `dx` automatically generates `--queries` number of queries using the indexes from `indexes`. If `indexes` is also not specified, then `dx` will default to using all of the indexes present in the first cluster.

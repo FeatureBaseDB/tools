@@ -24,7 +24,7 @@ const (
 type Main struct {
 	Hosts         []string
 	ThreadCount   int
-	SpecFiles    []string
+	SpecFiles     []string
 	Verbose       bool
 	Prefix        string
 	NumQueries    int64
@@ -33,6 +33,7 @@ type Main struct {
 	ActualResults bool
 	QueryTemplate string
 	Indexes       []string
+	Seed          int64
 }
 
 // NewMain creates a new Main object.
