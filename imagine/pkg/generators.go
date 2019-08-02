@@ -83,7 +83,7 @@ func noSortNeeded(ts *taskSpec) bool {
 
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
-	if fs.Fast {
+	if fs.FastSparse {
 		return newFastValueGenerator(fs), nil
 	}
 	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
@@ -814,7 +814,11 @@ func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
 	randSeed := int64(0)
 	totalBitCount := int64(fs.Parent.Columns)
 	bitsPerRow := make([]int64, rowCount)
-	bits := loadBits(fs.CachePath, totalBitCount, randSeed)
+	uniqueBitCount := int64(fs.Parent.UniqueColumns)
+	if uniqueBitCount == 0 {
+		uniqueBitCount = totalBitCount
+	}
+	bits := loadBits(fs.CachePath, uniqueBitCount, randSeed)
 	zipfS := fs.ZipfS
 	zipfV := fs.ZipfV
 

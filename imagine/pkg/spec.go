@@ -113,19 +113,20 @@ type tomlSpec struct {
 	Seed         int64 // default PRNG seed
 	Indexes      map[string]*indexSpec
 	Workloads    []*workloadSpec
-	Fast         bool
+	FastSparse   bool
 	CachePath    string // the path for random uint cache
 }
 
 type indexSpec struct {
-	Parent       *tomlSpec             `toml:"-"`
-	Name         string                `toml:"-"`
-	Description  string                // for human-friendly descriptions
-	FullName     string                `toml:"-"` // not actually intended to be user-set
-	Columns      uint64                // total columns to create data for
-	FieldsByName map[string]*fieldSpec `toml:"-"`
-	Fields       []*fieldSpec
-	Seed         *int64 // default PRNG seed
+	Parent        *tomlSpec             `toml:"-"`
+	Name          string                `toml:"-"`
+	Description   string                // for human-friendly descriptions
+	FullName      string                `toml:"-"` // not actually intended to be user-set
+	Columns       uint64                // total columns to create data for
+	UniqueColumns uint64                // number of random columns to create when fastSparse=true
+	FieldsByName  map[string]*fieldSpec `toml:"-"`
+	Fields        []*fieldSpec
+	Seed          *int64 // default PRNG seed
 }
 
 func (is *indexSpec) String() string {
@@ -154,7 +155,7 @@ type fieldSpec struct {
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only for time fields
-	Fast          bool
+	FastSparse    bool
 	CachePath     string
 
 	// Only useful for set/mutex fields.
@@ -469,7 +470,6 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
-	fs.Fast = fs.Parent.Parent.Fast
 	fs.CachePath = fs.Parent.Parent.CachePath
 	// no specified chance = 1.0
 	if fs.Chance == nil {
