@@ -1,9 +1,8 @@
 version = "1.0"
 [indexes.users]
 columns = 1000000000
-uniqueBits = 1000000
 fields = [
-{name = "numbers", type = "set", min=0, max=100000, zipfA=3.0, fastSparse = true },
+{name = "numbers", type = "set", min=0, max=10000, zipfA=1.0, fastSparse = true, density = 0.1 },
 ]
 [[workloads]]
 name = "sample"

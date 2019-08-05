@@ -127,6 +127,7 @@ type indexSpec struct {
 	FieldsByName  map[string]*fieldSpec `toml:"-"`
 	Fields        []*fieldSpec
 	Seed          *int64 // default PRNG seed
+	ShardWidth    uint64
 }
 
 func (is *indexSpec) String() string {

@@ -1,15 +1,11 @@
 package imagine
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 
@@ -799,14 +795,19 @@ func (g *genericGenerator) Values() (int64, int64) {
 	return g.values, g.tries
 }
 
+// fastValueGenerator produces
 type fastValueGenerator struct {
-	bitsPerRow   []int64
-	nextBitIndex int64
-	rowIndex     int64
-	rowBitCount  int64
-	bits         []uint64
-	rowIDMin     int64
-	rowIDMax     int64
+	bitsPerRow        []int64
+	nextBitIndex      int64
+	rowIndex          int64
+	rowBitCount       int64
+	rowIDMin          int64
+	rowIDMax          int64
+	randGen           *rand.Rand
+	shardWidth        uint64
+	maxBitsPerShard   uint64
+	maxColumnDistance int64
+	lastColumnId      uint64
 }
 
 func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
@@ -814,29 +815,28 @@ func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
 	randSeed := int64(0)
 	totalBitCount := int64(fs.Parent.Columns)
 	bitsPerRow := make([]int64, rowCount)
-	uniqueBitCount := int64(fs.Parent.UniqueColumns)
-	if uniqueBitCount == 0 {
-		uniqueBitCount = totalBitCount
-	}
-	bits := loadBits(fs.CachePath, uniqueBitCount, randSeed)
-	zipfS := fs.ZipfS
-	zipfV := fs.ZipfV
-
 	if randSeed == 0 {
 		randSeed = int64(time.Now().Nanosecond())
 	}
-	if zipfS <= 1.0 {
-		zipfS = 2.0
+	shardWidth := fs.Parent.ShardWidth
+	if shardWidth == 0 {
+		shardWidth = 1 << 20
 	}
-	if zipfV < 1.0 {
-		zipfV = 1.0
+	density := fs.Density
+	if density <= 0 {
+		density = 1
+	}
+	maxBitsPerShard := uint64(math.Ceil(float64(shardWidth) * density))
+	maxColumnDistance := int64(math.Floor(1 / density))
+	if maxColumnDistance == 0 {
+		maxColumnDistance = 1
 	}
 
-	r := rand.New(rand.NewSource(randSeed))
+	randGen := rand.New(rand.NewSource(randSeed))
 	z := newZipf(fs.ZipfA, int(totalBitCount/rowCount))
 
-	for i, rowIndex := range r.Perm(int(rowCount)) {
-		bitCount := int64(1 + z.F(i+1)*float64(totalBitCount))
+	for rowIndex := 0; rowIndex < int(rowCount); rowIndex++ {
+		bitCount := int64(1 + z.F(rowIndex+1)*float64(totalBitCount))
 		bitsPerRow[rowIndex] += bitCount
 		totalBitCount -= bitCount
 	}
@@ -858,66 +858,39 @@ func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
 	}
 
 	return &fastValueGenerator{
-		rowIndex:     0,
-		nextBitIndex: 0,
-		bitsPerRow:   bitsPerRow,
-		bits:         bits,
-		rowIDMin:     fs.Min,
+		bitsPerRow:        bitsPerRow,
+		rowIDMin:          fs.Min,
+		randGen:           randGen,
+		maxBitsPerShard:   maxBitsPerShard,
+		maxColumnDistance: maxColumnDistance,
 	}
 }
 
 func (g *fastValueGenerator) NextRecord() (pilosa.Record, error) {
-	if g.rowBitCount >= g.bitsPerRow[g.rowIndex] {
-		g.rowIndex += 1
-		g.rowBitCount = 0
+	for {
+		if g.rowIndex >= int64(len(g.bitsPerRow)) {
+			return nil, io.EOF
+		}
+		if g.rowBitCount >= g.bitsPerRow[g.rowIndex] {
+			g.rowIndex += 1
+			g.rowBitCount = 0
+			g.lastColumnId = 0
+			continue
+		}
+		break
 	}
-	if g.rowIndex >= int64(len(g.bitsPerRow)) {
-		return nil, io.EOF
-	}
-	columnID := g.bits[g.nextBitIndex%int64(len(g.bits))]
+	g.lastColumnId += uint64(g.randGen.Int63n(g.maxColumnDistance)) + 1
 	g.rowBitCount += 1
 	g.nextBitIndex += 1
-	return pilosa.Column{RowID: uint64(g.rowIDMin + g.rowIndex), ColumnID: columnID}, nil
+	return pilosa.Column{RowID: uint64(g.rowIDMin + g.rowIndex), ColumnID: g.lastColumnId}, nil
 }
 
 func (g *fastValueGenerator) Values() (int64, int64) {
 	return g.nextBitIndex, g.nextBitIndex
 }
 
-func loadBits(path string, totalBitCount int64, randSeed int64) []uint64 {
-	var bits []uint64
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		r := rand.New(rand.NewSource(randSeed))
-		bits = make([]uint64, totalBitCount)
-		for i := int64(0); i < totalBitCount; i++ {
-			bits[i] = r.Uint64()
-		}
-		if path != "" {
-			var buf bytes.Buffer
-			enc := gob.NewEncoder(&buf)
-			err := enc.Encode(bits)
-			if err != nil {
-				panic(err)
-			}
-			err = ioutil.WriteFile(path, buf.Bytes(), 0600)
-			if err != nil {
-				panic(err)
-			}
-		}
-
-	} else {
-		b, err := ioutil.ReadFile(path)
-		if err != nil {
-			panic(err)
-		}
-		buf := bytes.NewBuffer(b)
-		dec := gob.NewDecoder(buf)
-		dec.Decode(&bits)
-
-	}
-	return bits
-}
-
+// see: https://www.statisticshowto.datasciencecentral.com/zeta-distribution-zipf/
+// this generator allows us to generate first n numbers in the zipf distribution in order.
 type zipf struct {
 	s float64
 	a float64
