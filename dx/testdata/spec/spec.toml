@@ -1,0 +1,13 @@
+densityscale = 2097152
+version = "1.0"
+[indexes.index]
+columns = 20
+fields = [
+{ name = "field", type = "set", min = 0, max = 5, chance = 0.1, density = 1.0, },
+]
+[[workloads]]
+name = "sample"
+threadCount = 1
+tasks = [
+{ index = "index", field = "field", columnOrder = "stride", stride = 3 },
+]

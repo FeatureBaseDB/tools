@@ -42,10 +42,13 @@ release:
 	make crossbuild GOOS=linux GOARCH=386
 	make crossbuild GOOS=darwin GOARCH=amd64
 
-install: install-pi install-imagine
+install: install-pi install-imagine install-dx
+
+install-dx:
+	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/dx
 
 install-imagine:
-	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/imagine
+	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/imagine
 
 install-pi:
 	go install -ldflags $(LDFLAGS) $(FLAGS) $(CLONE_URL)/cmd/pi
@@ -53,8 +56,6 @@ install-pi:
 
 generate: enumer-install
 	cd imagine && \
-	go generate && \
-	cd pkg && \
 	go generate
 
 

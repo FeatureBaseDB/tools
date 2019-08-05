@@ -42,9 +42,8 @@ The following options change how `imagine` goes about its work:
 *  `--column-scale int`     scale number of columns provided by specs
 *  `--cpu-profile string`   record CPU profile to file
 *  `--dry-run`              dry-run; describe what would be done
-*  `--hosts string`         comma-separated host names for Pilosa server (default "localhost")
+*  `--hosts string`         comma separated list of "host:port" pairs of the Pilosa cluster (default "localhost:10101")
 *  `--mem-profile string`   record allocation profile to file
-*  `--port int`             host port for Pilosa server (default 10101)
 *  `--prefix string`        prefix to use on index names
 *  `--row-scale int`        scale number of rows provided by specs
 *  `--thread-count int`     number of threads to use for import, overrides value in config file (default 1)
