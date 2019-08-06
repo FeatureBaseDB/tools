@@ -1,6 +1,7 @@
 package apophenia
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -42,6 +43,15 @@ type Zipf struct {
 // of inputs. The seed parameter can select one of multiple sub-sequences
 // of the given sequence.
 func NewZipf(q float64, v float64, max uint64, seed uint32, src Sequence) (z *Zipf, err error) {
+	if math.IsNaN(q) || math.IsNaN(v) {
+		return nil, fmt.Errorf("q (%g) and v (%g) must not be NaN for Zipf distribution", q, v)
+	}
+	if q <= 1 || v < 1 {
+		return nil, fmt.Errorf("need q > 1 (got %g) and v >= 1 (got %g) for Zipf distribution", q, v)
+	}
+	if src == nil {
+		return nil, fmt.Errorf("need a usable PRNG apophenia.Sequence")
+	}
 	oneMinusQ := 1 - q
 	oneOverOneMinusQ := 1 / (1 - q)
 	z = &Zipf{
