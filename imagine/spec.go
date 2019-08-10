@@ -113,17 +113,21 @@ type tomlSpec struct {
 	Seed         int64 // default PRNG seed
 	Indexes      map[string]*indexSpec
 	Workloads    []*workloadSpec
+	FastSparse   bool
+	CachePath    string // the path for random uint cache
 }
 
 type indexSpec struct {
-	Parent       *tomlSpec             `toml:"-"`
-	Name         string                `toml:"-"`
-	Description  string                // for human-friendly descriptions
-	FullName     string                `toml:"-"` // not actually intended to be user-set
-	Columns      uint64                // total columns to create data for
-	FieldsByName map[string]*fieldSpec `toml:"-"`
-	Fields       []*fieldSpec
-	Seed         *int64 // default PRNG seed
+	Parent        *tomlSpec             `toml:"-"`
+	Name          string                `toml:"-"`
+	Description   string                // for human-friendly descriptions
+	FullName      string                `toml:"-"` // not actually intended to be user-set
+	Columns       uint64                // total columns to create data for
+	UniqueColumns uint64                // number of random columns to create when fastSparse=true
+	FieldsByName  map[string]*fieldSpec `toml:"-"`
+	Fields        []*fieldSpec
+	Seed          *int64 // default PRNG seed
+	ShardWidth    uint64
 }
 
 func (is *indexSpec) String() string {
@@ -142,6 +146,7 @@ type fieldSpec struct {
 	Name          string
 	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
+	ZipfA         float64      // alpha parameter for a zipf distribution, should be >= 0
 	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
@@ -151,6 +156,8 @@ type fieldSpec struct {
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only for time fields
+	FastSparse    bool
+	CachePath     string
 
 	// Only useful for set/mutex fields.
 	Cache     cacheType // "ranked", "lru", or "none", default is ranked for set/mutex
@@ -464,6 +471,7 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
+	fs.CachePath = fs.Parent.Parent.CachePath
 	// no specified chance = 1.0
 	if fs.Chance == nil {
 		f := float64(1.0)

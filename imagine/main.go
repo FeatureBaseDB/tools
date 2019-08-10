@@ -36,6 +36,8 @@ const (
 // Config describes the overall configuration of the tool.
 type Config struct {
 	Hosts        []string `help:"comma separated list of \"host:port\" pairs of the Pilosa cluster"`
+	NoImport     bool     `help:"do not import the generated bits"`
+	PrintOut     bool     `help:"print out the generated data in ROW_ID,COLUMN_ID format"`
 	Verify       string   `help:"index structure validation: purge/error/update/create"`
 	verifyType   verifyType
 	Generate     bool `help:"generate data as specified by workloads"`
@@ -473,6 +475,38 @@ func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err
 		tasks.Add(1)
 		go func(idx int, itr CountingIterator, opts []pilosa.ImportOption, field *pilosa.Field, indexName, fieldName string) {
 			before := time.Now()
+			if conf.NoImport {
+				errs[idx] = nil
+				if conf.PrintOut {
+					for {
+						rec, err := itr.NextRecord()
+						if err != nil {
+							break
+						}
+						switch r := rec.(type) {
+						case pilosa.Column:
+							if r.Timestamp > 0 {
+								fmt.Printf("%d,%d,%d\n", r.RowID, r.ColumnID, r.Timestamp)
+							} else {
+								fmt.Printf("%d,%d\n", r.RowID, r.ColumnID)
+							}
+						}
+					}
+				} else {
+					totalBits := 0
+					for {
+						_, err := itr.NextRecord()
+						if err != nil {
+							break
+						}
+						totalBits += 1
+					}
+					fmt.Println("total bits:", totalBits)
+				}
+			} else {
+				errs[idx] = client.ImportField(field, itr, opts...)
+			}
+
 			errs[idx] = client.ImportField(field, itr, opts...)
 			if conf.Time {
 				after := time.Now()

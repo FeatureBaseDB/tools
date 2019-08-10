@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"sync"
+	"time"
 
 	pilosa "github.com/pilosa/go-pilosa"
 	"github.com/pilosa/tools/apophenia"
@@ -76,12 +78,15 @@ func noSortNeeded(ts *taskSpec) bool {
 // Set: FieldValue, possibly many per column, possibly column-major.
 
 func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	fs := ts.FieldSpec
+	if fs.FastSparse {
+		return newFastValueGenerator(fs), nil
+	}
 	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
 	// of individual values rather than populating every field
 	if ts.ColumnOrder == valueOrderZipf {
 		return newMutexGenerator(ts, updateChan, updateID)
 	}
-	fs := ts.FieldSpec
 	var g *doubleValueGenerator
 	switch ts.DimensionOrder {
 	case dimensionOrderRow:
@@ -788,4 +793,122 @@ func (g *genericGenerator) Generated(col, row uint64) {
 
 func (g *genericGenerator) Values() (int64, int64) {
 	return g.values, g.tries
+}
+
+// fastValueGenerator produces
+type fastValueGenerator struct {
+	bitsPerRow        []int64
+	nextBitIndex      int64
+	rowIndex          int64
+	rowBitCount       int64
+	rowIDMin          int64
+	rowIDMax          int64
+	randGen           *rand.Rand
+	shardWidth        uint64
+	maxBitsPerShard   uint64
+	maxColumnDistance int64
+	lastColumnId      uint64
+}
+
+func newFastValueGenerator(fs *fieldSpec) *fastValueGenerator {
+	rowCount := fs.Max - fs.Min
+	randSeed := int64(0)
+	totalBitCount := int64(fs.Parent.Columns)
+	bitsPerRow := make([]int64, rowCount)
+	if randSeed == 0 {
+		randSeed = int64(time.Now().Nanosecond())
+	}
+	shardWidth := fs.Parent.ShardWidth
+	if shardWidth == 0 {
+		shardWidth = 1 << 20
+	}
+	density := fs.Density
+	if density <= 0 {
+		density = 1
+	}
+	maxBitsPerShard := uint64(math.Ceil(float64(shardWidth) * density))
+	maxColumnDistance := int64(math.Floor(1 / density))
+	if maxColumnDistance == 0 {
+		maxColumnDistance = 1
+	}
+
+	randGen := rand.New(rand.NewSource(randSeed))
+	z := newZipf(fs.ZipfA, int(totalBitCount/rowCount))
+
+	for rowIndex := 0; rowIndex < int(rowCount); rowIndex++ {
+		bitCount := int64(1 + z.F(rowIndex+1)*float64(totalBitCount))
+		bitsPerRow[rowIndex] += bitCount
+		totalBitCount -= bitCount
+	}
+
+	// add or remove bits so there are exactly fs.Parent.Columns bits
+	step := int64(1)
+	if totalBitCount < 0 {
+		step = -1
+		totalBitCount = -totalBitCount
+	}
+	for totalBitCount > 0 {
+		for i := 0; i < int(rowCount); i++ {
+			bitsPerRow[i] += step
+			totalBitCount -= 1
+			if totalBitCount <= 0 {
+				break
+			}
+		}
+	}
+
+	return &fastValueGenerator{
+		bitsPerRow:        bitsPerRow,
+		rowIDMin:          fs.Min,
+		randGen:           randGen,
+		maxBitsPerShard:   maxBitsPerShard,
+		maxColumnDistance: maxColumnDistance,
+	}
+}
+
+func (g *fastValueGenerator) NextRecord() (pilosa.Record, error) {
+	for {
+		if g.rowIndex >= int64(len(g.bitsPerRow)) {
+			return nil, io.EOF
+		}
+		if g.rowBitCount >= g.bitsPerRow[g.rowIndex] {
+			g.rowIndex += 1
+			g.rowBitCount = 0
+			g.lastColumnId = 0
+			continue
+		}
+		break
+	}
+	g.lastColumnId += uint64(g.randGen.Int63n(g.maxColumnDistance)) + 1
+	g.rowBitCount += 1
+	g.nextBitIndex += 1
+	return pilosa.Column{RowID: uint64(g.rowIDMin + g.rowIndex), ColumnID: g.lastColumnId}, nil
+}
+
+func (g *fastValueGenerator) Values() (int64, int64) {
+	return g.nextBitIndex, g.nextBitIndex
+}
+
+// see: https://www.statisticshowto.datasciencecentral.com/zeta-distribution-zipf/
+// this generator allows us to generate first n numbers in the zipf distribution in order.
+type zipf struct {
+	s float64
+	a float64
+	n int
+}
+
+func newZipf(a float64, n int) zipf {
+	s := 0.0
+	for i := 1; i <= n; i++ {
+		s += math.Pow(1.0/float64(i), a)
+	}
+	return zipf{
+		s: s,
+		a: a,
+		n: n,
+	}
+}
+
+func (z zipf) F(x int) float64 {
+	return 1.0 / (math.Pow(float64(x), z.a) * z.s)
 }
