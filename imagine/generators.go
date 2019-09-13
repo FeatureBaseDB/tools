@@ -439,7 +439,7 @@ type zipfValueGenerator struct {
 func newZipfValueGenerator(s, v float64, min, max, seed int64) (*zipfValueGenerator, error) {
 	var err error
 	g := zipfValueGenerator{offset: min}
-	g.z, err = apophenia.NewZipf(s, v, uint64(max)-uint64(min), 0, apophenia.NewSequence(seed))
+	g.z, err = apophenia.NewZipf(s, v, uint64(max)-uint64(min)-1, 0, apophenia.NewSequence(seed))
 	if err != nil {
 		return nil, err
 	}
