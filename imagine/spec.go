@@ -176,6 +176,7 @@ type workloadSpec struct {
 	Tasks       []*taskSpec
 	ThreadCount *int // threads to use for each importer
 	BatchSize   *int
+	Split       *int
 	UseRoaring  *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
@@ -199,6 +200,7 @@ type taskSpec struct {
 	BatchSize             *int           // override batch batchsize
 	ZipfV, ZipfS          float64
 	ZipfRange             *uint64
+	Split                 *int
 	UseRoaring            *bool // configure go-pilosa to use Pilosa's import-roaring endpoint
 }
 
@@ -266,6 +268,9 @@ func describeWorkload(wl *workloadSpec) {
 		return
 	}
 	fmt.Printf("  workload %s:\n", wl.Name)
+	if wl.Split != nil {
+		fmt.Printf("   [split: %d]\n", *wl.Split)
+	}
 	for _, t := range wl.Tasks {
 		fmt.Printf("    task %v\n", t)
 	}
@@ -537,6 +542,11 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 			return fmt.Errorf("field %s specifies a time quantum but is not a time field", fs.Name)
 		}
 	}
+	if fs.ValueRule == densityTypeZipf {
+		if fs.ZipfV < 1.0 || fs.ZipfS <= 1.0 {
+			return fmt.Errorf("field %s: zipf value distribution requires V >= 1, S > 1", fs.Name)
+		}
+	}
 	return nil
 }
 
@@ -550,12 +560,45 @@ func (ws *workloadSpec) Cleanup(conf *Config) error {
 			return fmt.Errorf("invalid thread count %d [must be a positive number]", *ws.ThreadCount)
 		}
 	}
+	if ws.Split == nil {
+		one := 1
+		ws.Split = &one
+	} else {
+		if *ws.Split < 1 {
+			return fmt.Errorf("invalid split count %d, must be positive\n", *ws.Split)
+		}
+	}
+	// we have to split this workload up.
+	newTasks := make([]*taskSpec, 0, len(ws.Tasks))
 	for _, task := range ws.Tasks {
 		task.Parent = ws
 		err := task.Cleanup(conf)
 		if err != nil {
 			return err
 		}
+		split := *task.Split
+		if split == 1 {
+			newTasks = append(newTasks, task)
+			continue
+		}
+		// we're splitting this up. we need to subdivide the space.
+		colsEach := *task.Columns / uint64(split)
+		extraCols := *task.Columns - (colsEach * uint64(split))
+		task.Columns = &colsEach
+		for i := 0; i < split; i++ {
+			// handle the extra columns in the last batch.
+			if i == split-1 {
+				u := colsEach + extraCols
+				task.Columns = &u
+			}
+			newTask := *task
+			newTasks = append(newTasks, &newTask)
+			(*task).ColumnOffset += columnOffset(colsEach)
+		}
+	}
+	if len(newTasks) != len(ws.Tasks) {
+		fmt.Printf("autosplitting: %d->%d\n", len(ws.Tasks), len(newTasks))
+		ws.Tasks = newTasks
 	}
 	return nil
 }
@@ -576,6 +619,12 @@ func (ts *taskSpec) Cleanup(conf *Config) error {
 	ts.FieldSpec = field
 	if ts.Seed == nil {
 		ts.Seed = ts.FieldSpec.Parent.Seed
+	}
+	if ts.Split == nil {
+		ts.Split = ts.Parent.Split
+	}
+	if ts.ColumnOrder == valueOrderZipf && *ts.Split != 1 {
+		return fmt.Errorf("field %s: can't use zipf column order and auto-split workload\n", ts.Field)
 	}
 	if ts.RowOrder == valueOrderStride {
 		return fmt.Errorf("field %s: row order cannot be stride-based", ts.Field)

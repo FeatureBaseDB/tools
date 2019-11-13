@@ -467,13 +467,13 @@ func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err
 			errs[idx] = fmt.Errorf("index '%s', field '%s' not found in schema", task.IndexFullName, task.Field)
 			continue
 		}
-		itr, opts, err := NewGenerator(task, generatorUpdateChan, task.Index+"/"+task.Field)
+		itr, opts, err := NewGenerator(task, generatorUpdateChan, fmt.Sprintf("%s/%s/%d", task.Index, task.Field, task.ColumnOffset))
 		if err != nil {
 			errs[idx] = err
 			continue
 		}
 		tasks.Add(1)
-		go func(idx int, itr CountingIterator, opts []pilosa.ImportOption, field *pilosa.Field, indexName, fieldName string) {
+		go func(idx int, itr CountingIterator, opts []pilosa.ImportOption, field *pilosa.Field, indexName, fieldName string, offset int64) {
 			before := time.Now()
 			if conf.NoImport {
 				errs[idx] = nil
@@ -511,10 +511,10 @@ func (conf *Config) ApplyTasks(client *pilosa.Client, allTasks []*taskSpec) (err
 			if conf.Time {
 				after := time.Now()
 				v, t := itr.Values()
-				fmt.Printf("   %s/%s: %v for %d/%d values\n", indexName, fieldName, after.Sub(before), v, t)
+				fmt.Printf("   %s/%s[%d]: %v for %d/%d values\n", indexName, fieldName, offset, after.Sub(before), v, t)
 			}
 			tasks.Done()
-		}(idx, itr, opts, field, task.Index, task.Field)
+		}(idx, itr, opts, field, task.Index, task.Field, int64(task.ColumnOffset))
 	}
 	go func() {
 		tasks.Wait()

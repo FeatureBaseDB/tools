@@ -53,7 +53,7 @@ func testValueGenerator(v valueGenerator, min int64, max int64, total int64) err
 func Test_Generators(t *testing.T) {
 	inc := newIncrementGenerator(-3, 5)
 	testSequenceGenerator(inc, -3, 5, 9)
-	inc2, err := newPermutedGenerator(-3, 5, 7, 0, 1)
+	inc2, err := newPermutedGenerator(-3, 5, 7, 0, 0, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -208,6 +208,8 @@ func TestMutexGen(t *testing.T) {
 			DensityScale: uint64p(2097152),
 			Density:      0.9,
 			ValueRule:    densityTypeZipf,
+			ZipfV:        1.0,
+			ZipfS:        1.1,
 			Cache:        cacheTypeLRU,
 			ZipfS:        1.1,
 			ZipfV:        1,
@@ -229,18 +231,21 @@ func TestMutexGen(t *testing.T) {
 		t.Fatalf("getting new set generator: %v", err)
 	}
 
-	done := make(chan struct{})
+	done := make(chan error)
 	go func() {
 		for _, err := sg.NextRecord(); err != io.EOF; _, err = sg.NextRecord() {
 			if err != nil {
-				t.Fatalf("Error in iterator: %v", err)
+				done <- err
 			}
 		}
 		close(done)
 	}()
 
 	select {
-	case <-done:
+	case err = <-done:
+		if err != nil {
+			t.Fatalf("error in iterator: %v", err)
+		}
 	case <-time.After(time.Second):
 		t.Fatalf("mutex generator hanging")
 	}
