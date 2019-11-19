@@ -9,8 +9,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/molecula/apophenia"
 	"github.com/pilosa/go-pilosa"
-	"github.com/pilosa/tools/apophenia"
 )
 
 // ZipfBenchmark sets random bits according to the Zipf-Mandelbrot distribution.
