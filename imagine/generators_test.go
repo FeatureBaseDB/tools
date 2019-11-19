@@ -208,8 +208,6 @@ func TestMutexGen(t *testing.T) {
 			DensityScale: uint64p(2097152),
 			Density:      0.9,
 			ValueRule:    densityTypeZipf,
-			ZipfV:        1.0,
-			ZipfS:        1.1,
 			Cache:        cacheTypeLRU,
 			ZipfS:        1.1,
 			ZipfV:        1,
