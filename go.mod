@@ -14,6 +14,7 @@ require (
 	github.com/jaffee/commandeer v0.1.0
 	github.com/kr/pty v1.1.8 // indirect
 	github.com/miekg/dns v1.1.15 // indirect
+	github.com/molecula/apophenia v0.0.0-20190827192002-68b7a14a478b
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/pilosa/go-pilosa v1.3.1-0.20190715210601-8606626b90d6
 	github.com/pilosa/pilosa v1.3.1
