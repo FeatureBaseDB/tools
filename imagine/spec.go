@@ -34,6 +34,7 @@ type densityType int
 const (
 	densityTypeLinear densityType = iota
 	densityTypeZipf
+	densityTypePattern
 )
 
 type dimensionOrder int
@@ -128,13 +129,21 @@ type indexSpec struct {
 	Fields        []*fieldSpec
 	Seed          *int64 // default PRNG seed
 	ShardWidth    uint64
+	Pattern       string  // a global pattern to be used
+	PatternN      int64   // input #1 to the patternn
+	PatternMod    int64   // modifier value specific to pattern, e.g. exponent for triangle-type
+	patternGen    Pattern // a pattern generated from the parent's pattern spec
 }
 
 func (is *indexSpec) String() string {
 	if is == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%s [%s], %d columns, %d fields", is.Name, is.FullName, is.Columns, len(is.Fields))
+	pattern := ""
+	if is.Pattern != "" {
+		pattern = fmt.Sprintf(", pattern %s [%d:%d]", is.Pattern, is.PatternN, is.PatternMod)
+	}
+	return fmt.Sprintf("%s [%s], %d columns, %d fields%s", is.Name, is.FullName, is.Columns, len(is.Fields), pattern)
 }
 
 // fieldSpec describes a given field within an index.
@@ -147,6 +156,7 @@ type fieldSpec struct {
 	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
 	ZipfA         float64      // alpha parameter for a zipf distribution, should be >= 0
+	Subpattern    string       // Which of a pattern's supported patterns to use. Relates to index-wide pattern.
 	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
@@ -216,6 +226,9 @@ func (fs *fieldSpec) String() string {
 		density = fmt.Sprintf("%.3f", fs.Density)
 	case densityTypeZipf:
 		density = fmt.Sprintf("%.3f base, Zipf v %.3f s %.3f", fs.Density, fs.ZipfV, fs.ZipfS)
+	case densityTypePattern:
+		pattern, patternN, patternMod := fs.Parent.Pattern, fs.Parent.PatternN, fs.Parent.PatternMod
+		density = fmt.Sprintf("pattern[%s][%s][%d:%d]", pattern, fs.Subpattern, patternN, patternMod)
 	}
 	switch fs.Type {
 	case fieldTypeSet:
@@ -399,6 +412,17 @@ func (is *indexSpec) Cleanup(conf *Config) error {
 	if conf.ColumnScale != 0 {
 		is.Columns *= uint64(conf.ColumnScale)
 	}
+	if is.Pattern != "" {
+		patternGenFunc, ok := patternsByName[is.Pattern]
+		if !ok {
+			return fmt.Errorf("pattern name %q unrecognized", is.Pattern)
+		}
+		var err error
+		is.patternGen, err = patternGenFunc(is.PatternN, is.PatternMod, 0)
+		if err != nil {
+			return err
+		}
+	}
 	for _, field := range is.Fields {
 		field.Parent = is
 		if is.FieldsByName[field.Name] != nil {
@@ -545,6 +569,18 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	if fs.ValueRule == densityTypeZipf {
 		if fs.ZipfV < 1.0 || fs.ZipfS <= 1.0 {
 			return fmt.Errorf("field %s: zipf value distribution requires V >= 1, S > 1", fs.Name)
+		}
+	}
+	if fs.ValueRule == densityTypePattern {
+		if fs.Parent.Pattern == "" {
+			return fmt.Errorf("field %s: no parent pattern specified", fs.Name)
+		}
+		_, ok := patternsByName[fs.Parent.Pattern]
+		if !ok {
+			return fmt.Errorf("field %s: parent pattern %q invalid", fs.Name, fs.Parent.Pattern)
+		}
+		if fs.Subpattern == "" {
+			return fmt.Errorf("field %s: no subpattern specified for pattern value rule", fs.Name)
 		}
 	}
 	return nil
