@@ -84,7 +84,7 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 		return newFastValueGenerator(fs), nil
 	}
 	if fs.ValueRule == densityTypePattern {
-		return fs.Parent.patternGen.BitGenerator(fs.Subpattern, ts, updateChan, updateID)
+		return fs.patternGen.BitGenerator(fs.Subpattern, ts, updateChan, updateID)
 	}
 	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
 	// of individual values rather than populating every field
@@ -164,7 +164,7 @@ func (g *singleValueGenerator) prepareSingleValueGenerator(ts *taskSpec, updateC
 func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
 	if fs.ValueRule == densityTypePattern {
-		return fs.Parent.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
+		return fs.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
 	}
 	g := columnValueGenerator{}
 	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
@@ -180,7 +180,7 @@ func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string
 func newIntGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
 	fs := ts.FieldSpec
 	if fs.ValueRule == densityTypePattern {
-		return fs.Parent.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
+		return fs.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
 	}
 	g := fieldValueGenerator{}
 	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
@@ -945,6 +945,8 @@ type Pattern interface {
 	BitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error)
 	// DigitGenerator yields a named generator for int-type fields.
 	DigitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error)
+	// Max reports maximum generated value/row for the given name and number of columns
+	Max(name string, columns uint64) (int64, error)
 }
 
 var patternsByName = map[string]func(n, mod, seed int64) (Pattern, error){
@@ -1194,7 +1196,7 @@ func newDigiterator(updateChan chan taskUpdate, updateID string, target []uint64
 		repeat:      repeat,
 		n:           uint64(n),
 		cycle:       cycle,
-		counter:     startColumn / (cycle * uint64(n)),
+		counter:     startColumn / cycle,
 	}
 }
 
@@ -1279,6 +1281,27 @@ func (t *trianglePattern) display() {
 	t.upto.print()
 	fmt.Printf("over:\n")
 	t.over.print()
+}
+
+func (t *trianglePattern) Max(name string, columns uint64) (int64, error) {
+	switch name {
+	case "equal", "once", "upto", "over":
+		return t.n, nil
+	case "value":
+		// For every t.repeat values generated, we generate one digit
+		// from our string of digits. For every time we make it through
+		// that cycle, we produce a total of t.n distinct values from
+		// digits, times the t.repeat values generated for each of them.
+		digitCycleLength := t.repeat * uint64(len(t.digits))
+		digitCycleValues := t.repeat * uint64(t.n)
+		// Round up to a whole digit cycle rather than trying to
+		// figure out exactly where in it we'd be.
+		cycles := (columns + digitCycleLength - 1) / digitCycleLength
+		// fmt.Printf("max for n %d, exp %d, cols %d: cycleLength %d, values %d, cycles %d, total max %d\n", t.n, t.exp, columns, digitCycleLength, digitCycleValues, cycles, cycles*digitCycleValues)
+		return int64(cycles * digitCycleValues), nil
+	default:
+		return 0, fmt.Errorf("unknown subpattern %q for triangle pattern", name)
+	}
 }
 
 func (t *trianglePattern) BitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error) {
