@@ -5,6 +5,7 @@ go 1.12
 require (
 	cloud.google.com/go v0.43.0 // indirect
 	github.com/BurntSushi/toml v0.3.1
+	github.com/alvaroloes/enumer v1.1.2 // indirect
 	github.com/coreos/go-systemd v0.0.0-20190719114852-fd7a80b32e1f // indirect
 	github.com/go-kit/kit v0.9.0 // indirect
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
@@ -14,7 +15,9 @@ require (
 	github.com/jaffee/commandeer v0.1.0
 	github.com/kr/pty v1.1.8 // indirect
 	github.com/miekg/dns v1.1.15 // indirect
+	github.com/molecula/apophenia v0.0.0-20190827192002-68b7a14a478b
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
+	github.com/pascaldekloe/name v1.0.0 // indirect
 	github.com/pilosa/go-pilosa v1.3.1-0.20190715210601-8606626b90d6
 	github.com/pilosa/pilosa v1.3.1
 	github.com/pkg/errors v0.8.1
@@ -31,7 +34,7 @@ require (
 	golang.org/x/net v0.0.0-20190628185345-da137c7871d7 // indirect
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58
 	golang.org/x/sys v0.0.0-20190712062909-fae7ac547cb7 // indirect
-	golang.org/x/tools v0.0.0-20190719005602-e377ae9d6386 // indirect
+	golang.org/x/tools v0.0.0-20191121172411-96ad48e4b060 // indirect
 	google.golang.org/grpc v1.22.0 // indirect
 )
 

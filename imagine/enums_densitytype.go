@@ -7,9 +7,9 @@ import (
 	"fmt"
 )
 
-const _densityTypeName = "linearzipf"
+const _densityTypeName = "linearzipfpattern"
 
-var _densityTypeIndex = [...]uint8{0, 6, 10}
+var _densityTypeIndex = [...]uint8{0, 6, 10, 17}
 
 func (i densityType) String() string {
 	if i < 0 || i >= densityType(len(_densityTypeIndex)-1) {
@@ -18,11 +18,12 @@ func (i densityType) String() string {
 	return _densityTypeName[_densityTypeIndex[i]:_densityTypeIndex[i+1]]
 }
 
-var _densityTypeValues = []densityType{0, 1}
+var _densityTypeValues = []densityType{0, 1, 2}
 
 var _densityTypeNameToValueMap = map[string]densityType{
-	_densityTypeName[0:6]:  0,
-	_densityTypeName[6:10]: 1,
+	_densityTypeName[0:6]:   0,
+	_densityTypeName[6:10]:  1,
+	_densityTypeName[10:17]: 2,
 }
 
 // densityTypeString retrieves an enum value from the enum constants string name.

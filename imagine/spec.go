@@ -9,7 +9,6 @@ package imagine
 //go:generate enumer -type=timeQuantum -trimprefix=timeQuantum -text -transform=caps -output enums_timequantum.go
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/pkg/errors"
 )
 
 type fieldType int
@@ -34,6 +34,7 @@ type densityType int
 const (
 	densityTypeLinear densityType = iota
 	densityTypeZipf
+	densityTypePattern
 )
 
 type dimensionOrder int
@@ -128,13 +129,21 @@ type indexSpec struct {
 	Fields        []*fieldSpec
 	Seed          *int64 // default PRNG seed
 	ShardWidth    uint64
+	Pattern       string  // a global pattern to be used
+	PatternN      int64   // input #1 to the patternn
+	PatternMod    int64   // modifier value specific to pattern, e.g. exponent for triangle-type
+	patternGen    Pattern // a pattern generated from the pattern spec
 }
 
 func (is *indexSpec) String() string {
 	if is == nil {
 		return "<nil>"
 	}
-	return fmt.Sprintf("%s [%s], %d columns, %d fields", is.Name, is.FullName, is.Columns, len(is.Fields))
+	pattern := ""
+	if is.Pattern != "" {
+		pattern = fmt.Sprintf(", pattern %s [%d:%d]", is.Pattern, is.PatternN, is.PatternMod)
+	}
+	return fmt.Sprintf("%s [%s], %d columns, %d fields%s", is.Name, is.FullName, is.Columns, len(is.Fields), pattern)
 }
 
 // fieldSpec describes a given field within an index.
@@ -147,6 +156,7 @@ type fieldSpec struct {
 	Type          fieldType    // "set", "mutex", "int"
 	ZipfV, ZipfS  float64      // the V/S parameters of a Zipf distribution
 	ZipfA         float64      // alpha parameter for a zipf distribution, should be >= 0
+	Subpattern    string       // Which of a pattern's supported patterns to use. Relates to index-wide pattern.
 	Min, Max      int64        // Allowable value range for an int field. Row range for set/mutex fields.
 	SourceIndex   string       // SourceIndex's columns are used as value range for this field.
 	Density       float64      // Base density to use in [0,1].
@@ -156,6 +166,10 @@ type fieldSpec struct {
 	Next          *fieldSpec   `toml:"-"` // next fieldspec to try
 	HighestColumn int64        `toml:"-"` // highest column we've generated for this field
 	Quantum       *timeQuantum // time quantum, useful only for time fields
+	Pattern       *string      // a global pattern to be used
+	PatternN      *int64       // input #1 to the patternn
+	PatternMod    *int64       // modifier value specific to pattern, e.g. exponent for triangle-type
+	patternGen    Pattern      // a pattern generated self (or parent's) pattern spec
 	FastSparse    bool
 	CachePath     string
 
@@ -216,6 +230,9 @@ func (fs *fieldSpec) String() string {
 		density = fmt.Sprintf("%.3f", fs.Density)
 	case densityTypeZipf:
 		density = fmt.Sprintf("%.3f base, Zipf v %.3f s %.3f", fs.Density, fs.ZipfV, fs.ZipfS)
+	case densityTypePattern:
+		pattern, patternN, patternMod := fs.Parent.Pattern, fs.Parent.PatternN, fs.Parent.PatternMod
+		density = fmt.Sprintf("pattern[%s][%s][%d:%d]", pattern, fs.Subpattern, patternN, patternMod)
 	}
 	switch fs.Type {
 	case fieldTypeSet:
@@ -399,6 +416,17 @@ func (is *indexSpec) Cleanup(conf *Config) error {
 	if conf.ColumnScale != 0 {
 		is.Columns *= uint64(conf.ColumnScale)
 	}
+	if is.Pattern != "" {
+		patternGenFunc, ok := patternsByName[is.Pattern]
+		if !ok {
+			return fmt.Errorf("pattern name %q unrecognized", is.Pattern)
+		}
+		var err error
+		is.patternGen, err = patternGenFunc(is.PatternN, is.PatternMod, 0)
+		if err != nil {
+			return err
+		}
+	}
 	for _, field := range is.Fields {
 		field.Parent = is
 		if is.FieldsByName[field.Name] != nil {
@@ -476,6 +504,41 @@ func (fs *fieldSpec) Cleanup(conf *Config) error {
 	} else {
 		fixDensityScale(fs.DensityScale)
 	}
+	if fs.Pattern == nil {
+		fs.Pattern = &fs.Parent.Pattern
+	}
+	if fs.PatternN == nil {
+		fs.PatternN = &fs.Parent.PatternN
+	}
+	if fs.PatternMod == nil {
+		fs.PatternMod = &fs.Parent.PatternMod
+	}
+	if fs.ValueRule == densityTypePattern {
+		if *fs.Pattern == "" {
+			return fmt.Errorf("field %s: no pattern specified", fs.Name)
+		}
+		patternGenFunc, ok := patternsByName[*fs.Pattern]
+		if !ok {
+			return fmt.Errorf("pattern name %q unrecognized", *fs.Pattern)
+		}
+		if fs.Subpattern == "" {
+			return fmt.Errorf("field %s: no subpattern specified for pattern value rule", fs.Name)
+		}
+		var err error
+		fs.patternGen, err = patternGenFunc(*fs.PatternN, *fs.PatternMod, 0)
+		if err != nil {
+			return err
+		}
+		// default to parent's column count and suitable max
+		if fs.Max == 0 {
+			fs.Max, err = fs.patternGen.Max(fs.Subpattern, fs.Parent.Columns)
+			fmt.Printf("%s inferred maximum value: %s:%s, n %d, columns %d, max %d\n", fs.Name, *fs.Pattern, fs.Subpattern, *fs.PatternN, fs.Parent.Columns, fs.Max)
+			if err != nil {
+				return errors.Wrap(err, fmt.Sprintf("trying to infer max from pattern %q:%q", *fs.Pattern, fs.Subpattern))
+			}
+		}
+	}
+
 	fs.CachePath = fs.Parent.Parent.CachePath
 	// no specified chance = 1.0
 	if fs.Chance == nil {

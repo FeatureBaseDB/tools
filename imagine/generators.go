@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/bits"
 	"math/rand"
 	"sync"
 	"time"
@@ -82,6 +83,9 @@ func newSetGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) 
 	if fs.FastSparse {
 		return newFastValueGenerator(fs), nil
 	}
+	if fs.ValueRule == densityTypePattern {
+		return fs.patternGen.BitGenerator(fs.Subpattern, ts, updateChan, updateID)
+	}
 	// even though this is a set generator, we will treat it like a mutex generator -- we generate a series
 	// of individual values rather than populating every field
 	if ts.ColumnOrder == valueOrderZipf {
@@ -158,6 +162,10 @@ func (g *singleValueGenerator) prepareSingleValueGenerator(ts *taskSpec, updateC
 // that computes a single value for a column, then returns it as a
 // pilosa.Column.
 func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	fs := ts.FieldSpec
+	if fs.ValueRule == densityTypePattern {
+		return fs.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
+	}
 	g := columnValueGenerator{}
 	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
@@ -170,6 +178,10 @@ func newMutexGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string
 // that computes a single value for a column, then returns it as a
 // pilosa.FieldValue.
 func newIntGenerator(ts *taskSpec, updateChan chan taskUpdate, updateID string) (iter CountingIterator, err error) {
+	fs := ts.FieldSpec
+	if fs.ValueRule == densityTypePattern {
+		return fs.patternGen.DigitGenerator(fs.Subpattern, ts, updateChan, updateID)
+	}
 	g := fieldValueGenerator{}
 	err = g.prepareSingleValueGenerator(ts, updateChan, updateID)
 	if err != nil {
@@ -920,4 +932,405 @@ func newZipf(a float64, n int) zipf {
 
 func (z zipf) F(x int) float64 {
 	return 1.0 / (math.Pow(float64(x), z.a) * z.s)
+}
+
+// Pattern represents shared logic for generating related values in multiple
+// fields.
+type Pattern interface {
+	// Rows indicates how many rows this pattern will want to generate, if it has
+	// a preference. For instance, a generator that wants to generate ten related fields
+	// would return 10.
+	Rows() int64
+	// BitGenerator yields a named generator for set-type fields.
+	BitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error)
+	// DigitGenerator yields a named generator for int-type fields.
+	DigitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error)
+	// Max reports maximum generated value/row for the given name and number of columns
+	Max(name string, columns uint64) (int64, error)
+}
+
+var patternsByName = map[string]func(n, mod, seed int64) (Pattern, error){
+	"triangle": newTrianglePattern,
+}
+
+// trianglePattern represents a pattern of digits which repeat in a
+// pattern that produces triangle numbers. For instance, with n=4, it would
+// produce `0010120123`, for a total of 10 columns per loop. It also takes
+// an exponent, which determines what power of n the iteration happens in.
+// For instance, with n=10, exp=0, the values would be
+//     0, 0, 1, 0, 1, 2 [...], 9,
+//     10, 10, 11, 10, 11, 12, ..., 19,
+//     20, 20, 21, ...
+// With n=10, exp=1, instead you'd get:
+//     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+//     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+//     10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+//     0, 1, 2 [...]
+// Either way, the 550th value would be 99.
+//
+// For n=10, this implies 55 consecutive columns, with digits:
+//         0010120123012340123450123456012345670123456780123456789
+//
+// We then have corresponding bitmasks:
+// val[0]  1101001000100001000001000000100000001000000001000000000 [10 bits, 1 value]
+// val[1]  0010100100010000100000100000010000000100000000100000000 [9 bits, 1 value]
+// [...]
+// val[9]  0000000000000000000000000000000000000000000000000000001 [1 bit, 1 value]
+//
+// once[0] 1000000000000000000000000000000000000000000000000000000 [1 bit, 1 value]
+// once[1] 1010000000000000000000000000000000000000000000000000000 [2 bits, 2 values]
+// [...]
+// once[9] 1010010001000010000010000001000000010000000010000000001 [10 bits, 10 values]
+//
+// upto[0] 1101001000100001000001000000100000001000000001000000000 [10 bits, 1 value]
+// upto[1] 1110001100110001100001100000110000001100000001100000000 [19 bits, 2 values]
+// upto[3] 1111001110111001110001110000111000001110000001110000000 [27 bits, 3 values]
+// [...]
+// upto[8] 1111111111111111111111111111111111111111111111111111110 [54 bits, 9 values]
+// upto[9] 1111111111111111111111111111111111111111111111111111111 [55 bits, 10 values]
+//
+// over[9] 0000000000000000000000000000000000000000000000000000001 [1 bit, 1 value]
+// over[8] 0000000000000000000000000000000000000000000010000000011 [3 bits, 2 values]
+// over[7] 0000000000000000000000000000000000010000000110000000111 [6 bits, 3 values]
+// [...]
+// over[1] 0010110111011110111110111111011111110111111110111111111 [45 bits, 9 values]
+// over[0] 1111111111111111111111111111111111111111111111111111111 [55 bits, 10 values]
+type trianglePattern struct {
+	n      int64
+	exp    int64
+	repeat uint64 // repetition interval for bits
+	digits []uint64
+	equal  bitSetSlice
+	once   bitSetSlice
+	upto   bitSetSlice
+	over   bitSetSlice
+}
+
+type bitSet []uint64
+type bitSetSlice []bitSet
+
+func (b bitSet) set(bit uint64) {
+	b[bit>>6] |= (1 << (bit & 63))
+}
+
+func (b bitSet) clear(bit uint64) {
+	b[bit>>6] &^= (1 << (bit & 63))
+}
+
+// bit(n) is 0 or 1
+func (b bitSet) bit(bit uint64) uint64 {
+	return (b[bit>>6] >> (bit & 63)) & 1
+}
+
+// add unions in the bits from another bitSet
+func (b bitSet) add(other bitSet) {
+	for i := range b {
+		b[i] |= other[i]
+	}
+}
+
+func (b bitSet) count() int {
+	var total int
+	for _, v := range b {
+		total += bits.OnesCount64(v)
+	}
+	return total
+}
+
+// only useful for debugging, I suppose
+func (s bitSetSlice) print() {
+	for row, set := range s {
+		count := set.count()
+		fmt.Printf(" %2d: ", row)
+		for i := len(set) - 1; i >= 0; i-- {
+			fmt.Printf("%#x", set[i])
+		}
+		fmt.Printf(" [%d]\n", count)
+	}
+}
+
+// biterator is an iterator which can yield successive column/row pairs using a
+// given pattern of bits.
+type biterator struct {
+	vals        bitSetSlice
+	valsPerRow  uint64
+	startColumn uint64
+	column      uint64
+	row         uint64
+	maxColumn   uint64
+	generated   int64
+	tries       int64
+	repeat      uint64 // how many times to repeat
+	updateChan  chan taskUpdate
+	updateID    string
+}
+
+func newBiterator(target bitSetSlice, updateChan chan taskUpdate, updateID string, valsPerRow int, repeat uint64, startColumn uint64, maxColumn uint64) *biterator {
+	return &biterator{vals: target, valsPerRow: uint64(valsPerRow), startColumn: startColumn, column: startColumn, maxColumn: maxColumn, updateChan: updateChan, updateID: updateID, repeat: repeat}
+}
+
+func (b *biterator) Values() (int64, int64) {
+	return b.generated, b.tries
+}
+
+func (b *biterator) next() {
+	b.column++
+	if b.column >= b.maxColumn {
+		b.column = b.startColumn
+		b.row++
+	}
+	if b.updateChan != nil && (b.tries%updatePeriod) == 0 {
+		b.updateChan <- taskUpdate{id: b.updateID, colCount: int64(b.column), rowCount: int64(b.row), done: b.row >= uint64(len(b.vals))}
+	}
+}
+
+func (b *biterator) NextRecord() (ret pilosa.Record, err error) {
+	// fail out without trying to bump the column/row count
+	if b.row >= uint64(len(b.vals)) {
+		return nil, io.EOF
+	}
+	// We'll return as soon as we find a valid item, so we want to jump
+	// to one past it. if we don't find a valid item, this will gratuitously
+	// increment b.column once, which should be harmless.
+	defer b.next()
+	for b.row < uint64(len(b.vals)) {
+		b.tries++
+		if b.vals[b.row].bit((b.column/b.repeat)%b.valsPerRow) == 1 {
+			b.generated++
+			return pilosa.Column{ColumnID: b.column, RowID: b.row}, nil
+		}
+		b.next()
+	}
+	return nil, io.EOF
+}
+
+// digiterator is an iterator which yields values which have some "digit"
+// iterating in a sequence. Actually it's a base-n digit; if n==3, for instance,
+// the values computed will be multiples of 3 plus {0,1,2} in the digit
+// order... I can't explain this but it's cool.
+type digiterator struct {
+	digits      []uint64 // not a bitSet, a series of digit values
+	n           uint64
+	repeat      uint64
+	cycle       uint64
+	column      uint64
+	startColumn uint64
+	maxColumn   uint64
+	counter     uint64
+	updateChan  chan taskUpdate
+	updateID    string
+}
+
+func (d *digiterator) next() {
+	d.column++
+	if d.column%d.cycle == 0 {
+		d.counter++
+	}
+	if d.updateChan != nil && ((d.column-d.startColumn)%updatePeriod) == 0 {
+		d.updateChan <- taskUpdate{id: d.updateID, colCount: int64(d.column - d.startColumn), rowCount: 0, done: d.column >= d.maxColumn}
+	}
+}
+
+// NextRecord returns the next value from a digiterator, which is magic.
+//
+// This is all done is base3 so you can see the magic in only a few screens of
+// comment. The idea is that if we have a pattern with n=3 and exp=0, we count
+// digits in the 3^0 place, and if it's exp=1, we count digits in the 3^1 place.
+// So we iterate through the column%repeat values below the inserted digit, and
+// when the digit wraps, we bump the counter, which goes above the inserted
+// digit. for exp=0, repeat=1, and the sub-counter is always 0.
+//
+// exp=0 counter digit result
+//             0     0      0
+//             0     0      0
+//             0     1      1
+//             0     0      0
+//             0     1      1
+//             0     2      2
+//             1     0     10
+//
+// exp=1 counter digit under result
+//                   0     0      0
+//                   0     1      1
+//                   0     2      2
+//                   0     0      0
+//                   0     1      1
+//                   0     2      2
+//                   1     0     10
+//                   1     1     11
+//                   1     2     12
+//                   0     0      0
+//                   0     1      1
+//                   0     2      2
+//                   1     0     10
+//                   1     1     11
+//                   1     2     12
+//                   2     0     20
+//                   2     1     21
+//                   2     2     22
+//             1     0     0    100
+func (d *digiterator) NextRecord() (pilosa.Record, error) {
+	if d.column >= d.maxColumn {
+		return nil, io.EOF
+	}
+	defer d.next()
+	under := d.column % d.repeat
+	digit := d.digits[(d.column/d.repeat)%uint64(len(d.digits))]
+	val := (d.counter * d.repeat * d.n) + (digit * d.repeat) + under
+	return pilosa.FieldValue{ColumnID: d.column, Value: int64(val)}, nil
+}
+
+func (d *digiterator) Values() (int64, int64) {
+	return int64(d.column - d.startColumn), int64(d.column - d.startColumn)
+}
+
+func newDigiterator(updateChan chan taskUpdate, updateID string, target []uint64, n int64, repeat uint64, startColumn uint64, maxColumn uint64) *digiterator {
+	cycle := uint64(len(target)) * uint64(repeat)
+	return &digiterator{
+		updateChan:  updateChan,
+		updateID:    updateID,
+		digits:      target,
+		startColumn: startColumn,
+		column:      startColumn,
+		maxColumn:   maxColumn,
+		repeat:      repeat,
+		n:           uint64(n),
+		cycle:       cycle,
+		counter:     startColumn / cycle,
+	}
+}
+
+// newTrianglePattern creates a new triangle pattern, treating the n value as
+// the number of distinct digit values to cycle, and the mod value as an exponent.
+// Triangle patterns ignore their seed.
+func newTrianglePattern(n int64, mod, _ int64) (Pattern, error) {
+	if n <= 0 {
+		return nil, fmt.Errorf("triangle pattern requires positive n, %d is not positive", n)
+	}
+	if mod < 0 {
+		return nil, fmt.Errorf("triangle pattern requires non-negative mod, %d is negative", mod)
+	}
+	t := &trianglePattern{n: n, exp: mod, repeat: 1}
+	// things repeat n^exp times
+	for i := int64(0); i < t.exp; i++ {
+		t.repeat *= uint64(t.n)
+	}
+	// populate bitmasks for the rows
+	t.equal = make([]bitSet, t.n)
+	t.once = make([]bitSet, t.n)
+	t.upto = make([]bitSet, t.n)
+	t.over = make([]bitSet, t.n)
+	// Triangle number n+[n-1]+...0 turns out to be (n^2 + n) / 2. This
+	// is how many bits, total, we need per row.
+	bitLen := (t.n * (t.n + 1)) / 2
+	wordLen := (bitLen + 63) / 64
+	// The actual set of last digits.
+	t.digits = make([]uint64, 0, bitLen)
+	for max := uint64(0); max < uint64(t.n); max++ {
+		for i := uint64(0); i <= max; i++ {
+			t.digits = append(t.digits, i)
+		}
+	}
+	// words for the four bitmasks, for a given row
+	wordsPerRow := wordLen * 4
+	words := make([]uint64, t.n*wordsPerRow)
+	for row := int64(0); row < t.n; row++ {
+		rowWords := words[wordsPerRow*row : wordsPerRow*(row+1)]
+		t.equal[row] = rowWords[wordLen*0 : wordLen*1]
+		t.once[row] = rowWords[wordLen*1 : wordLen*2]
+		t.upto[row] = rowWords[wordLen*2 : wordLen*3]
+		t.over[row] = rowWords[wordLen*3 : wordLen*4]
+		didOnce := false
+		// compute the val/once rows directly
+		for i := range t.digits {
+			if row == int64(t.digits[i]) {
+				t.equal[row].set(uint64(i))
+				if !didOnce {
+					t.once[row].set(uint64(i))
+					didOnce = true
+				}
+			}
+		}
+		// compute upto, which is the previous upto plus the current
+		// val.
+		if row > 0 {
+			t.upto[row].add(t.upto[row-1])
+		}
+		t.upto[row].add(t.equal[row])
+		// over includes the current value; we can't do it the other
+		// way until we're done with these, though.
+		t.over[row].add(t.equal[row])
+	}
+	// count backwards to populate over
+	for row := t.n - 2; row >= 0; row-- {
+		t.over[row].add(t.over[row+1])
+	}
+	return t, nil
+}
+
+func (t *trianglePattern) Rows() int64 {
+	return t.n
+}
+
+func (t *trianglePattern) display() {
+	fmt.Printf("equal:\n")
+	t.equal.print()
+	fmt.Printf("once:\n")
+	t.once.print()
+	fmt.Printf("upto:\n")
+	t.upto.print()
+	fmt.Printf("over:\n")
+	t.over.print()
+}
+
+func (t *trianglePattern) Max(name string, columns uint64) (int64, error) {
+	switch name {
+	case "equal", "once", "upto", "over":
+		return t.n, nil
+	case "value":
+		// For every t.repeat values generated, we generate one digit
+		// from our string of digits. For every time we make it through
+		// that cycle, we produce a total of t.n distinct values from
+		// digits, times the t.repeat values generated for each of them.
+		digitCycleLength := t.repeat * uint64(len(t.digits))
+		digitCycleValues := t.repeat * uint64(t.n)
+		// Round up to a whole digit cycle rather than trying to
+		// figure out exactly where in it we'd be.
+		cycles := (columns + digitCycleLength - 1) / digitCycleLength
+		// fmt.Printf("max for n %d, exp %d, cols %d: cycleLength %d, values %d, cycles %d, total max %d\n", t.n, t.exp, columns, digitCycleLength, digitCycleValues, cycles, cycles*digitCycleValues)
+		return int64(cycles * digitCycleValues), nil
+	default:
+		return 0, fmt.Errorf("unknown subpattern %q for triangle pattern", name)
+	}
+}
+
+func (t *trianglePattern) BitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error) {
+	var target bitSetSlice
+	switch name {
+	case "equal":
+		target = t.equal
+	case "once":
+		target = t.once
+	case "upto":
+		target = t.upto
+	case "over":
+		target = t.over
+	case "value":
+		return nil, errors.New("sub-pattern value is only usable for int/mutex fields")
+	}
+	if target == nil {
+		return nil, fmt.Errorf("unknown sub-pattern %q", name)
+	}
+	return newBiterator(target, updateChan, updateID, len(t.digits), t.repeat, uint64(ts.ColumnOffset), uint64(ts.ColumnOffset)+*ts.Columns), nil
+}
+
+func (t *trianglePattern) DigitGenerator(name string, ts *taskSpec, updateChan chan taskUpdate, updateID string) (CountingIterator, error) {
+	if name != "value" {
+		bitMaybe, err := t.BitGenerator(name, ts, updateChan, updateID)
+		if err == nil && bitMaybe != nil {
+			return nil, fmt.Errorf("sub-pattern %q only usable for set fields", name)
+		}
+		return nil, fmt.Errorf("unknown sub-pattern %q", name)
+	}
+	return newDigiterator(updateChan, updateID, t.digits, t.n, t.repeat, uint64(ts.ColumnOffset), uint64(ts.ColumnOffset)+*ts.Columns), nil
 }
